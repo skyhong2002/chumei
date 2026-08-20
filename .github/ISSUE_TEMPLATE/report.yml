@@ -1,0 +1,28 @@
+name: 資訊錯誤回報／下架申請
+description: 活動資訊有誤，或您是主辦單位希望修改、移除內容
+labels: [report]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: 活動頁網址
+      placeholder: https://chumei.observe.tw/event/evt_xxxx/
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: 類型
+      options:
+        - 資訊錯誤（時間／地點／內容）
+        - 這不是活動
+        - 主辦單位要求修改
+        - 主辦單位要求下架
+    validations:
+      required: true
+  - type: textarea
+    id: detail
+    attributes:
+      label: 說明
+    validations:
+      required: true

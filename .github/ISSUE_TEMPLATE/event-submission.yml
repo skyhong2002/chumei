@@ -1,0 +1,45 @@
+name: 活動投稿
+description: 把你的活動放上竹梅（社團、系所、校方、校外單位都歡迎）
+title: "[活動] "
+labels: [event-submission]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: 活動名稱
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: 時間
+      placeholder: 2026/09/10（四）19:00–21:00
+    validations:
+      required: true
+  - type: input
+    id: venue
+    attributes:
+      label: 地點
+      placeholder: 清大旺宏館 245 教室 / 交大浩然國際會議廳 / 線上
+    validations:
+      required: true
+  - type: input
+    id: organizer
+    attributes:
+      label: 主辦單位
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: 活動連結（IG 貼文、報名表單或官網）
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 活動介紹
+      description: 費用、對象、報名方式等
+  - type: markdown
+    attributes:
+      value: 投稿內容須為公開資訊；審核後上架，通常在一個工作天內。
