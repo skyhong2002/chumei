@@ -73,6 +73,18 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   padding: 12px 0; margin: 12px 0 4px;
   display: flex; flex-direction: column; gap: 10px;
 }
+#more-filters { display: flex; flex-direction: column; gap: 10px; }
+#more-filters summary {
+  cursor: pointer; color: var(--color-text-secondary); font-size: 0.9rem;
+  padding: 6px 0; list-style: none; width: fit-content;
+}
+#more-filters summary::before { content: "▸ "; }
+#more-filters[open] summary::before { content: "▾ "; }
+#more-filters summary::-webkit-details-marker { display: none; }
+@media (min-width: 701px) { #more-filters summary { display: none; } }
+@media (max-width: 700px) {
+  .filters { position: static; backdrop-filter: none; background: none; }
+}
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .filter-row .label { font-size: 0.875rem; color: var(--color-text-muted); min-width: 3em; }
 .fchip {
@@ -172,6 +184,8 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cal-dow { font-size: 0.78rem; color: var(--color-text-muted); text-align: center; padding: 4px 0; }
+:root[data-theme="dark"] .cal-dow { color: #B9C0D4; }
+:root[data-theme="dark"] .cal-cell.other-month .cal-day { color: #7A8299; }
 .cal-cell {
   min-width: 0; min-height: 96px; background: var(--color-surface);
   border: 1px solid var(--color-border-subtle);

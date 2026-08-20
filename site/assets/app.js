@@ -49,6 +49,11 @@
       if (params.get(k)) state[k] = params.get(k);
     });
 
+    var moreFilters = document.getElementById("more-filters");
+    if (moreFilters && (window.innerWidth > 700 || state.school !== "all" || state.campus !== "all" || state.cat !== "all" || state.org !== "all")) {
+      moreFilters.open = true;
+    }
+
     var cats = {};
     bundle.events.forEach(function (e) { cats[e.category || "其他"] = 1; });
 
