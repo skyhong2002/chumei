@@ -64,7 +64,7 @@ class Node:
             if isinstance(child, Node):
                 yield from child.iter_nodes()
 
-    def text_content(self) -> str:
+    def text_content(self, *, exclude_site_chrome: bool = False) -> str:
         parts: list[str] = []
 
         def visit(value: Node | str) -> None:
@@ -72,6 +72,8 @@ class Node:
                 parts.append(value)
                 return
             if value.tag in {"script", "style", "noscript", "template"}:
+                return
+            if exclude_site_chrome and value is not self and is_site_chrome(value):
                 return
             if value.tag == "br":
                 parts.append("\n")
@@ -146,8 +148,46 @@ def normalize_text(value: str) -> str:
     return "\n".join(lines).strip()
 
 
-def find_first_by_class(root: Node, class_name: str) -> Node | None:
-    return next((node for node in root.iter_nodes() if class_name in node.classes()), None)
+SITE_CHROME_CLASSES = {
+    "breadcrumb", "copyright", "footer", "header", "menu", "navbar",
+    "navigation", "navmenu", "selfhead", "selffoot", "sitemap",
+}
+SITE_CHROME_MODULE_CLASSES = {
+    "module-footer", "module-header", "module-menu", "module-nav",
+    "module-path", "module-search",
+}
+SITE_CHROME_LINES = {
+    "english", "menu", "回首頁", "回首頁 home", "搜尋", "漢堡鈕選單",
+    "網站導覽",
+}
+
+
+def is_site_chrome(node: Node) -> bool:
+    """Identify navigation/header/footer nodes that cannot be article content."""
+    if node.tag in {"aside", "footer", "header", "nav"}:
+        return True
+    role = node.attrs.get("role", "").lower()
+    if role in {"banner", "contentinfo", "navigation", "search"}:
+        return True
+    classes = {name.lower() for name in node.classes()}
+    if classes & (SITE_CHROME_CLASSES | SITE_CHROME_MODULE_CLASSES):
+        return True
+    identifiers = " ".join(classes | {node.attrs.get("id", "").lower()})
+    return any(
+        marker in identifiers
+        for marker in ("breadcrumb", "copyright", "navmenu", "site-footer", "site-header")
+    )
+
+
+def clean_article_text(value: str) -> str:
+    """Remove isolated RPage chrome labels left in otherwise valid article HTML."""
+    cleaned: list[str] = []
+    for line in normalize_text(value).splitlines():
+        comparable = re.sub(r"\s+", " ", line).strip().lower()
+        if comparable in SITE_CHROME_LINES or comparable.startswith("copyright ©"):
+            continue
+        cleaned.append(line)
+    return normalize_text("\n".join(cleaned))
 
 
 def detail_url_parts(url: str) -> tuple[str, str] | None:
@@ -278,24 +318,90 @@ def image_source(node: Node) -> str:
     return ""
 
 
+def _image_dimension(node: Node, name: str) -> int | None:
+    match = re.match(r"\s*(\d+)", node.attrs.get(name, ""))
+    return int(match.group(1)) if match else None
+
+
+def is_site_chrome_image(node: Node, source: str) -> bool:
+    """Reject obvious theme assets while preserving article photos and posters."""
+    path = unquote(urlsplit(source).path).lower()
+    basename = path.rsplit("/", 1)[-1]
+    if path.endswith(".svg") or "/plugin/mobile/title/" in path:
+        return True
+    if re.search(r"(?:^|[-_])(logo|icon\d*|spacer|blank|loading|bullet)(?:[-_.(]|$)", basename):
+        return True
+    width = _image_dimension(node, "width")
+    height = _image_dimension(node, "height")
+    if width is not None and height is not None and width <= 64 and height <= 64:
+        return True
+    return any(is_site_chrome(ancestor) for ancestor in _node_ancestors(node))
+
+
+def _node_ancestors(node: Node) -> Iterable[Node]:
+    current = node.parent
+    while current is not None:
+        yield current
+        current = current.parent
+
+
+def best_nonempty_by_class(root: Node, class_name: str) -> Node | None:
+    candidates = [
+        node
+        for node in root.iter_nodes()
+        if class_name in node.classes()
+        and node.text_content(exclude_site_chrome=True)
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda node: len(node.text_content(exclude_site_chrome=True)))
+
+
 def parse_detail(document: str, base_url: str) -> tuple[str, list[str]]:
     root = parse_html(document)
     content: Node | None = None
-    for class_name in ("meditor", "mpgdetail", "mcont"):
-        candidate = find_first_by_class(root, class_name)
-        if candidate is not None and candidate.text_content():
-            content = candidate
+
+    # RPage themes reuse .meditor for the header menu, article editor, and
+    # footer.  The stable detail boundary is .module-detail; within it,
+    # .mpgdetail is the actual body across the observed site variants.
+    detail_modules = [
+        node for node in root.iter_nodes() if "module-detail" in node.classes()
+    ]
+    for detail_module in detail_modules:
+        for class_name in ("mpgdetail", "mcont", "meditor"):
+            candidate = best_nonempty_by_class(detail_module, class_name)
+            if candidate is not None:
+                content = candidate
+                break
+        if content is None and detail_module.text_content(exclude_site_chrome=True):
+            content = detail_module
+        if content is not None:
             break
+
+    # Older RPage layouts may omit .module-detail but still retain the
+    # article-specific .mpgdetail wrapper.  Never fall back to a global
+    # .meditor: it is commonly the navigation editor.
+    if content is None:
+        content = best_nonempty_by_class(root, "mpgdetail")
     if content is None:
         for tag in ("article", "main"):
-            candidate = next((node for node in root.iter_nodes() if node.tag == tag), None)
-            if candidate is not None and candidate.text_content():
+            candidates = [
+                node
+                for node in root.iter_nodes()
+                if node.tag == tag and node.text_content(exclude_site_chrome=True)
+            ]
+            candidate = max(
+                candidates,
+                key=lambda node: len(node.text_content(exclude_site_chrome=True)),
+                default=None,
+            )
+            if candidate is not None:
                 content = candidate
                 break
     if content is None:
         raise ValueError("could not find RPage detail content")
 
-    body = content.text_content()
+    body = clean_article_text(content.text_content(exclude_site_chrome=True))
     if not body:
         raise ValueError("RPage detail content was empty")
     images: list[str] = []
@@ -304,7 +410,11 @@ def parse_detail(document: str, base_url: str) -> tuple[str, list[str]]:
         if node.tag != "img":
             continue
         source = image_source(node)
-        if not source or source.lower().startswith(("data:", "javascript:")):
+        if (
+            not source
+            or source.lower().startswith(("data:", "javascript:"))
+            or is_site_chrome_image(node, source)
+        ):
             continue
         absolute_url = urljoin(base_url, source)
         if absolute_url not in seen_images:
