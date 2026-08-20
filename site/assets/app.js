@@ -106,9 +106,10 @@
 
     function card(e) {
       var d = new Date(e.start_at);
+      var npCls = e.school === "nthu" ? "np-nthu" : e.school === "nycu" ? "np-nycu" : "np-other";
       var media = e.poster_image
         ? '<img src="' + esc(e.poster_image) + '" alt="" loading="lazy">'
-        : '<div class="no-poster">' + (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "竹梅") + "</div>";
+        : '<div class="no-poster ' + npCls + '">' + (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "竹梅") + "</div>";
       var when = (d.getMonth() + 1) + "/" + d.getDate() + (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
       var where = [e.campus ? bundle.labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
       return '<div class="card"><a class="card-link" href="/event/' + e.id + '/">' +

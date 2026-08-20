@@ -46,7 +46,7 @@ def parse_feed(xml_text):
             "post_id": post_id,
             "url": link,
             "posted_at": posted_at,
-            "text": strip_html(desc) or get("title"),
+            "text": strip_html(desc) or get("title") or "（純圖片貼文，內容見海報）",
             "images": images,
         }
 
