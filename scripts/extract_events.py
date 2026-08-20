@@ -19,7 +19,7 @@ import requests
 
 from chumei_lib import iter_inbox, load_env, now_iso, ROOT
 
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 EXTRACT_DIR = ROOT / "state" / "extraction"
 
 SYSTEM_PROMPT = """你是「竹梅」（清大＋交大校園活動聚合站）的資料抽取引擎。輸入是一則校園社群貼文或公告（含海報圖片），你要判斷它是否在宣傳「有明確時間的實體或線上活動」，並抽出結構化欄位。
@@ -54,7 +54,44 @@ Event 欄位：
 
 規則：
 - 已結束的活動（貼文日期看來是回顧）→ is_event: false。
+- 「報名／徵才期間」的截止日**不是**活動日期。貼文若只寫報名時段、沒寫活動本身何時舉行 → is_event: false（或該場 start_at: null 且 confidence ≤ 0.4）。
+- 「報名開始／開放報名」的時間不可填進 registration_deadline；只有明確的截止（「截止」「止」「額滿為止」不算日期）才填。
+- **沒寫的欄位一律 null**：原文沒提費用就 price: null（不要自行填「免費」）；venue、時間同理，禁止腦補。
+- registration_url 不可以填這則貼文自己的網址；「連結在 bio／主頁」就填 null。
+- organizer 以原文寫的主辦單位為準；社團自營帳號可用帳號名；**絕不可**用公告分類或 feed 名稱（如「藝文活動」）。廠商廣告、純商品團購 → is_event: false。
+- 同一貼文含多場次（分區茶會、兩場演出）→ 每場各輸出一個 Event；每日重複的攤位/展覽輸出一個 Event，start_at 用第一天、end_at 用最後一天並 all_day: true。**不可**把「每天 12:30-14:30」攤平成跨日連續區間。
+- 多日活動的 end_at 填最後一天（含當天）。
 - 全部用臺灣正體中文。輸出只能是 JSON，不要 markdown fence。"""
+
+
+WEEKDAY_RE = None  # lazily compiled in check_start_at
+
+
+def check_start_at(ev, item):
+    """程式後驗：日期範圍＋星期一致性。回傳 None（通過）或 review 原因字串。"""
+    import re
+    from datetime import datetime, timedelta
+    st = ev.get("start_at")
+    if not st:
+        return "no start_at"
+    try:
+        d = datetime.fromisoformat(st)
+        posted = datetime.fromisoformat(item["posted_at"])
+    except ValueError:
+        return "unparseable date"
+    if d.tzinfo is None or posted.tzinfo is None:
+        return "date missing timezone"
+    if not (posted - timedelta(days=60) <= d <= posted + timedelta(days=365)):
+        return f"start_at 距貼文日 {(d - posted).days} 天，超出合理範圍"
+    # 原文若有「M/D（三）」式星期標記，驗證星期是否吻合（抓年份推論錯誤）
+    zh = "一二三四五六日天"
+    for m in re.finditer(r"(\d{1,2})\s*[/月]\s*(\d{1,2})[日號]?\s*[（(]\s*[週周]?([一二三四五六日天])\s*[)）]", item["text"]):
+        mo, day, wd = int(m.group(1)), int(m.group(2)), m.group(3)
+        if (mo, day) == (d.month, d.day):
+            expect = min(zh.index(wd), 6)
+            if d.weekday() != expect:
+                return f"{mo}/{day} 原文標（{wd}）但抽出日期是週{zh[d.weekday()]}，年份可能推錯"
+    return None
 
 
 def _load_cache(source_id):
@@ -151,7 +188,10 @@ def process_item(env, item, lock, caches):
     events = []
     for i, ev in enumerate(parsed.get("events") or []):
         conf = float(ev.get("confidence") or 0.5)
-        needs_review = conf < 0.7 or not ev.get("start_at")
+        if ev.get("registration_url") and ev["registration_url"].rstrip("/") == (item.get("url") or "").rstrip("/"):
+            ev["registration_url"] = None  # 禁止自我指涉的報名連結
+        review_reason = check_start_at(ev, item)
+        needs_review = conf < 0.7 or review_reason is not None
         events.append({
             "id": "evt_" + hashlib.sha1(f"{source_id}|{post_id}|{i}".encode()).hexdigest()[:12],
             "title": ev.get("title") or "(未命名活動)",
@@ -174,6 +214,7 @@ def process_item(env, item, lock, caches):
             "extraction": {
                 "model": env.get("CHUMEI_LLM_MODEL"), "confidence": conf,
                 "needs_review": needs_review, "prompt_version": PROMPT_VERSION,
+                **({"review_reason": review_reason} if review_reason else {}),
             },
             "status": "review" if needs_review else "published",
         })

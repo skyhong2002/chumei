@@ -61,22 +61,54 @@ def norm_title(t):
     return re.sub(r"[\W_]+", "", (t or "").lower())
 
 
+def _bigrams(s):
+    return {s[i:i + 2] for i in range(len(s) - 1)} if len(s) > 1 else {s}
+
+
+def _similar(a, b):
+    """正規化標題相似：包含關係或 bigram Jaccard ≥ 0.6。"""
+    if not a or not b:
+        return False
+    if len(a) >= 6 and len(b) >= 6 and (a in b or b in a):
+        return True
+    ba, bb = _bigrams(a), _bigrams(b)
+    return len(ba & bb) / max(1, len(ba | bb)) >= 0.6
+
+
 def dedupe(events):
     def score(e):
         plat = {"api": 3, "bulletin": 1}.get(e["source"]["platform"], 0)
         return plat + e["extraction"]["confidence"] + (1 if e.get("venue") else 0) + (0 if e.get("all_day") else 1)
 
+    # 第一階段：標題前綴＋日期完全相同
     groups = {}
     for e in events:
         day = (e.get("start_at") or "")[:10]
         groups.setdefault((norm_title(e["title"])[:24], day), []).append(e)
-    out = []
+    stage1 = []
     for grp in groups.values():
         grp.sort(key=score, reverse=True)
         best = grp[0]
         if len(grp) > 1:
             best["alt_sources"] = [g["source"]["url"] for g in grp[1:]]
-        out.append(best)
+        stage1.append(best)
+
+    # 第二階段：同一天、標題相似（同活動多貼文/轉發）
+    by_day = {}
+    for e in stage1:
+        by_day.setdefault((e.get("start_at") or "")[:10], []).append(e)
+    out = []
+    for grp in by_day.values():
+        kept = []
+        for e in sorted(grp, key=score, reverse=True):
+            dup = next((k for k in kept if _similar(norm_title(k["title"]), norm_title(e["title"]))), None)
+            if dup:
+                dup.setdefault("alt_sources", []).append(e["source"]["url"])
+                if e.get("school") != dup.get("school"):
+                    dup["school"] = "both"  # 跨校轉發＝兩校聯合
+            else:
+                kept.append(e)
+        out.extend(kept)
     return out
 
 
@@ -135,6 +167,13 @@ def event_ics(e):
         return ""
     if e.get("all_day"):
         lines.append(f"DTSTART;VALUE=DATE:{st:%Y%m%d}")
+        if e.get("end_at"):
+            try:
+                from datetime import timedelta
+                en = datetime.fromisoformat(e["end_at"]) + timedelta(days=1)  # ICS 全日 DTEND 為 exclusive
+                lines.append(f"DTEND;VALUE=DATE:{en:%Y%m%d}")
+            except ValueError:
+                pass
     else:
         lines.append(f"DTSTART;TZID=Asia/Taipei:{st:%Y%m%dT%H%M%S}")
         if e.get("end_at"):
@@ -143,7 +182,7 @@ def event_ics(e):
                 lines.append(f"DTEND;TZID=Asia/Taipei:{en:%Y%m%dT%H%M%S}")
             except ValueError:
                 pass
-    loc = " ".join(filter(None, [CAMPUS_LABEL.get(e.get("campus") or "", ""), e.get("venue") or ""]))
+    loc = join_loc(e, " ")
     lines += [
         f"SUMMARY:{ics_escape(e['title'])}",
         f"DESCRIPTION:{ics_escape((e.get('summary') or '') + '\n' + BASE_URL + '/event/' + e['id'] + '/')}",
@@ -166,7 +205,7 @@ def write_rss(path, events, title):
     items = []
     for e in events[:80]:
         link = f"{BASE_URL}/event/{e['id']}/"
-        desc = esc(f"{fmt_dt(e.get('start_at'), e.get('all_day'))}｜{CAMPUS_LABEL.get(e.get('campus') or '', '')} {e.get('venue') or ''}｜{e.get('organizer')}\n{e.get('summary')}")
+        desc = esc(f"{fmt_dt(e.get('start_at'), e.get('all_day'))}｜{join_loc(e, ' ')}｜{e.get('organizer')}\n{e.get('summary')}")
         try:
             pub = datetime.fromisoformat(e.get("first_seen") or e["start_at"]).strftime("%a, %d %b %Y %H:%M:%S %z")
         except (TypeError, ValueError):
@@ -229,9 +268,17 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 </html>"""
 
 
+def join_loc(e, sep=" ・ "):
+    parts = [CAMPUS_LABEL.get(e.get("campus") or "", ""), e.get("venue") or ""]
+    parts = [p for p in parts if p]
+    if len(parts) == 2 and (parts[1] == parts[0] or parts[0] in parts[1]):
+        parts = parts[1:]
+    return sep.join(parts)
+
+
 def detail_page(e):
     st, en = e.get("start_at"), e.get("end_at")
-    loc = " ・ ".join(filter(None, [CAMPUS_LABEL.get(e.get("campus") or "", ""), e.get("venue") or ""]))
+    loc = join_loc(e)
     gcal = ""
     try:
         d1 = datetime.fromisoformat(st)
