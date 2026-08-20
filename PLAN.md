@@ -38,13 +38,13 @@ state/                      ← 抓取 seen-state、LLM 快取（不進 git）
 
 ## 進度記錄（隨時更新，供 context reset 後接續）
 
-- [x] git init + checkpoint、.env（APIFY_TOKEN）
-- [x] 確認 RSSHub IG route 可用、NYCU LIFE API 結構、UI skill clone 在 /tmp/nycu-life-ui-skill
-- [ ] SCHEMA.md ＋ repo 骨架
-- [ ] 派工：infonews (codex)、rpage (codex)、IG 帳號研究 (claude agent)
-- [ ] fetch_instagram.py / fetch_nycu_life.py
-- [ ] extract_events.py（LLM）
-- [ ] build_site.py ＋ 前端
-- [ ] RSS/ICS 輸出
-- [ ] Caddy vhost ＋ launchd 排程 ＋ 部署
-- [ ] FB/Apify、投稿表單（時間允許）
+- [x] 全部 fetcher 完成並實測：infonews（TLS strict 修正）、rpage（8 站 95 筆）、IG（RSSHub）、NYCU LIFE API
+- [x] extract_events.py：vision 抽取、429 backoff、Pillow 縮圖、快取；build_site.py：去重、海報快取、RSS/ICS/詳情頁/sitemap
+- [x] 前端上線：https://chumei.observe.tw （Caddy vhost 用預設 ACME，不能用 tls_cloudflare —— token 只有 elvismao.com zone）
+- [x] launchd 每 3h：tw.observe.chumei.pipeline（IG 一天一輪，run_pipeline.py 控制）
+- [x] GitHub 公開：github.com/skyhong2002/chumei ＋ 投稿/回報 issue 模板
+- [x] Codex 視覺驗證一輪，修了日曆欄寬/深色對比/placeholder/海報裁切
+- [ ] 進行中：IG 80 帳號首輪回填、extraction retry（429 重跑）
+- [ ] 待做：rebuild 全量資料、IG 壞帳號標 inactive（看 state/seen/instagram_errors.jsonl）、
+      抽取幻覺審計（agent 抽樣比對原文）、prompt v2（徵才 deadline ≠ 活動）、最終視覺驗收
+- [ ] 跳過（之後再說）：FB/Apify fetcher（IG 已覆蓋主要需求）、站內投稿表單（先用 GitHub issue）

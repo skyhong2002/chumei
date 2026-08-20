@@ -87,8 +87,10 @@ def fetch_image_b64(url, max_bytes=8_000_000):
             im.save(buf, "JPEG", quality=80)
             data, ctype = buf.getvalue(), "image/jpeg"
         except Exception:
-            data = r.content
             ctype = r.headers["content-type"].split(";")[0]
+            if ctype not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+                return None  # SVG 等 OpenAI 不支援的格式
+            data = r.content
         return f"data:{ctype};base64,{base64.b64encode(data).decode()}"
     except Exception:
         return None

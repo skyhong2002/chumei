@@ -7,3 +7,7 @@ site/feeds/
 __pycache__/
 .venv/
 node_modules/
+site/event/
+site/assets/posters/
+site/sitemap.xml
+site/robots.txt
