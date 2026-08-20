@@ -11,6 +11,7 @@ import hashlib
 import json
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -70,16 +71,25 @@ def _save_cache(source_id, cache, lock):
         tmp.replace(path)
 
 
-def fetch_image_b64(url, max_bytes=4_000_000):
+def fetch_image_b64(url, max_bytes=8_000_000):
+    """下載並縮到 1024px JPEG 再 base64 — 控制 vision token 用量。"""
     try:
         r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw fetcher)"})
         r.raise_for_status()
-        if len(r.content) > max_bytes:
+        if len(r.content) > max_bytes or not r.headers.get("content-type", "").startswith("image/"):
             return None
-        ctype = r.headers.get("content-type", "image/jpeg").split(";")[0]
-        if not ctype.startswith("image/"):
-            return None
-        return f"data:{ctype};base64,{base64.b64encode(r.content).decode()}"
+        try:
+            import io
+            from PIL import Image
+            im = Image.open(io.BytesIO(r.content)).convert("RGB")
+            im.thumbnail((1024, 1024))
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=80)
+            data, ctype = buf.getvalue(), "image/jpeg"
+        except Exception:
+            data = r.content
+            ctype = r.headers["content-type"].split(";")[0]
+        return f"data:{ctype};base64,{base64.b64encode(data).decode()}"
     except Exception:
         return None
 
@@ -97,21 +107,29 @@ def call_llm(env, item, retry_note=None):
         b64 = fetch_image_b64(img_url)
         if b64:
             content.append({"type": "image_url", "image_url": {"url": b64}})
-    resp = requests.post(
-        f"{env['CHUMEI_LLM_BASE_URL']}/chat/completions",
-        headers={"Authorization": f"Bearer {env['CHUMEI_LLM_API_KEY']}"},
-        json={
-            "model": env.get("CHUMEI_LLM_MODEL", "gpt-5.4-mini"),
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": content},
-            ],
-            "response_format": {"type": "json_object"},
-        },
-        timeout=180,
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    payload = {
+        "model": env.get("CHUMEI_LLM_MODEL", "gpt-5.4-mini"),
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ],
+        "response_format": {"type": "json_object"},
+    }
+    for attempt in range(5):
+        resp = requests.post(
+            f"{env['CHUMEI_LLM_BASE_URL']}/chat/completions",
+            headers={"Authorization": f"Bearer {env['CHUMEI_LLM_API_KEY']}"},
+            json=payload, timeout=180,
+        )
+        if resp.status_code in (429, 500, 502, 503) and attempt < 4:
+            import random
+            time.sleep(min(120, 8 * (2 ** attempt)) + random.uniform(0, 4))
+            continue
+        if resp.status_code == 400:
+            raise RuntimeError(f"400: {resp.text[:200]}")
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    raise RuntimeError("rate-limited after retries")
 
 
 def process_item(env, item, lock, caches):
@@ -167,7 +185,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="這一輪最多處理幾筆（0=全部）")
     ap.add_argument("--source", help="只處理這個 source_id")
-    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--retry-errors", action="store_true", help="重跑之前出錯的項目")
     args = ap.parse_args()
 

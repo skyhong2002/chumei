@@ -117,7 +117,9 @@ def fmt_dt(iso, all_day=False):
         return iso
     wd = "一二三四五六日"[d.weekday()]
     base = f"{d.year}/{d.month}/{d.day}（{wd}）"
-    return base if all_day else f"{base} {d:%H:%M}"
+    if all_day or (d.hour, d.minute) == (0, 0):
+        return base
+    return f"{base} {d:%H:%M}"
 
 
 def ics_escape(s):

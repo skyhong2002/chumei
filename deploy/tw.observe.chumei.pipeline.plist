@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>tw.observe.chumei.pipeline</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/skyhong/Projects/chumei/.venv/bin/python</string>
+		<string>/Users/skyhong/Projects/chumei/scripts/run_pipeline.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/skyhong/Projects/chumei</string>
+	<key>StartInterval</key>
+	<integer>10800</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/Users/skyhong/Projects/chumei/state/pipeline.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/skyhong/Projects/chumei/state/pipeline.log</string>
+</dict>
+</plist>

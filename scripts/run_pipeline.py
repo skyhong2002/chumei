@@ -55,7 +55,7 @@ def main():
             print(f"instagram: skipped (last run {(time.time()-last_ig)/3600:.1f}h ago)")
 
     results["extract"] = run_step("extract", ["extract_events.py"])
-    results["build"] = run_step("build", ["build_site.py"])
+    results["build"] = run_step("build", ["build_site.py"]) and run_step("validate", ["validate_outputs.py"])
 
     state["last_run"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state["last_results"] = results
