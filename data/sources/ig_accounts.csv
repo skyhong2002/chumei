@@ -1,2 +1,81 @@
 username,name,school,org_type,category_hint,active,notes
-nthu_sa,清大學生會,nthu,official,綜合,true,seed
+nthu_official,國立清華大學,nthu,official,綜合,true,search result instagram.com/nthu_official
+nthu_sa,國立清華大學學生會,nthu,official,綜合,true,search result instagram.com/nthu_sa
+nthu.sc,國立清華大學學生議會,nthu,official,綜合,true,search result instagram.com/nthu.sc
+tsinghuanthu,清大課外活動組,nthu,official,綜合,true,連結出現在 dsa.site.nthu.edu.tw 社團資訊頁; 帳號名稱 unverified
+nthu_library,清大圖書館,nthu,official,藝文,true,search result instagram.com/nthu_library
+nthu_sthousing,清大學生住宿組,nthu,official,綜合,true,search result instagram.com/nthu_sthousing
+nthucounig,清大諮商中心,nthu,official,服務,true,search result instagram.com/nthucounig
+career.nthu,清華Career報報,nthu,official,職涯,true,search result instagram.com/career.nthu
+nthuersa,清華紫荊大使,nthu,official,綜合,true,search result instagram.com/nthuersa
+rcollege.nthu,清華書院招生中心,nthu,official,綜合,true,search result instagram.com/rcollege.nthu
+nthuctm,清大科技管理學院,nthu,department,學術,true,search result instagram.com/nthuctm
+nthu_international,清大國際事務處(英文帳號),nthu,official,國際,true,search result; 所屬單位 unverified
+shueimu,水木書苑(校園書店),nthu,official,藝文,true,校園書店常辦講座活動; search result instagram.com/shueimu
+nthupdc,清大熱舞社,nthu,club,舞蹈,true,handle 來自 Threads @nthupdc; IG 同名 unverified
+nthu_kpdc,清大韓國舞蹈社,nthu,club,舞蹈,true,search result instagram.com/nthu_kpdc
+nthuecho,清大迴聲社(熱音),nthu,club,音樂,true,search result instagram.com/nthuecho
+nthu_guitar,清大吉他社,nthu,club,音樂,true,search result instagram.com/nthu_guitar
+nthu_windband,清華大學管樂社,nthu,club,音樂,true,search result instagram.com/nthu_windband
+nthumusic,清大音樂系學會,nthu,department,音樂,true,search result instagram.com/nthumusic
+nthuastroclub,清大天文社,nthu,club,學術,true,經 linktr.ee/Astroclub_nthu 確認
+nthu_starkids,清大天文社星空之子天文營,nthu,club,營隊,true,經 linktr.ee/Astroclub_nthu 確認; 營隊帳號
+nthu_coffee,清大咖啡社,nthu,club,生活,true,search result instagram.com/nthu_coffee
+nthu_bicycle_club,清大自行車社,nthu,club,運動,true,search result instagram.com/nthu_bicycle_club
+nthu_go,清大圍棋社,nthu,club,棋藝,true,search result instagram.com/nthu_go
+nthu_debate_club,清大思言社(辯論社),nthu,club,學術,true,search result instagram.com/nthu_debate_club
+nthudmcc,清大電影與數位媒體創作社,nthu,club,藝文,true,search result instagram.com/nthudmcc
+nthu.dtda,清大設計思考與數據分析社,nthu,club,學術,true,search result instagram.com/nthu.dtda
+nthu.tech_society,清大資訊科學研習社,nthu,club,學術,true,search result instagram.com/nthu.tech_society
+nthu_africa,清華國際志工非洲團,nthu,club,服務,true,search result instagram.com/nthu_africa
+nthu_maomao,清華貓貓社,nthu,club,綜合,true,search result instagram.com/nthu_maomao
+nthu_leadership,清大領袖社,nthu,club,學術,true,search result instagram.com/nthu_leadership
+nthu_fsa,清華國際學生聯誼會,nthu,club,國際,true,search result instagram.com/nthu_fsa
+taichungnthu,清華大學中友會,nthu,club,聯誼,true,search result instagram.com/taichungnthu
+nthuych,清華大學雲嘉會,nthu,club,聯誼,true,search result instagram.com/nthuych
+nthu_eesa,清大電機系學會,nthu,department,學術,true,search result instagram.com/nthu_eesa
+nthu_cssa,清大資工系學會,nthu,department,學術,true,handle 來自 FB/簡介文字; unverified
+nthu_ieem,清華工工系學會,nthu,department,學術,true,search result instagram.com/nthu_ieem
+nthu.cl_,清大中文系系會,nthu,department,學術,true,search result instagram.com/nthu.cl_
+nthu_edu,清大教育學程學會,nthu,department,學術,true,search result instagram.com/nthu_edu
+nthu_delt_edu,清大教育與學習科技學系,nthu,department,學術,true,search result instagram.com/nthu_delt_edu
+nycu.taiwan,國立陽明交通大學,nycu,official,綜合,true,search result instagram.com/nycu.taiwan
+nycu_ctsa,交大學聯會(陽明交大學生會交通分會),nycu,official,綜合,true,新竹光復校區; search result instagram.com/nycu_ctsa
+nycu_ymsa,陽明學生會(陽明交大學生會陽明分會),nycu,official,綜合,true,台北陽明校區為主; search result instagram.com/nycu_ymsa
+nycu.peo,陽明交大體育室暨體育教育中心,nycu,official,運動,true,search result instagram.com/nycu.peo
+nycuoia,陽明交大國際處,nycu,official,國際,true,search result instagram.com/nycuoia
+nycualumni,陽明交大校友總會,nycu,official,綜合,true,search result instagram.com/nycualumni
+nycuspec,陽明交大博雅書苑社群與永續教育中心,nycu,official,學術,true,search result instagram.com/nycuspec
+openhouse.nycu,Open House 校園職涯平台,nycu,official,職涯,true,search result; 與校方關係 unverified
+nycu.colaz,陽明交大酷樂網,nycu,official,校園媒體,true,校園資訊/紀念品帳號; search result instagram.com/nycu.colaz
+nycu_ctpd,交大熱舞社,nycu,club,舞蹈,true,search result instagram.com/nycu_ctpd
+nycuguitar,交大風城吉他社,nycu,club,音樂,true,search result instagram.com/nycuguitar
+nycustarvoice,交大星聲社(熱音),nycu,club,音樂,true,search result instagram.com/nycustarvoice
+ymmcc,陽明登山社,nycu,club,運動,true,陽明校區; handle 取自 linktr.ee/ymmcc; IG handle unverified
+nctu_kendo,交大劍道社,nycu,club,運動,true,search result instagram.com/nctu_kendo
+nycu.bamboofox,BambooFox 交大網路安全策進會,nycu,club,學術,true,search result instagram.com/nycu.bamboofox
+nycu_sdc,NYCU 軟體開發社,nycu,club,學術,true,search result instagram.com/nycu_sdc; linktr.ee/nycu_sdc
+gdsc__nycu,GDSC NYCU,nycu,club,學術,true,search result instagram.com/gdsc__nycu
+nycu_esgspc,陽明交大 ESG 永續前瞻社,nycu,club,學術,true,search result instagram.com/nycu_esgspc
+nycu.isa,NYCU 國際學生會,nycu,club,國際,true,search result instagram.com/nycu.isa
+chungyou.nycu,交大中友會,nycu,club,聯誼,true,search result instagram.com/chungyou.nycu
+nctu_csunion,交大資工系學會,nycu,department,學術,true,search result instagram.com/nctu_csunion
+nycu.__.ee,陽明交大電機系學會,nycu,department,學術,true,search result instagram.com/nycu.__.ee
+nycu_ms,陽明交大管科系學會,nycu,department,學術,true,search result instagram.com/nycu_ms
+nycu_ce,陽明交大土木系學會,nycu,department,學術,true,search result instagram.com/nycu_ce
+ce.nycu,陽明交大土木工程學系(系官方),nycu,department,學術,true,search result instagram.com/ce.nycu
+nycu_me,陽明交大機械系,nycu,department,學術,true,search result instagram.com/nycu_me
+nycu_ece_college,陽明交大電機學院,nycu,department,學術,true,search result instagram.com/nycu_ece_college
+nctu.materials,交大材料給問嗎(材料系),nycu,department,學術,true,非官方系帳號; search result instagram.com/nctu.materials
+nycu.iaa,陽明交大應用藝術研究所,nycu,department,藝文,true,search result instagram.com/nycu.iaa
+nycuics.1991,陽明交大傳播研究所,nycu,department,學術,true,search result instagram.com/nycuics.1991
+nycudcat,陽明交大傳播與科技學系,nycu,department,學術,true,search result instagram.com/nycudcat
+nycu_icn,陽明交大電控工程研究所,nycu,department,學術,true,search result instagram.com/nycu_icn
+nycu_imf,陽明交大資財系學會,nycu,department,學術,true,search result instagram.com/nycu_imf
+nycu_tlm,陽明交大運管系學會,nycu,department,學術,true,search result instagram.com/nycu_tlm
+nthu_judo,清大交大聯合柔道社,both,club,運動,true,search result instagram.com/nthu_judo
+meichu_prep_cmte,梅竹籌備委員會,both,club,賽事,true,search result instagram.com/meichu_prep_cmte
+mc_hackathon,梅竹黑客松,both,club,學術,true,search result instagram.com/mc_hackathon
+tedxnthu_,TEDxNTHU,nthu,club,講座,true,search result instagram.com/tedxnthu_
+tedxnycu,TEDxNYCU,nycu,club,講座,true,handle 來自搜尋摘要; unverified
+castnet.nycu,喀報 CastNet(傳科系校園媒體),nycu,department,校園媒體,true,FB 帳號 castnet.nycu; IG 同名 unverified

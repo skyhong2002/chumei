@@ -26,6 +26,10 @@ try:
 except ImportError:  # requests is optional; urllib is sufficient.
     requests = None
 
+NETWORK_ERRORS = (HTTPError, URLError, OSError)
+if requests is not None:
+    NETWORK_ERRORS += (requests.RequestException,)
+
 
 RAW_SOURCE = "infonews"
 USER_AGENT = "ChumeiBot/1.0 (+https://infonews.nycu.edu.tw/)"
@@ -76,6 +80,23 @@ def decode_html(data: bytes, content_type: str = "") -> str:
     return data.decode("utf-8", "replace")
 
 
+def _relaxed_ssl_context():
+    # infonews.nycu.edu.tw 的憑證缺 Subject Key Identifier，Python 3.13+ 預設的
+    # VERIFY_X509_STRICT 會拒絕。放寬 strict flag、保留完整鏈驗證。
+    import ssl
+
+    ctx = ssl.create_default_context()
+    ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return ctx
+
+
+if requests is not None:
+    class _RelaxedAdapter(requests.adapters.HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            kwargs["ssl_context"] = _relaxed_ssl_context()
+            return super().init_poolmanager(*args, **kwargs)
+
+
 class HttpClient:
     def __init__(self, delay: float = 1.0, timeout: float = 30.0):
         self.delay = delay
@@ -84,6 +105,7 @@ class HttpClient:
         self.session = requests.Session() if requests is not None else None
         if self.session is not None:
             self.session.headers.update({"User-Agent": USER_AGENT})
+            self.session.mount("https://", _RelaxedAdapter())
 
     def get_text(self, url: str) -> str:
         elapsed = time.monotonic() - self.last_request_at
@@ -97,7 +119,7 @@ class HttpClient:
             return decode_html(response.content, response.headers.get("Content-Type", ""))
 
         request = Request(url, headers={"User-Agent": USER_AGENT})
-        with urlopen(request, timeout=self.timeout) as response:
+        with urlopen(request, timeout=self.timeout, context=_relaxed_ssl_context()) as response:
             return decode_html(response.read(), response.headers.get("Content-Type", ""))
 
 
@@ -273,6 +295,7 @@ def main():
         source_id = row["source_id"].strip()
         source_name = row["name"].strip()
         fresh = []
+        pending_post_ids = set()
         try:
             super_type = super_type_from_row(row)
             stop = args.limit == 0
@@ -284,7 +307,7 @@ def main():
                 if not entries:
                     break
                 for entry in entries:
-                    if seen.has(source_id, entry["post_id"]):
+                    if seen.has(source_id, entry["post_id"]) or entry["post_id"] in pending_post_ids:
                         continue
                     body, images = parse_detail(client.get_text(entry["url"]), entry["url"])
                     if not body:
@@ -305,6 +328,7 @@ def main():
                         "image_url": images[0] if images else None,
                         "fetched_at": now_iso(),
                     })
+                    pending_post_ids.add(entry["post_id"])
                     if args.limit is not None and len(fresh) >= args.limit:
                         stop = True
                         break
@@ -315,7 +339,7 @@ def main():
             seen.save()
             total_new += written
             print(f"[{index}/{len(rows)}] {source_id}: +{written}")
-        except (HTTPError, URLError, OSError, ValueError) as exc:
+        except NETWORK_ERRORS + (ValueError,) as exc:
             failures += 1
             print(f"[{index}/{len(rows)}] {source_id}: ERROR {exc}", file=sys.stderr)
 

@@ -33,7 +33,7 @@ def parse_feed(xml_text):
     for item in root.iter("item"):
         get = lambda tag: (item.findtext(tag) or "").strip()
         desc = get("description")
-        images = re.findall(r'<img[^>]+src="([^"]+)"', desc)
+        images = [html.unescape(u) for u in re.findall(r'<img[^>]+src="([^"]+)"', desc)]
         link = get("link")
         m = re.search(r"instagram\.com/(?:p|reel|tv)/([\w-]+)", link)
         post_id = m.group(1) if m else link
