@@ -389,6 +389,49 @@
       });
     }
 
+    // ---- 顯示模式：手機預設 compact 列表、桌機預設卡片；選擇記在 localStorage ----
+    var displayMode = (function () {
+      var p = params.get("mode");
+      if (p === "list" || p === "cards") return p;
+      try {
+        var s = localStorage.getItem("chumei-mode");
+        if (s === "list" || s === "cards") return s;
+      } catch (e) {}
+      return window.innerWidth <= 700 ? "list" : "cards";
+    })();
+    var modeBtns = { list: document.getElementById("mode-list"), cards: document.getElementById("mode-cards") };
+    function syncModeBtns() {
+      Object.keys(modeBtns).forEach(function (k) {
+        if (modeBtns[k]) modeBtns[k].setAttribute("aria-pressed", String(displayMode === k));
+      });
+    }
+    Object.keys(modeBtns).forEach(function (k) {
+      if (modeBtns[k]) modeBtns[k].addEventListener("click", function () {
+        displayMode = k;
+        try { localStorage.setItem("chumei-mode", k); } catch (e) {}
+        syncModeBtns();
+        render();
+      });
+    });
+    syncModeBtns();
+
+    function listRow(e) {
+      var d = new Date(e.start_at);
+      var wd = "日一二三四五六"[d.getDay()];
+      var when = (d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）" +
+        (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
+      var where = [e.campus ? labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
+      var thumb = e.poster_image
+        ? '<img class="evr-thumb" src="' + esc(e.poster_image) + '" alt="" loading="lazy">'
+        : '<span class="evr-thumb evr-thumb-txt np-' + esc(e.school === "nthu" ? "nthu" : e.school === "nycu" ? "nycu" : "other") + '">' +
+          (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "梅竹") + "</span>";
+      return '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
+        '<span class="evr-main"><span class="evr-when">' + esc(when) +
+        (e.extraction && e.extraction.needs_review ? '<span class="chip chip-review">待確認</span>' : "") +
+        '</span><span class="evr-title">' + esc(e.title) + "</span>" +
+        '<span class="evr-meta">' + esc([where, e.organizer].filter(Boolean).join("｜")) + "</span></span></a>";
+    }
+
     function card(e) {
       var d = new Date(e.start_at);
       var cover = e.cover_image || e.poster_image || "/assets/fallback/event-cover.webp";
@@ -586,8 +629,9 @@
       document.getElementById("count").textContent = list.length + " 場活動";
       var listCount = document.getElementById("list-count");
       if (listCount) listCount.textContent = list.length + " 場";
+      listEl.className = displayMode === "list" ? "event-rows" : "grid";
       listEl.innerHTML = list.length
-        ? list.map(card).join("")
+        ? list.map(displayMode === "list" ? listRow : card).join("")
         : '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>';
       updateChipCounts();
       renderMap(list);

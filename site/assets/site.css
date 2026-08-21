@@ -249,6 +249,39 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .search-hit { flex-basis: 100%; max-width: none; }
 }
 
+/* ---------- compact event list ---------- */
+.event-rows { display: flex; flex-direction: column; border-top: 1px solid var(--color-border-subtle); }
+.ev-row {
+  display: flex; gap: 12px; align-items: center; padding: 9px 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-left: 3px solid transparent; color: var(--color-text-primary);
+}
+.ev-row:hover { background: var(--color-surface-soft); text-decoration: none; }
+.ev-row-nthu { border-left-color: var(--chumei-plum-strong); }
+.ev-row-nycu { border-left-color: var(--color-action-primary); }
+.ev-row-both { border-left-color: var(--chumei-both-text); }
+.evr-thumb {
+  width: 52px; height: 52px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;
+  background: var(--color-surface-soft);
+}
+.evr-thumb-txt {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1rem; font-weight: 700;
+}
+.evr-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.evr-when {
+  font-size: 0.75rem; color: var(--color-danger-text); font-weight: 600;
+  display: flex; gap: 6px; align-items: center;
+}
+.evr-title {
+  font-size: 0.95rem; font-weight: 600; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.evr-meta {
+  font-size: 0.78rem; color: var(--color-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* ---------- event grid ---------- */
 .grid {
   display: grid; gap: 20px; margin-top: 0;
