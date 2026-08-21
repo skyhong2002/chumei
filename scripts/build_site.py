@@ -556,6 +556,18 @@ def build_sources_data(events):
         sid = e["source"]["source_id"]
         counts[sid] = counts.get(sid, 0) + 1
 
+    # 各 source_id 最近一篇貼文/公告時間（inbox 掃描）
+    from chumei_lib import iter_inbox
+    latest = {}
+    for it in iter_inbox():
+        sid, ts = it["source_id"], it.get("posted_at") or ""
+        if ts > latest.get(sid, ""):
+            latest[sid] = ts
+
+    # 穩定公開 ID：對照表持久化，新條目往後編號，永不重發
+    id_path = ROOT / "data" / "sources" / "directory_ids.json"
+    id_map = json.loads(id_path.read_text()) if id_path.exists() else {}
+
     entries = []
     # 1. 官方名冊打底
     for school, fname in (("nthu", "club_roster_nthu.csv"), ("nycu", "club_roster_nycu.csv")):
@@ -588,6 +600,9 @@ def build_sources_data(events):
         e["links"].append({"platform": platform, "url": url, "label": label,
                            "events": counts.get(sid, 0)})
         e["events"] += counts.get(sid, 0)
+        ts = latest.get(sid)
+        if ts and ts > (e.get("updated") or ""):
+            e["updated"] = ts
 
     for r in read_sources_csv("ig_accounts.csv"):
         if r.get("active", "true").lower() == "false":
@@ -617,9 +632,18 @@ def build_sources_data(events):
                         "category": None, "campus": None,
                         "links": [{"platform": "bulletin", "url": r["url"], "label": "公告頁",
                                    "events": counts.get(r["source_id"], 0)}],
-                        "events": counts.get(r["source_id"], 0), "roster": False})
+                        "events": counts.get(r["source_id"], 0), "roster": False,
+                        "updated": latest.get(r["source_id"])})
 
     entries.sort(key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
+    next_id = max(id_map.values(), default=0) + 1
+    for e in entries:
+        key = f"{e['school']}|{e['name']}"
+        if key not in id_map:
+            id_map[key] = next_id
+            next_id += 1
+        e["id"] = id_map[key]
+    id_path.write_text(json.dumps(id_map, ensure_ascii=False, indent=0))
     (SITE / "data").mkdir(parents=True, exist_ok=True)
     (SITE / "data" / "sources.json").write_text(json.dumps({
         "generated_at": now_iso(), "entries": entries,

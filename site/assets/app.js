@@ -91,18 +91,30 @@
         return true;
       }
 
+      function fmtUpdated(iso) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "—";
+        var days = (Date.now() - d.getTime()) / 864e5;
+        if (days < 1) return "今天";
+        if (days < 30) return Math.round(days) + " 天前";
+        return d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate();
+      }
+
       function row(e) {
         var links = e.links.map(function (l) {
           return '<a class="src-link" href="' + esc(l.url) + '" rel="noopener" target="_blank">' +
             esc(PLAT[l.platform] || l.platform) + (l.label && l.label !== "Facebook" && l.label !== "公告頁" ? " " + esc(l.label) : "") + "</a>";
         }).join("");
         return '<div class="src-row' + (e.links.length ? "" : " src-uncovered") + '">' +
-          '<div class="src-main"><span class="chips">' +
+          '<div class="src-main"><span class="src-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
+          '<span class="chips">' +
           '<span class="chip chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
           '<span class="chip">' + esc(KIND[e.kind] || "") + "</span>" +
           (e.category ? '<span class="chip">' + esc(e.category) + "</span>" : "") +
           "</span><strong>" + esc(e.name) + "</strong></div>" +
           '<div class="src-links">' + (links || '<span class="src-none">尚未找到公開帳號</span>') + "</div>" +
+          '<div class="src-upd" title="' + esc(e.updated || "") + '">' + fmtUpdated(e.updated) + "</div>" +
           '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div></div>";
       }
 
