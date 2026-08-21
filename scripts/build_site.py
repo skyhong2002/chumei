@@ -604,22 +604,6 @@ def source_page(events):
         "\n".join(body), canonical=f"{BASE_URL}/source/"))
 
 
-def telegram_preview():
-    """訂閱頁的頻道預覽：從 publish_telegram 的 state 取最新 message_id 給官方 widget 用。"""
-    st = ROOT / "state" / "telegram.json"
-    ids = []
-    if st.exists():
-        try:
-            sent = json.loads(st.read_text()).get("sent", {})
-            ids = sorted((v["message_id"] for v in sent.values()
-                          if isinstance(v, dict) and v.get("message_id")), reverse=True)[:3]
-        except Exception as e:
-            print(f"telegram preview skip: {e}", file=sys.stderr)
-    (SITE / "data").mkdir(parents=True, exist_ok=True)
-    (SITE / "data" / "telegram_preview.json").write_text(
-        json.dumps({"channel": "chumei_events", "posts": ids}))
-
-
 def main():
     events = dedupe(apply_overrides(load_events()))
     events = [e for e in events if e.get("start_at")]
@@ -658,7 +642,6 @@ def main():
         (d / "index.html").write_text(detail_page(e))
 
     source_page(events)
-    telegram_preview()
 
     urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events]

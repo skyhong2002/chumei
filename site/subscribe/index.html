@@ -3,22 +3,15 @@
 <p>把竹梅接進你自己的工具——新活動出現時自動通知你。</p>
 <h2>Telegram 頻道</h2>
 <p>加入 <a href="https://t.me/s/chumei_events" rel="noopener">竹梅活動觀測站 Telegram 頻道</a>，新活動收錄後會自動推播；頻道也可直接在瀏覽器公開瀏覽。</p>
-<div id="tg-preview" aria-label="頻道最新貼文預覽"></div>
+<div id="tg-preview" aria-label="頻道貼文預覽"></div>
 <script>
 (function(){
-  fetch("/data/telegram_preview.json").then(function(r){return r.json()}).then(function(d){
-    var host=document.getElementById("tg-preview");
-    if(!host||!d.posts||!d.posts.length)return;
-    var dark=document.documentElement.dataset.theme==="dark";
-    d.posts.slice(0,2).forEach(function(id){
-      var s=document.createElement("script");
-      s.async=true;s.src="https://telegram.org/js/telegram-widget.js?22";
-      s.setAttribute("data-telegram-post",d.channel+"/"+id);
-      s.setAttribute("data-width","100%");
-      if(dark)s.setAttribute("data-dark","1");
-      host.appendChild(s);
-    });
-  }).catch(function(){});
+  var s=document.createElement("script");
+  s.async=true;s.src="https://telegram.org/js/telegram-widget.js?22";
+  s.setAttribute("data-telegram-post","chumei_events/3");
+  s.setAttribute("data-width","100%");
+  if(document.documentElement.dataset.theme==="dark")s.setAttribute("data-dark","1");
+  document.getElementById("tg-preview").appendChild(s);
 })();
 </script>
 <h2>行事曆訂閱（推薦）</h2>
