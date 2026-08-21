@@ -54,6 +54,12 @@ def main():
         else:
             print(f"instagram: skipped (last run {(time.time()-last_ig)/3600:.1f}h ago)")
 
+        # Threads / X 同樣走 RSSHub，跟 IG 一樣一天一輪
+        last_social = state.get("last_social_run", 0)
+        if (ROOT / "scripts" / "fetch_social.py").exists() and (time.time() - last_social) > IG_MIN_INTERVAL_H * 3600:
+            results["social"] = run_step("threads/x", ["fetch_social.py", "--limit", "5", "--sleep", "8"])
+            state["last_social_run"] = time.time()
+
         # FB 走 Apify 按結果計費，一天一輪就好
         fb_script = ROOT / "scripts" / "fetch_facebook.py"
         last_fb = state.get("last_fb_run", 0)

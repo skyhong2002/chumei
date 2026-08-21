@@ -1,0 +1,26 @@
+platform,username,name,school,org_type,category_hint,active,notes
+threads,nthu_official,國立清華大學,nthu,official,綜合,true,search result threads.com/@nthu_official profile 確認
+threads,nthu_sa,國立清華大學學生會,nthu,official,綜合,true,search result threads.com/@nthu_sa 多則貼文(宿舍申請流程等)
+threads,nthu_adms,清大招生策略中心,nthu,official,營隊,true,search result threads.com/@nthu_adms 發營隊宣傳(人社營、電機營)
+threads,nthu_library,清大圖書館,nthu,official,藝文,true,search result threads.com/@nthu_library 開放時間/展覽貼文
+threads,nthuoga,清大全球事務處(四海同方),nthu,official,國際,true,search result threads.com/@nthuoga profile 確認
+threads,nthu_sthousing,清大學生住宿組,nthu,official,綜合,true,search result threads.com/@nthu_sthousing 貼文確認
+threads,nthu_mubao,沐報｜清華人都該知道,nthu,club,校園媒體,true,學生自媒體 發校園資訊; search result threads.com/@nthu_mubao
+threads,nthuhiphop,清大嘻哈音樂社,nthu,club,音樂,true,search result threads.com/@nthuhiphop 表演嘉賓公告貼文
+threads,nthupdc,清大熱舞社,nthu,club,舞蹈,true,search result threads.com/@nthupdc profile 存在但貼文少
+threads,nycu.taiwan,國立陽明交通大學,nycu,official,綜合,true,search result threads.com/@nycu.taiwan profile 確認
+threads,nycu_ctsa,交大學聯會(陽明交大學生會交通分會),nycu,official,綜合,true,search result threads.com/@nycu_ctsa profile+校園論壇貼文
+threads,nycu_ymsa,陽明學生會(陽明交大學生會陽明分會),nycu,official,綜合,true,search result threads.com/@nycu_ymsa profile 確認
+threads,nycualumni,陽明交大校友總會,nycu,official,綜合,true,search result threads.com/@nycualumni 多則貼文
+threads,nthu.sc,國立清華大學學生議會,nthu,official,綜合,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,career.nthu,清華Career報報,nthu,official,職涯,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,nycuoia,陽明交大國際處,nycu,official,國際,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,meichu_prep_cmte,梅竹籌備委員會,both,club,賽事,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,mc_hackathon,梅竹黑客松,both,club,學術,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,tedxnthu_,TEDxNTHU,nthu,club,講座,true,same-as-ig-unverified; IG 同 handle
+threads,nycu_ctpd,交大熱舞社,nycu,club,舞蹈,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,nthuecho,清大迴聲社(熱音),nthu,club,音樂,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,nthu_eesa,清大電機系學會,nthu,department,學術,true,same-as-ig-unverified; IG 同 handle 活躍
+x,NTHU_TAIWAN,國立清華大學,nthu,official,綜合,true,search result twitter.com/NTHU_TAIWAN 官方帳號
+x,NYCU_official,國立陽明交通大學,nycu,official,綜合,true,search result x.com/nycu_official 官方帳號
+x,nthu_racing,NTHU Racing 清大賽車工廠,nthu,club,賽事,true,search result twitter.com/nthu_racing 活躍發賽事/隊伍動態

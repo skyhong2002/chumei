@@ -565,6 +565,20 @@ def source_page(events):
                                 f"ig_{u}", [school_chip(r["school"]), (r.get("category_hint"), "")]))
     sections.append(("Instagram 帳號", "學生社團與校內單位的公開貼文，活動欄位由 AI 從貼文與海報擷取。", ig_rows))
 
+    social_rows = []
+    SOCIAL_URL = {"threads": "https://www.threads.com/@{u}", "x": "https://x.com/{u}"}
+    SOCIAL_TAG = {"threads": "Threads", "x": "X"}
+    for r in sorted(read_sources_csv("social_accounts.csv"),
+                    key=lambda r: (r["platform"], r["name"])):
+        if r.get("active", "true").lower() == "false" or r["platform"] not in SOCIAL_URL:
+            continue
+        u = r["username"].strip().lstrip("@")
+        social_rows.append(row_html(
+            f"{r['name']}（@{u}）", SOCIAL_URL[r["platform"]].format(u=u),
+            f"{r['platform']}_{u}",
+            [(SOCIAL_TAG[r["platform"]], ""), school_chip(r["school"])]))
+    sections.append(("Threads 與 X", "兩校官方與學生社群在 Threads/X 上的公開帳號。", social_rows))
+
     fb_rows = []
     for r in sorted(read_sources_csv("fb_pages.csv"), key=lambda r: r["name"]):
         if r.get("active", "true").lower() == "false":
