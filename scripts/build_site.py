@@ -294,6 +294,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
     <a href="/">活動</a>
     <a href="/calendar/">日曆</a>
     <a href="/subscribe/">訂閱</a>
+    <a href="/source/">來源</a>
     <a href="/about/">關於</a>
     <button id="theme-toggle" aria-label="切換深淺色主題">◐</button>
   </nav>
