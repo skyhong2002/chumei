@@ -635,7 +635,8 @@ def detail_page(e, org=None, siblings=()):
 
 
 def _norm_org(s):
-    raw = re.sub(r"[（(].*?[)）]", "", s or "")
+    import unicodedata
+    raw = re.sub(r"[（(].*?[)）]", "", unicodedata.normalize("NFKC", s or ""))
     out = re.sub(r"國立|清華大學|陽明交通大學|清大|交大|陽明|NTHU|NYCU|學生|大學", "", raw, flags=re.I)
     out = re.sub(r"[\W_]+", "", out.lower())
     if not out:  # 全稱剝完變空（如「國立清華大學」）→ 退回原名比對
