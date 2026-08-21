@@ -177,7 +177,8 @@
       function render(more) {
         var list = posts.filter(function (p) { return matches(p); });
         if (!more) shown = 30;
-        document.getElementById("feed-count").textContent = "共 " + list.length + " 則活動貼文。";
+        var fc = document.getElementById("feed-count");
+        if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
         var wide = window.innerWidth >= 1080 && state.school === "all";
         feed.classList.toggle("feed-wide", wide);
         var remaining;
