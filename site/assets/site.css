@@ -747,3 +747,5 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .feed-cols .feed-col:first-child .feed-col-title { border-bottom-color: var(--chumei-plum-strong); }
 .feed-cols .feed-col:last-child .feed-col-title { border-bottom-color: var(--color-action-primary); }
 .feed-col .feed-more { margin: 14px auto 20px; display: block; }
+.combo-builder .filter-row { align-items: flex-start; }
+.combo-builder .filter-row .label { margin-top: 6px; }
