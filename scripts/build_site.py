@@ -558,9 +558,12 @@ def build_sources_data(events):
 
     # 各 source_id 最近一篇貼文/公告時間（inbox 掃描）
     from chumei_lib import iter_inbox
+    now = now_iso()
     latest = {}
     for it in iter_inbox():
-        sid, ts = it["source_id"], it.get("posted_at") or ""
+        sid = it["source_id"]
+        # infonews 的公告日期可能是未來的展示起始日，最新更新時間以現在為上限
+        ts = min(it.get("posted_at") or "", now)
         if ts > latest.get(sid, ""):
             latest[sid] = ts
 
