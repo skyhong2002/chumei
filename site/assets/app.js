@@ -302,9 +302,9 @@
           ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
           : '<span class="src-avatar src-c-ava src-avatar-fallback av-' + esc(e.school) + '">' + esc(e.name.replace(/^(清大|交大|陽明|國立)/, "").charAt(0) || "？") + "</span>";
         return '<div class="src-row' + (e.links.length ? "" : " src-uncovered") + '">' +
-          avatar +
           '<span class="src-id src-c-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
-          '<strong class="src-c-name"><a class="src-name" href="/org/' + e.id + '/">' + esc(e.name) + "</a></strong>" +
+          '<span class="src-c-name">' + avatar +
+          '<a class="src-name" href="/org/' + e.id + '/">' + esc(e.name) + "</a></span>" +
           '<span class="chips src-c-chips">' +
           '<span class="chip chip-school chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
           (e.campus ? '<span class="chip chip-campus">' + (e.campus === "yangming" ? "陽明" : "交大") + "</span>" : "") +
@@ -332,7 +332,7 @@
             (state.sort === key ? " src-th-on" : "") + '" data-sort="' + key + '">' + label + arrow + "</button>";
         }
         return '<div class="src-head">' +
-          '<span></span>' + th("id", "ID") + th("name", "名稱", "src-th-left") +
+          th("id", "ID") + th("name", "名稱", "src-th-left") +
           '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
           th("updated", "更新") + th("events", "收錄") + "</div>";
       }
