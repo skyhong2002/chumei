@@ -21,6 +21,7 @@ def event(event_id="evt_new", start="2026-08-25T14:00:00+08:00", **overrides):
         "venue": "工程館",
         "organizer": "測試主辦",
         "summary": "公開資訊 & 注意事項",
+        "cover_image": "/assets/posters/evt_new.jpg",
         "original_text": "第一段原文。\n\n第二段有 <標籤> & 符號。",
         "source_name": "清大藝術與設計學系",
         "source_platform": "facebook",
@@ -104,7 +105,7 @@ class PublisherTests(unittest.TestCase):
         self.assertNotIn("原始內文", rendered)
         self.assertTrue(all(len(message) < 4096 for message in messages))
 
-    def test_send_event_disables_preview_and_records_each_part(self):
+    def test_send_event_uses_event_photo_and_records_each_part(self):
         client = telegram.TelegramClient("token", "@channel")
         calls = []
         recorded = []
@@ -118,10 +119,32 @@ class PublisherTests(unittest.TestCase):
             event(source={"url": "https://example.com/source"}),
             on_sent=lambda message, index, total: recorded.append((message["message_id"], index, total)),
         )
-        self.assertEqual(calls[0][0], "sendMessage")
+        self.assertEqual(calls[0][0], "sendPhoto")
+        self.assertEqual(calls[0][1]["photo"], "https://chumei.observe.tw/assets/posters/evt_new.jpg")
+        self.assertIn("A &lt; B", calls[0][1]["caption"])
         self.assertNotIn("reply_markup", calls[0][1])
-        self.assertEqual(calls[0][1]["link_preview_options"], {"is_disabled": True})
         self.assertEqual(recorded, [(1, 0, 1)])
+
+    def test_send_event_uses_fallback_cover_when_event_has_no_image(self):
+        client = telegram.TelegramClient("token", "@channel")
+        calls = []
+        client.call = lambda method, payload, attempts=2: calls.append((method, payload)) or {"message_id": 1}
+        client.send_event(event(cover_image=None, poster_image=None, original_text=""))
+        self.assertEqual(calls[0][0], "sendPhoto")
+        self.assertEqual(
+            calls[0][1]["photo"],
+            "https://chumei.observe.tw/assets/fallback/event-cover.webp",
+        )
+
+    def test_long_caption_keeps_photo_first_and_sends_original_as_followup(self):
+        client = telegram.TelegramClient("token", "@channel")
+        calls = []
+        client.call = lambda method, payload, attempts=2: calls.append((method, payload)) or {"message_id": len(calls)}
+        client.send_event(event(original_text="原始內容 " * 300))
+        self.assertEqual(calls[0][0], "sendPhoto")
+        self.assertLessEqual(telegram.rendered_length(calls[0][1]["caption"]), 1024)
+        self.assertTrue(all(method == "sendMessage" for method, _payload in calls[1:]))
+        self.assertIn("原始內容", "".join(payload["text"] for _method, payload in calls[1:]))
 
     def test_load_original_texts_uses_newest_duplicate(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -7,6 +7,7 @@ the publisher never floods a new channel with the existing catalogue.
 import argparse
 import html
 import json
+import re
 import sys
 import time
 from datetime import date, datetime
@@ -20,6 +21,8 @@ from chumei_lib import INBOX_DIR, ROOT, TZ_TAIPEI, load_env, now_iso
 EVENTS_PATH = ROOT / "site" / "data" / "events.json"
 STATE_PATH = ROOT / "state" / "telegram.json"
 BASE_URL = "https://chumei.observe.tw"
+FALLBACK_COVER = "/assets/fallback/event-cover.webp"
+TELEGRAM_CAPTION_LIMIT = 1024
 SCHOOL_LABEL = {"nthu": "清大", "nycu": "陽明交大", "both": "清大 × 交大", "external": "校外"}
 CAMPUS_LABEL = {
     "nthu-main": "清大校本部",
@@ -237,11 +240,25 @@ def split_text(text, limit=2500):
     return chunks
 
 
-def format_event_messages(event):
+def rendered_length(value):
+    """Approximate Telegram's post-entity character count for HTML text."""
+    return len(html.unescape(re.sub(r"<[^>]+>", "", value)))
+
+
+def event_photo_url(event):
+    cover = event.get("poster_image") or event.get("cover_image") or FALLBACK_COVER
+    cover = str(cover).strip()
+    if cover.startswith(("http://", "https://")):
+        return cover
+    return BASE_URL + "/" + cover.lstrip("/")
+
+
+def format_event_messages(event, first_limit=4096):
     detail_url = f"{BASE_URL}/event/{event['id']}/"
     title = html.escape(compact(event.get("title"), 180))
     when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
-    summary = html.escape(compact(event.get("summary"), 420))
+    summary_limit = 300 if first_limit <= TELEGRAM_CAPTION_LIMIT else 420
+    summary = html.escape(compact(event.get("summary"), summary_limit))
     safe_detail_url = html.escape(detail_url, quote=True)
     lines = [f'<a href="{safe_detail_url}"><b>{title}</b></a>', ""]
     source_line = format_source(event)
@@ -256,9 +273,15 @@ def format_event_messages(event):
     if not original_chunks:
         return ["\n".join(lines)]
 
-    lines.extend(["", f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"])
-    messages = ["\n".join(lines)]
-    for chunk in original_chunks[1:]:
+    header = "\n".join(lines)
+    first_block = f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"
+    if rendered_length(header + "\n\n" + first_block) <= first_limit:
+        messages = [header + "\n\n" + first_block]
+        remaining_chunks = original_chunks[1:]
+    else:
+        messages = [header]
+        remaining_chunks = original_chunks
+    for chunk in remaining_chunks:
         messages.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
     return messages
 
@@ -312,17 +335,27 @@ class TelegramClient:
         return bot, chat
 
     def send_event(self, event, silent=False, start_part=0, on_sent=None):
-        messages = format_event_messages(event)
+        messages = format_event_messages(event, first_limit=TELEGRAM_CAPTION_LIMIT)
         results = []
         for index, text in enumerate(messages[start_part:], start=start_part):
-            payload = {
-                "chat_id": self.channel,
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_notification": silent,
-                "link_preview_options": {"is_disabled": True},
-            }
-            result = self.call("sendMessage", payload)
+            if index == 0:
+                payload = {
+                    "chat_id": self.channel,
+                    "photo": event_photo_url(event),
+                    "caption": text,
+                    "parse_mode": "HTML",
+                    "disable_notification": silent,
+                }
+                result = self.call("sendPhoto", payload)
+            else:
+                payload = {
+                    "chat_id": self.channel,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "disable_notification": silent,
+                    "link_preview_options": {"is_disabled": True},
+                }
+                result = self.call("sendMessage", payload)
             results.append(result)
             if on_sent:
                 on_sent(result, index, len(messages))
