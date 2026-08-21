@@ -70,10 +70,10 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   position: sticky; top: 0; z-index: 10;
   background: color-mix(in srgb, var(--color-canvas) 88%, transparent);
   backdrop-filter: blur(8px);
-  padding: 18px 0; margin: 12px 0 4px;
-  display: flex; flex-direction: column; gap: 16px;
+  padding: 16px 0; margin: 12px 0 4px;
+  display: flex; flex-direction: column; gap: var(--space-3, 12px);
 }
-#more-filters { display: flex; flex-direction: column; gap: 16px; }
+#more-filters { display: flex; flex-direction: column; gap: var(--space-3, 12px); }
 #more-filters summary {
   cursor: pointer; color: var(--color-text-secondary); font-size: 0.9rem;
   padding: 6px 0; list-style: none; width: fit-content;
@@ -85,17 +85,30 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 @media (max-width: 700px) {
   .filters { position: static; backdrop-filter: none; background: none; }
 }
-.filter-row { display: flex; column-gap: 12px; row-gap: 10px; flex-wrap: wrap; align-items: center; min-height: 46px; }
-.filter-row .label { font-size: 0.875rem; color: var(--color-text-muted); min-width: 3em; }
-#f-time, #f-school, #f-campus, #f-cat, #f-org {
-  display: inline-flex; gap: 8px; flex-wrap: wrap; align-items: center;
+.filter-row {
+  display: flex; column-gap: var(--space-2, 8px); row-gap: var(--space-2, 8px);
+  flex-wrap: wrap; align-items: center; min-height: var(--layout-tap-target, 44px);
 }
+.filter-row .label {
+  min-width: 3.5rem; padding-top: 9px; align-self: flex-start;
+  color: var(--color-text-muted); font-size: var(--text-small, 0.875rem); line-height: 1;
+}
+#f-time, #f-school, #f-campus, #f-cat, #f-org {
+  min-width: 0; flex: 1 1 0;
+  display: inline-flex; gap: var(--space-2, 8px); flex-wrap: wrap; align-items: center;
+}
+#f-time { flex: 0 1 auto; }
 .fchip {
+  position: relative;
   border: 1px solid var(--color-border-subtle); background: var(--color-surface);
-  color: var(--color-text-secondary); border-radius: var(--radius-pill);
-  padding: 8px 10px 8px 14px; font-size: 0.9rem; cursor: pointer; min-height: 40px;
-  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--color-text-secondary); border-radius: var(--radius-sm, 8px);
+  min-width: 44px; height: 32px; padding: 0 6px 0 12px;
+  font-size: 0.8rem; font-weight: 500; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--space-1, 4px);
   transition: background var(--motion-fast, 140ms), color var(--motion-fast, 140ms);
+}
+.fchip::before {
+  content: ""; position: absolute; inset: -6px 0;
 }
 .fchip:hover { background: var(--color-surface-soft); }
 .fchip[aria-pressed="true"] {
@@ -104,9 +117,9 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .fchip-count {
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 1.55rem; height: 1.55rem; padding: 0 6px;
-  border-radius: var(--radius-pill); background: var(--color-surface-soft);
-  color: var(--color-text-muted); font-size: 0.75rem; font-variant-numeric: tabular-nums;
+  min-width: 20px; height: 20px; padding: 0 var(--space-1, 4px);
+  border-radius: 6px; background: var(--color-surface-soft);
+  color: var(--color-text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums;
 }
 .fchip[aria-pressed="true"] .fchip-count {
   background: color-mix(in srgb, var(--color-action-on-primary) 22%, transparent);
@@ -115,12 +128,14 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 #search {
   flex: 1; min-width: 180px; max-width: 320px;
   border: 1px solid var(--color-border-subtle); background: var(--color-surface);
-  color: var(--color-text-primary); border-radius: var(--radius-pill);
-  padding: 9px 16px; font-size: 0.95rem; font-family: inherit;
+  color: var(--color-text-primary); border-radius: var(--radius-sm, 8px);
+  min-height: var(--layout-tap-target, 44px); padding: 0 var(--space-3, 12px);
+  font-size: var(--text-small, 0.875rem); font-family: inherit;
 }
 #search::placeholder { color: var(--color-text-muted); }
 @media (max-width: 700px) {
-  .filter-row .label { flex-basis: 100%; min-width: 0; }
+  .filter-row .label { flex-basis: 100%; min-width: 0; padding-top: 0; }
+  #f-time, #f-school, #f-campus, #f-cat, #f-org { flex-basis: 100%; }
   #search { flex-basis: 100%; max-width: none; }
 }
 
