@@ -772,7 +772,6 @@ def org_pages(entries, events):
 def source_page(events):
     """/source/ 靜態殼：資料由 app.js 讀 sources.json 渲染（表格＋篩選）。"""
     entries = build_sources_data(events)
-    return org_pages(entries, events)
     content = """<section class="hero"><h1>資料來源與機構名錄</h1>
 <p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告系統與社群帳號。
 還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
@@ -792,6 +791,7 @@ def source_page(events):
         "資料來源與機構名錄｜竹梅活動觀測站",
         "清大×交大全部社團與單位的名錄：竹梅監測中的公告系統、IG、FB、Threads、X 帳號，以及尚未收錄的單位。",
         content, canonical=f"{BASE_URL}/source/"))
+    return org_pages(entries, events)
 
 
 def build_posts_data(events):
