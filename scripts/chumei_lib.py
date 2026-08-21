@@ -84,6 +84,33 @@ def append_inbox(raw_source, items):
     return n
 
 
+AVATAR_DIR = ROOT / "site" / "assets" / "avatars"
+
+
+def save_avatar(key, url, max_age_days=7):
+    """存單位頭貼（256px JPEG）到 site/assets/avatars/<key>.jpg。新鮮就跳過。"""
+    import io
+    import time
+    try:
+        AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+        dest = AVATAR_DIR / f"{key}.jpg"
+        if dest.exists() and time.time() - dest.stat().st_mtime < max_age_days * 86400:
+            return True
+        import requests
+        r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw)"},
+                         allow_redirects=True)
+        r.raise_for_status()
+        if not r.headers.get("content-type", "").startswith("image/"):
+            return dest.exists()
+        from PIL import Image
+        im = Image.open(io.BytesIO(r.content)).convert("RGB")
+        im.thumbnail((256, 256))
+        im.save(dest, "JPEG", quality=85)
+        return True
+    except Exception:
+        return (AVATAR_DIR / f"{key}.jpg").exists()
+
+
 def iter_inbox():
     """迭代所有 inbox 項目。"""
     if not INBOX_DIR.exists():

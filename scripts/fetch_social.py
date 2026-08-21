@@ -94,6 +94,11 @@ def main():
             resp.raise_for_status()
             if b"<rss" not in resp.content[:200]:
                 raise RuntimeError(f"non-RSS response ({resp.status_code})")
+            import html as _html
+            m_av = re.search(r"<image><url>([^<]+)</url>", resp.text)
+            if m_av:
+                from chumei_lib import save_avatar
+                save_avatar(f"{platform}_{username}", _html.unescape(m_av.group(1)))
             fresh = []
             for p in list(parse_feed(resp.text, platform))[: args.limit]:
                 if seen.has(source_id, p["post_id"]):

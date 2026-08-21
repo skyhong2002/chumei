@@ -602,6 +602,7 @@ def build_sources_data(events):
         e = entries[best_i]
         e["links"].append({"platform": platform, "url": url, "label": label,
                            "events": counts.get(sid, 0)})
+        e.setdefault("_avatar_keys", []).append(sid)
         e["events"] += counts.get(sid, 0)
         ts = latest.get(sid)
         if ts and ts > (e.get("updated") or ""):
@@ -647,6 +648,22 @@ def build_sources_data(events):
             next_id += 1
         e["id"] = id_map[key]
     id_path.write_text(json.dumps(id_map, ensure_ascii=False, indent=0))
+
+    # 頭貼：IG/Threads/X 由 fetcher 從 RSSHub channel image 存；FB 用 graph 公開頭貼端點補
+    from chumei_lib import save_avatar, AVATAR_DIR
+    for e in entries:
+        keys = e.pop("_avatar_keys", [])
+        for k in keys:
+            if k.startswith("fb_"):
+                save_avatar(k, f"https://graph.facebook.com/{k[3:]}/picture?type=large", max_age_days=30)
+        # 優先序：IG > Threads > FB > X
+        for prefix in ("ig_", "threads_", "fb_", "x_"):
+            hit = next((k for k in keys if k.startswith(prefix) and (AVATAR_DIR / f"{k}.jpg").exists()), None)
+            if hit:
+                e["avatar"] = f"/assets/avatars/{hit}.jpg"
+                break
+    n_av = sum(1 for e in entries if e.get("avatar"))
+    print(f"avatars: {n_av}/{sum(1 for e in entries if e['links'])} covered entries")
     (SITE / "data").mkdir(parents=True, exist_ok=True)
     (SITE / "data" / "sources.json").write_text(json.dumps({
         "generated_at": now_iso(), "entries": entries,

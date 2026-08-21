@@ -106,8 +106,12 @@
           return '<a class="src-link" href="' + esc(l.url) + '" rel="noopener" target="_blank">' +
             esc(PLAT[l.platform] || l.platform) + (l.label && l.label !== "Facebook" && l.label !== "公告頁" ? " " + esc(l.label) : "") + "</a>";
         }).join("");
+        var avatar = e.avatar
+          ? '<img class="src-avatar" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
+          : '<span class="src-avatar src-avatar-fallback av-' + esc(e.school) + '">' + esc(e.name.replace(/^(清大|交大|陽明|國立)/, "").charAt(0) || "？") + "</span>";
         return '<div class="src-row' + (e.links.length ? "" : " src-uncovered") + '">' +
-          '<div class="src-main"><span class="src-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
+          '<div class="src-main">' + avatar +
+          '<span class="src-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
           '<span class="chips">' +
           '<span class="chip chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
           '<span class="chip">' + esc(KIND[e.kind] || "") + "</span>" +
