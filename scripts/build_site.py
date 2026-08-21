@@ -196,27 +196,40 @@ def attach_geo(events, venues):
 
 
 def attach_reg_status(events):
-    """報名需求：LLM 判別值優先；舊資料用啟發式。輸出 e["reg"] ∈ required|free|None。"""
+    """參加方式雙軸：
+    e["reg"] ∈ required（需事先報名）| free（自由入場）| None（未註明）
+    e["fee"] ∈ paid | free | None —— 從 LLM 抽的 price 與內文推導。"""
+    import re as _re
     FREE_KW = ("免報名", "自由入場", "自由參加", "無需報名", "不須報名", "不需報名", "免費入場")
     NEED_KW = ("報名連結", "報名表", "報名網址", "報名截止", "請報名", "須報名", "需報名", "填寫表單", "購票", "售票")
-    n = 0
+    PAID_KW = ("購票", "售票", "票價", "報名費", "收費")
+    n_reg = n_fee = 0
     for e in events:
+        text = (e.get("summary") or "") + (e.get("description") or "")
         rr = e.get("registration_required")
         if rr is True:
             e["reg"] = "required"
         elif rr is False:
             e["reg"] = "free"
+        elif any(k in text for k in FREE_KW):
+            e["reg"] = "free"
+        elif e.get("registration_url") or e.get("registration_deadline") or any(k in text for k in NEED_KW):
+            e["reg"] = "required"
         else:
-            text = (e.get("summary") or "") + (e.get("description") or "")
-            if any(k in text for k in FREE_KW):
-                e["reg"] = "free"
-            elif e.get("registration_url") or e.get("registration_deadline") or any(k in text for k in NEED_KW):
-                e["reg"] = "required"
-            else:
-                e["reg"] = None
-        if e["reg"]:
-            n += 1
-    print(f"reg status: {n}/{len(events)} determined")
+            e["reg"] = None
+
+        price = (e.get("price") or "").strip()
+        if price:
+            e["fee"] = "free" if ("免費" in price or price.lower() == "free") else "paid"
+        elif "免費" in text:
+            e["fee"] = "free"
+        elif any(k in text for k in PAID_KW) or _re.search(r"(?:NT\$|\$|新台幣)\s*\d+|\d+\s*元", text):
+            e["fee"] = "paid"
+        else:
+            e["fee"] = None
+        n_reg += bool(e["reg"])
+        n_fee += bool(e["fee"])
+    print(f"reg status: {n_reg}/{len(events)} | fee status: {n_fee}/{len(events)}")
 
 
 def cache_posters(events):
@@ -501,8 +514,8 @@ def detail_page(e):
         ("地點", loc or "詳見原始貼文"),
         ("主辦", f"{e.get('organizer')}（{ORG_LABEL.get(e.get('organizer_type'), '')}）"),
         ("類型", e.get("category")),
-        ("報名", {"required": "需事先報名", "free": "自由參加，免報名"}.get(e.get("reg"))),
-        ("費用", e.get("price")),
+        ("報名", {"required": "需事先報名", "free": "自由入場，免報名"}.get(e.get("reg"))),
+        ("費用", e.get("price") or {"free": "免費", "paid": "需付費（金額見原文）"}.get(e.get("fee"))),
         ("報名截止", fmt_dt(e.get("registration_deadline"))),
     ]
     meta_html = "".join(f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>" for k, v in rows if v)
