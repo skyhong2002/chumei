@@ -22,7 +22,7 @@ def run_step(name, args):
     print(f"=== {name} ===", flush=True)
     t0 = time.time()
     try:
-        r = subprocess.run([str(PY), str(ROOT / "scripts" / args[0]), *args[1:]], timeout=3600)
+        r = subprocess.run([str(PY), str(ROOT / "scripts" / args[0]), *args[1:]], timeout=7200)
         ok = r.returncode == 0
     except subprocess.TimeoutExpired:
         ok = False

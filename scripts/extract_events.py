@@ -133,15 +133,62 @@ def fetch_image_b64(url, max_bytes=8_000_000):
         return None
 
 
+def user_prompt(item, retry_note=None):
+    return (
+        f"來源：{item['source_name']}（{item['school']}／{item['org_type']}／{item['platform']}）\n"
+        f"貼文日期：{item['posted_at']}\n貼文連結：{item['url']}\n\n貼文內容：\n{item['text'][:6000]}"
+        + (f"\n\n（上次輸出無法解析，這次{retry_note}）" if retry_note else "")
+    )
+
+
+def fetch_image_file(url, dest_dir, idx, max_bytes=8_000_000):
+    """下載並縮圖成 jpg 檔（給 codex exec -i 用）。回傳路徑或 None。"""
+    try:
+        r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw fetcher)"})
+        r.raise_for_status()
+        if len(r.content) > max_bytes or not r.headers.get("content-type", "").startswith("image/"):
+            return None
+        import io
+        from pathlib import Path
+        from PIL import Image
+        im = Image.open(io.BytesIO(r.content)).convert("RGB")
+        im.thumbnail((1024, 1024))
+        path = Path(dest_dir) / f"img{idx}.jpg"
+        im.save(path, "JPEG", quality=80)
+        return str(path)
+    except Exception:
+        return None
+
+
+def call_llm_codex(env, item, retry_note=None):
+    """走 Codex CLI（訂閱制），--output-schema 強制結構化輸出。"""
+    import subprocess
+    import tempfile
+    schema = str(ROOT / "scripts" / "extract_schema.json")
+    with tempfile.TemporaryDirectory(prefix="chumei-ext-") as td:
+        cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
+               "--output-schema", schema, "-o", f"{td}/out.json"]
+        model = env.get("CHUMEI_CODEX_MODEL")
+        if model:
+            cmd += ["-m", model]
+        for idx, img_url in enumerate((item.get("images") or [])[:2]):
+            p = fetch_image_file(img_url, td, idx)
+            if p:
+                cmd += ["-i", p]
+        # prompt 走 stdin：-i 是變長參數，positional prompt 會被它吞掉
+        prompt = SYSTEM_PROMPT + "\n\n---\n" + user_prompt(item, retry_note)
+        r = subprocess.run(cmd, cwd=td, capture_output=True, text=True,
+                           timeout=420, input=prompt)
+        if r.returncode != 0:
+            raise RuntimeError(f"codex exec rc={r.returncode}: {r.stderr[-200:]}")
+        with open(f"{td}/out.json") as f:
+            return f.read()
+
+
 def call_llm(env, item, retry_note=None):
-    content = [{
-        "type": "text",
-        "text": (
-            f"來源：{item['source_name']}（{item['school']}／{item['org_type']}／{item['platform']}）\n"
-            f"貼文日期：{item['posted_at']}\n貼文連結：{item['url']}\n\n貼文內容：\n{item['text'][:6000]}"
-            + (f"\n\n（上次輸出無法解析，這次{retry_note}）" if retry_note else "")
-        ),
-    }]
+    if env.get("CHUMEI_LLM_BACKEND") == "codex":
+        return call_llm_codex(env, item, retry_note)
+    content = [{"type": "text", "text": user_prompt(item, retry_note)}]
     for img_url in (item.get("images") or [])[:2]:
         b64 = fetch_image_b64(img_url)
         if b64:
@@ -169,6 +216,12 @@ def call_llm(env, item, retry_note=None):
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
     raise RuntimeError("rate-limited after retries")
+
+
+def model_name(env):
+    if env.get("CHUMEI_LLM_BACKEND") == "codex":
+        return "codex/" + (env.get("CHUMEI_CODEX_MODEL") or "default")
+    return env.get("CHUMEI_LLM_MODEL")
 
 
 def process_item(env, item, lock, caches):
@@ -212,7 +265,7 @@ def process_item(env, item, lock, caches):
             "source": {"platform": item["platform"], "url": item["url"], "source_id": source_id, "post_id": post_id},
             "poster_image": item.get("image_url"),
             "extraction": {
-                "model": env.get("CHUMEI_LLM_MODEL"), "confidence": conf,
+                "model": model_name(env), "confidence": conf,
                 "needs_review": needs_review, "prompt_version": PROMPT_VERSION,
                 **({"review_reason": review_reason} if review_reason else {}),
             },
@@ -220,7 +273,7 @@ def process_item(env, item, lock, caches):
         })
     return source_id, post_id, {
         "prompt_version": PROMPT_VERSION, "ts": now_iso(),
-        "model": env.get("CHUMEI_LLM_MODEL"), "events": events,
+        "model": model_name(env), "events": events,
     }
 
 
