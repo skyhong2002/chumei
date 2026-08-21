@@ -1,1 +1,20 @@
-<!doctype html><html lang="zh-Hant-TW" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>活動日曆｜竹梅活動觀測站</title><meta name="description" content="清大×交大校園活動月曆檢視。"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/tokens.css"><link rel="stylesheet" href="/assets/site.css"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t;else if(matchMedia("(prefers-color-scheme: dark)").matches)document.documentElement.dataset.theme="dark"}catch(e){}</script></head><body><header class="site-header"><a class="brand" href="/"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a><nav class="site-nav"><a href="/">活動</a><a href="/calendar/">日曆</a><a href="/stories/">限動</a><a href="/subscribe/">訂閱</a><a href="/source/">來源</a><a href="/about/">關於</a><button id="theme-toggle" aria-label="切換深淺色主題">◐</button></nav></header><main><div class="cal-head"><h1 id="cal-title">…</h1><button id="cal-prev" aria-label="上個月">‹</button><button id="cal-next" aria-label="下個月">›</button></div><div id="cal-grid" class="cal-grid"></div></main><footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer><script src="/assets/app.js"></script></body></html>
+<!doctype html><html lang="zh-Hant-TW" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>活動日曆｜竹梅活動觀測站</title><meta name="description" content="清大×交大校園活動月曆——連續捲動、可篩選學校、校區與活動類型。">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/tokens.css"><link rel="stylesheet" href="/assets/site.css">
+<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t;else if(matchMedia("(prefers-color-scheme: dark)").matches)document.documentElement.dataset.theme="dark"}catch(e){}</script></head>
+<body>
+<header class="site-header"><a class="brand" href="/"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a><nav class="site-nav"><a href="/">活動</a><a href="/calendar/">日曆</a><a href="/stories/">限動</a><a href="/subscribe/">訂閱</a><a href="/source/">來源</a><a href="/about/">關於</a><button id="theme-toggle" aria-label="切換深淺色主題">◐</button></nav></header>
+<main>
+  <section class="hero"><h1>活動日曆</h1><p>往下捲看更遠的月份；點日期格裡的活動看詳情。<span id="cal-count"></span></p></section>
+  <section class="filters" aria-label="日曆篩選">
+    <div class="filter-row"><span class="label">學校</span><span id="f-school"></span>
+      <span class="search-hit"><input id="search" type="search" placeholder="搜尋活動、社團、地點…" aria-label="搜尋活動"></span></div>
+    <div class="filter-row"><span class="label">校區</span><span id="f-campus"></span></div>
+    <div class="filter-row"><span class="label">類型</span><span id="f-cat"></span></div>
+    <div class="filter-row"><span class="label">主辦</span><span id="f-org"></span></div>
+  </section>
+  <div class="cal-tools"><button id="cal-earlier" class="fchip">‹ 載入上個月</button><button id="cal-today" class="fchip">回到今天</button></div>
+  <div id="cal-months"></div>
+  <div id="cal-sentinel" aria-hidden="true"></div>
+</main>
+<footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer>
+<script src="/assets/app.js"></script></body></html>

@@ -15,7 +15,7 @@
   }
 
   var listEl = document.getElementById("event-list");
-  var calEl = document.getElementById("cal-grid");
+  var calEl = document.getElementById("cal-months");
   initStories();
   if (!listEl && !calEl) return;
 
@@ -459,37 +459,156 @@
 
   // ---- 日曆 ----
   function initCalendar(bundle) {
-    var cur = new Date();
-    cur.setDate(1);
-    var title = document.getElementById("cal-title");
-    document.getElementById("cal-prev").addEventListener("click", function () { cur.setMonth(cur.getMonth() - 1); draw(); });
-    document.getElementById("cal-next").addEventListener("click", function () { cur.setMonth(cur.getMonth() + 1); draw(); });
+    var labels = bundle.labels;
+    var state = { school: "all", campus: "all", cat: "all", org: "all", q: "" };
+    var params = new URLSearchParams(location.search);
+    Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
+
+    var cats = {};
+    bundle.events.forEach(function (e) { cats[e.category || "其他"] = 1; });
+
+    var chipGroups = {};
+    function buildChips(id, options, key) {
+      var host = document.getElementById(id);
+      if (!host) return;
+      chipGroups[key] = { options: options, buttons: {} };
+      options.forEach(function (opt) {
+        var b = document.createElement("button");
+        b.className = "fchip";
+        b.dataset.value = opt[0];
+        b.innerHTML = '<span class="fchip-label">' + esc(opt[1]) + '</span><span class="fchip-count" aria-hidden="true"></span>';
+        b.setAttribute("aria-pressed", String(state[key] === opt[0]));
+        chipGroups[key].buttons[opt[0]] = b;
+        b.addEventListener("click", function () {
+          state[key] = opt[0];
+          host.querySelectorAll(".fchip").forEach(function (x) {
+            x.setAttribute("aria-pressed", String(x.dataset.value === opt[0]));
+          });
+          redraw();
+        });
+        host.appendChild(b);
+      });
+    }
+    buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
+    buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
+    buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
+    buildChips("f-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
+
+    var search = document.getElementById("search");
+    if (search) {
+      search.value = state.q;
+      search.addEventListener("input", function () { state.q = search.value.trim(); redraw(); });
+    }
+
+    function matches(e, overrideKey, overrideValue) {
+      function value(k) { return overrideKey === k ? overrideValue : state[k]; }
+      if (value("school") !== "all" && e.school !== value("school") && !(value("school") !== "both" && e.school === "both")) return false;
+      if (value("campus") !== "all" && e.campus !== value("campus")) return false;
+      if (value("cat") !== "all" && (e.category || "其他") !== value("cat")) return false;
+      if (value("org") !== "all" && e.organizer_type !== value("org")) return false;
+      if (state.q) {
+        var hay = (e.title + " " + (e.summary || "") + " " + (e.organizer || "") + " " + (e.venue || "")).toLowerCase();
+        if (hay.indexOf(state.q.toLowerCase()) === -1) return false;
+      }
+      return true;
+    }
+
+    function updateChipCounts() {
+      Object.keys(chipGroups).forEach(function (key) {
+        chipGroups[key].options.forEach(function (opt) {
+          var b = chipGroups[key].buttons[opt[0]];
+          if (!b) return;
+          var n = bundle.events.filter(function (e) { return matches(e, key, opt[0]); }).length;
+          b.querySelector(".fchip-count").textContent = String(n);
+          b.setAttribute("aria-label", opt[1] + "，" + n + " 場活動");
+        });
+      });
+    }
+
+    // 連續月曆：目前月起往下堆疊，捲到底自動加月份
+    var now = new Date();
+    var firstMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    var monthsAfter = 0, monthsBefore = 0;
+    var MAX_AHEAD = 12, MAX_BACK = 6;
 
     var byDay = {};
-    bundle.events.forEach(function (e) {
-      var day = (e.start_at || "").slice(0, 10);
-      (byDay[day] = byDay[day] || []).push(e);
-    });
+    function indexEvents() {
+      byDay = {};
+      bundle.events.filter(function (e) { return matches(e); }).forEach(function (e) {
+        var day = (e.start_at || "").slice(0, 10);
+        (byDay[day] = byDay[day] || []).push(e);
+      });
+    }
 
-    function draw() {
-      title.textContent = cur.getFullYear() + " 年 " + (cur.getMonth() + 1) + " 月";
-      var startDow = (cur.getDay() + 6) % 7; // 週一起始
-      var first = new Date(cur);
+    function monthHtml(m) {
+      var startDow = (m.getDay() + 6) % 7; // 週一起始
+      var first = new Date(m);
       first.setDate(1 - startDow);
       var t = todayStr();
-      var html = ["一", "二", "三", "四", "五", "六", "日"].map(function (d) { return '<div class="cal-dow">' + d + "</div>"; }).join("");
+      var cells = ["一", "二", "三", "四", "五", "六", "日"].map(function (d) { return '<div class="cal-dow">' + d + "</div>"; }).join("");
+      var monthTotal = 0;
       for (var i = 0; i < 42; i++) {
         var d = new Date(first);
         d.setDate(first.getDate() + i);
         var key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-        var cls = "cal-cell" + (d.getMonth() !== cur.getMonth() ? " other-month" : "") + (key === t ? " today" : "");
-        var evs = (byDay[key] || []).map(function (e) {
-          return '<a class="cal-ev ev-' + esc(e.school) + '" href="/event/' + e.id + '/" title="' + esc(e.title) + '">' + esc(e.title) + "</a>";
-        }).join("");
-        html += '<div class="' + cls + '"><span class="cal-day">' + d.getDate() + "</span>" + evs + "</div>";
+        var inMonth = d.getMonth() === m.getMonth();
+        var cls = "cal-cell" + (inMonth ? "" : " other-month") + (key === t ? " today" : "");
+        var evs = "";
+        if (inMonth) {
+          var dayEvents = byDay[key] || [];
+          monthTotal += dayEvents.length;
+          evs = dayEvents.map(function (e) {
+            return '<a class="cal-ev ev-' + esc(e.school) + '" href="/event/' + e.id + '/" title="' + esc(e.title) + '">' + esc(e.title) + "</a>";
+          }).join("");
+        }
+        cells += '<div class="' + cls + '"><span class="cal-day">' + d.getDate() + "</span>" + evs + "</div>";
       }
-      calEl.innerHTML = html;
+      return '<section class="cal-month" id="cal-' + m.getFullYear() + "-" + (m.getMonth() + 1) + '">' +
+        '<h2 class="cal-month-title">' + m.getFullYear() + " 年 " + (m.getMonth() + 1) + " 月" +
+        '<span class="cal-month-n">' + monthTotal + " 場</span></h2>" +
+        '<div class="cal-grid">' + cells + "</div></section>";
     }
-    draw();
+
+    function monthAt(offset) {
+      return new Date(firstMonth.getFullYear(), firstMonth.getMonth() + offset, 1);
+    }
+
+    function redraw() {
+      indexEvents();
+      updateChipCounts();
+      var html = "";
+      for (var i = -monthsBefore; i <= monthsAfter; i++) html += monthHtml(monthAt(i));
+      calEl.innerHTML = html;
+      var total = Object.keys(byDay).reduce(function (n, k) { return n + byDay[k].length; }, 0);
+      var count = document.getElementById("cal-count");
+      if (count) count.textContent = "目前篩選共 " + total + " 場活動。";
+      var qs = new URLSearchParams();
+      Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
+      history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+    }
+
+    var earlier = document.getElementById("cal-earlier");
+    if (earlier) earlier.addEventListener("click", function () {
+      if (monthsBefore < MAX_BACK) { monthsBefore++; redraw(); }
+      if (monthsBefore >= MAX_BACK) earlier.disabled = true;
+    });
+    var todayBtn = document.getElementById("cal-today");
+    if (todayBtn) todayBtn.addEventListener("click", function () {
+      var el = document.getElementById("cal-" + now.getFullYear() + "-" + (now.getMonth() + 1));
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    var sentinel = document.getElementById("cal-sentinel");
+    if (sentinel && "IntersectionObserver" in window) {
+      new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting && monthsAfter < MAX_AHEAD) {
+          monthsAfter += 2;
+          redraw();
+        }
+      }, { rootMargin: "600px" }).observe(sentinel);
+    }
+
+    monthsAfter = 2;
+    redraw();
   }
 })();
