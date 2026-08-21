@@ -852,13 +852,22 @@ KIND_LABEL = {"club": "社團", "gov": "自治組織", "dept": "系所", "unit":
 
 
 def org_pages(entries, events):
-    """每個名錄條目一頁 /org/<id>/：頭貼、連結、該單位的活動。"""
+    """每個名錄條目一頁 /org/<id>/：頭貼、連結、該單位的活動與收錄貼文。"""
     by_sid = {}
     for e in events:
         by_sid.setdefault(e["source"]["source_id"], []).append(e)
+    # 收錄貼文（含沒抽出活動的），各來源合流
+    from chumei_lib import iter_inbox
+    now = now_iso()
+    posts_by_sid, ev_per_post = {}, {}
+    for it in iter_inbox():
+        posts_by_sid.setdefault(it["source_id"], []).append(it)
+    for e in events:
+        k = (e["source"]["source_id"], e["source"]["post_id"])
+        ev_per_post[k] = ev_per_post.get(k, 0) + 1
     today = date.today().isoformat()
     PLAT = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads",
-            "x": "X", "bulletin": "公告頁", "website": "官網"}
+            "x": "X", "bulletin": "公告頁", "website": "官網", "api": "NYCU LIFE"}
     for ent in entries:
         evs = [e for sid in ent.get("sids", []) for e in by_sid.get(sid, [])]
         for l in ent["links"]:
@@ -910,6 +919,35 @@ def org_pages(entries, events):
                         + "".join(ev_row(e) for e in past) + "</ul>")
         if not evs and ent["links"]:
             body.append('<p class="src-desc">尚未從這個來源收錄到活動。</p>')
+
+        # 收錄貼文：各來源合流、含沒抽出活動的，最新在前
+        posts = {(p["source_id"], p["post_id"]): p
+                 for sid in ent.get("sids", []) for p in posts_by_sid.get(sid, [])}
+        if posts:
+            def post_key(p):
+                return min(p.get("posted_at") or p.get("fetched_at") or "", now)
+            ordered = sorted(posts.values(), key=post_key, reverse=True)
+            shown = ordered[:30]
+
+            PLAT_S = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X",
+                      "bulletin": "公告", "website": "官網", "api": "LIFE"}
+
+            def post_row(p):
+                snippet = re.sub(r"\s+", " ", p.get("text") or "").strip()[:60] or "（無文字）"
+                d8 = post_key(p)[:10]
+                d_lab = f"{int(d8[5:7])}/{int(d8[8:10])}" if len(d8) == 10 else "—"
+                n_ev = ev_per_post.get((p["source_id"], p["post_id"]), 0)
+                inner = (f'<span class="org-ev-date org-post-date">{d_lab}'
+                         f'<span class="org-post-plat">{PLAT_S.get(p.get("platform"), p.get("platform") or "")}</span></span>'
+                         f'<span class="org-post-txt">{esc(snippet)}</span>'
+                         + (f'<span class="org-post-ev">{n_ev} 場</span>' if n_ev else ""))
+                if p.get("url"):
+                    return f'<li class="org-ev org-post"><a href="{esc(p["url"])}" rel="noopener">{inner}</a></li>'
+                return f'<li class="org-ev org-post"><span class="org-post-static">{inner}</span></li>'
+
+            more = f"，顯示最近 {len(shown)} 則" if len(ordered) > len(shown) else ""
+            body.append(f'<h2>收錄貼文（{len(ordered)} 則{more}）</h2><ul class="org-evs">'
+                        + "".join(post_row(p) for p in shown) + "</ul>")
         body.append('<p class="src-desc"><a href="/source/">← 回資料來源名錄</a></p></article>')
         d = SITE / "org" / str(ent["id"])
         d.mkdir(parents=True, exist_ok=True)

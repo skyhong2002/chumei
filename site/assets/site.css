@@ -647,6 +647,20 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .org-ev a:hover { background: var(--color-surface-soft); text-decoration: none; }
 .org-ev-date { flex-shrink: 0; font-size: 0.82rem; color: var(--color-text-muted); min-width: 9em; }
+.org-post-date { min-width: 6.4em; display: inline-flex; gap: 8px; align-items: baseline; }
+.org-post-plat {
+  font-size: 0.68rem; font-weight: 600; color: var(--color-text-muted);
+  border: 1px solid var(--color-border-subtle); border-radius: 999px; padding: 1px 6px;
+}
+.org-post-txt {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.88rem; color: var(--color-text-secondary);
+}
+.org-post-ev { margin-left: auto; flex-shrink: 0; font-size: 0.78rem; color: var(--color-action, #0045F2); }
+.org-post-static {
+  display: flex; gap: 14px; align-items: baseline; padding: 9px 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
 .org-sched-row a { align-items: baseline; }
 .org-sched-row:not(:has(a)) {
   display: flex; gap: 14px; align-items: baseline; padding: 9px 4px;
@@ -659,6 +673,9 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .org-avatar { width: 64px; height: 64px; }
   .org-ev a { flex-direction: column; gap: 2px; }
   .org-sched-venue { margin-left: 0; }
+  .org-post a { flex-direction: row; flex-wrap: wrap; row-gap: 0; }
+  .org-post-txt { flex-basis: 100%; }
+  .org-post-ev { margin-left: auto; }
 }
 
 /* ---------- footer ---------- */
