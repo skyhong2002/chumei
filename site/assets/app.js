@@ -1009,7 +1009,10 @@
       var t = todayStr();
       var monthTotal = 0;
       var body = "";
-      for (var day = 1; day <= daysInMonth; day++) {
+      // 當月從今天開始列，過去的日子不佔版面（往前翻月仍可看完整月份）
+      var startDay = 1;
+      if (m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth()) startDay = now.getDate();
+      for (var day = startDay; day <= daysInMonth; day++) {
         var key = m.getFullYear() + "-" + String(m.getMonth() + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
         var dayEvents = byDay[key] || [];
         if (!dayEvents.length) continue;
