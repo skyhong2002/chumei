@@ -681,7 +681,7 @@ def build_sources_data(events):
 
     norms = [_norm_org(e["name"]) for e in entries]
 
-    def attach(name, school, org_type, platform, url, label, sid, note=None):
+    def attach(name, school, org_type, platform, url, label, sid, note=None, fallback_kind=None):
         n = _norm_org(name)
         src_campus = _org_campus(name) if school == "nycu" else None
         best_i, best = -1, 0.55
@@ -697,7 +697,7 @@ def build_sources_data(events):
             if v > best:
                 best_i, best = i, v
         if best_i == -1:
-            kind = {"official": "unit", "department": "dept", "club": "club", "external": "ext"}.get(org_type, "club")
+            kind = fallback_kind or {"official": "unit", "department": "dept", "club": "club", "external": "ext"}.get(org_type, "club")
             entries.append({"name": name, "school": school, "kind": kind, "category": None,
                             "campus": src_campus, "links": [], "events": 0, "roster": False})
             norms.append(_norm_org(name))
@@ -741,14 +741,10 @@ def build_sources_data(events):
         attach(r["name"], r.get("school") or "other", r.get("org_type"), r["platform"],
                SOCIAL_URL[r["platform"]].format(u=u), f"@{u}", f"{r['platform']}_{u}")
 
-    # 3. 公告系統／官方 API（獨立條目）
+    # 3. 公告系統／官方 API：先嘗試歸戶到既有單位（如藝文中心官網→藝文中心），配不到才獨立
     for r in read_sources_csv("bulletin_sources.csv"):
-        entries.append({"name": r["name"], "school": r["school"], "kind": "bulletin",
-                        "category": None, "campus": None,
-                        "links": [{"platform": "bulletin", "url": r["url"], "label": "公告頁",
-                                   "events": counts.get(r["source_id"], 0)}],
-                        "events": counts.get(r["source_id"], 0), "roster": False,
-                        "updated": latest.get(r["source_id"])})
+        attach(r["name"], r["school"], "official", "bulletin", r["url"], "公告頁",
+               r["source_id"], fallback_kind="bulletin")
 
     entries.sort(key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
     next_id = max(id_map.values(), default=0) + 1
