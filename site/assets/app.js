@@ -188,7 +188,7 @@
 
     fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
       var entries = data.entries;
-      var state = { school: "all", status: "all", kind: "all", platform: "all", q: "" };
+      var state = { school: "all", status: "all", kind: "all", platform: "all", sort: "events", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
@@ -218,6 +218,7 @@
       chips("sf-status", [["all", "全部"], ["covered", "已收錄"], ["uncovered", "尚未收錄"]], "status");
       chips("sf-kind", [["all", "全部"]].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; })), "kind");
       chips("sf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["x", "X"]], "platform");
+      chips("sf-sort", [["events", "收錄數"], ["updated", "最新更新"], ["name", "名稱"], ["id", "ID"]], "sort");
 
       var search = document.getElementById("search");
       if (search) {
@@ -258,21 +259,29 @@
             esc(PLAT[l.platform] || l.platform) + (l.label && l.label !== "Facebook" && l.label !== "公告頁" ? " " + esc(l.label) : "") + "</a>";
         }).join("");
         var avatar = e.avatar
-          ? '<img class="src-avatar" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
-          : '<span class="src-avatar src-avatar-fallback av-' + esc(e.school) + '">' + esc(e.name.replace(/^(清大|交大|陽明|國立)/, "").charAt(0) || "？") + "</span>";
+          ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
+          : '<span class="src-avatar src-c-ava src-avatar-fallback av-' + esc(e.school) + '">' + esc(e.name.replace(/^(清大|交大|陽明|國立)/, "").charAt(0) || "？") + "</span>";
         return '<div class="src-row' + (e.links.length ? "" : " src-uncovered") + '">' +
-          '<div class="src-main">' + avatar +
-          '<span class="src-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
-          '<span class="chips">' +
+          avatar +
+          '<span class="src-id src-c-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
+          '<strong class="src-c-name"><a class="src-name" href="/org/' + e.id + '/">' + esc(e.name) + "</a></strong>" +
+          '<span class="chips src-c-chips">' +
           '<span class="chip chip-school chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
           (e.campus ? '<span class="chip chip-campus">' + (e.campus === "yangming" ? "陽明" : "交大") + "</span>" : "") +
           '<span class="chip chip-extra">' + esc(KIND[e.kind] || "") + "</span>" +
           (e.category ? '<span class="chip chip-extra">' + esc(e.category) + "</span>" : "") +
-          '</span><strong><a class="src-name" href="/org/' + e.id + '/">' + esc(e.name) + "</a></strong></div>" +
+          "</span>" +
           '<div class="src-links">' + (links || '<span class="src-none">尚未找到公開帳號</span>') + "</div>" +
           '<div class="src-upd" title="' + esc(e.updated || "") + '">' + fmtUpdated(e.updated) + "</div>" +
           '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div></div>";
       }
+
+      var SORTS = {
+        events: function (a, b) { return (b.events - a.events) || (b.links.length - a.links.length) || a.name.localeCompare(b.name, "zh-Hant"); },
+        updated: function (a, b) { return ((b.updated || "").localeCompare(a.updated || "")) || (b.events - a.events); },
+        name: function (a, b) { return a.name.localeCompare(b.name, "zh-Hant"); },
+        id: function (a, b) { return a.id - b.id; }
+      };
 
       function render() {
         Object.keys(groups).forEach(function (key) {
@@ -281,7 +290,9 @@
             if (b) b.querySelector(".fchip-count").textContent = String(entries.filter(function (e) { return matches(e, key, opt[0]); }).length);
           });
         });
-        var list = entries.filter(function (e) { return matches(e); });
+        var list = entries.filter(function (e) { return matches(e); }).sort(SORTS[state.sort] || SORTS.events);
+        var sortHost = document.getElementById("sf-sort");
+        if (sortHost) sortHost.querySelectorAll(".fchip-count").forEach(function (c) { c.textContent = ""; });
         document.getElementById("src-count").textContent = "目前列出 " + list.length + " 個單位。";
         table.innerHTML = list.map(row).join("") || '<p class="empty">沒有符合的單位。</p>';
         var qs = new URLSearchParams();
