@@ -60,10 +60,11 @@ def main():
             results["social"] = run_step("threads/x", ["fetch_social.py", "--limit", "5", "--sleep", "8"])
             state["last_social_run"] = time.time()
 
-        # FB 走 Apify 按結果計費，一天一輪就好
+        # FB 走 Apify 按結果計費；免費層每月 $5，一週一輪剛好打平（160h 門檻容忍排程抖動）
+        FB_MIN_INTERVAL_H = 160
         fb_script = ROOT / "scripts" / "fetch_facebook.py"
         last_fb = state.get("last_fb_run", 0)
-        if fb_script.exists() and (time.time() - last_fb) > IG_MIN_INTERVAL_H * 3600:
+        if fb_script.exists() and (time.time() - last_fb) > FB_MIN_INTERVAL_H * 3600:
             results["facebook"] = run_step("facebook", ["fetch_facebook.py", "--limit", "5"])
             state["last_fb_run"] = time.time()
 
