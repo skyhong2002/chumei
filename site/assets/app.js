@@ -697,14 +697,22 @@
       return true;
     }
 
+    var monthStartStr = (function () {
+      var n = new Date();
+      return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-01";
+    })();
+    function fromThisMonth(e) {
+      return (e.start_at || "").slice(0, 10) >= monthStartStr;
+    }
+
     function updateChipCounts() {
       Object.keys(chipGroups).forEach(function (key) {
         chipGroups[key].options.forEach(function (opt) {
           var b = chipGroups[key].buttons[opt[0]];
           if (!b) return;
-          var n = bundle.events.filter(function (e) { return matches(e, key, opt[0]); }).length;
+          var n = bundle.events.filter(function (e) { return fromThisMonth(e) && matches(e, key, opt[0]); }).length;
           b.querySelector(".fchip-count").textContent = String(n);
-          b.setAttribute("aria-label", opt[1] + "，" + n + " 場活動");
+          b.setAttribute("aria-label", opt[1] + "，本月起 " + n + " 場活動");
         });
       });
     }
@@ -766,9 +774,9 @@
       var html = "";
       for (var i = -monthsBefore; i <= monthsAfter; i++) html += monthHtml(monthAt(i));
       calEl.innerHTML = html;
-      var total = Object.keys(byDay).reduce(function (n, k) { return n + byDay[k].length; }, 0);
+      var total = bundle.events.filter(function (e) { return fromThisMonth(e) && matches(e); }).length;
       var count = document.getElementById("cal-count");
-      if (count) count.textContent = "目前篩選共 " + total + " 場活動。";
+      if (count) count.textContent = "目前篩選自本月起共 " + total + " 場活動。";
       var qs = new URLSearchParams();
       Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
       history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
