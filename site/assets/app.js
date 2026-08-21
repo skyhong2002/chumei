@@ -53,7 +53,8 @@
       if (listEl) initList(bundle);
       if (calEl) initCalendar(bundle);
     })
-    .catch(function () {
+    .catch(function (err) {
+      console.error("chumei init failed:", err);
       var el = listEl || calEl;
       el.innerHTML = '<p class="empty">活動資料載入失敗，請稍後再試。</p>';
     });
