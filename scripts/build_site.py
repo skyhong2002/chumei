@@ -418,6 +418,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
   <nav class="site-nav">
     <a href="/">活動</a>
     <a href="/calendar/">日曆</a>
+    <a href="/stories/">限動</a>
     <a href="/subscribe/">訂閱</a>
     <a href="/source/">來源</a>
     <a href="/about/">關於</a>
@@ -642,7 +643,7 @@ def main():
 
     source_page(events)
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/"] + \
+    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events]
     (SITE / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'

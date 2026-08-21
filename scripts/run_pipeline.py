@@ -67,6 +67,10 @@ def main():
             results["facebook"] = run_step("facebook", ["fetch_facebook.py", "--limit", "5"])
             state["last_fb_run"] = time.time()
 
+        # 限時動態 24h 就消失，每輪都抓（批量查詢，額度便宜）
+        if (ROOT / "scripts" / "fetch_stories.py").exists():
+            results["stories"] = run_step("stories", ["fetch_stories.py"])
+
     results["extract"] = run_step("extract", ["extract_events.py"])
     results["map"] = run_step("map", ["build_map_data.py"])
     results["build"] = (results["map"] and run_step("build", ["build_site.py"])

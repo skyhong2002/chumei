@@ -16,6 +16,7 @@
 
   var listEl = document.getElementById("event-list");
   var calEl = document.getElementById("cal-grid");
+  initStories();
   if (!listEl && !calEl) return;
 
   fetch("/data/events.json")
@@ -28,6 +29,109 @@
       var el = listEl || calEl;
       el.innerHTML = '<p class="empty">活動資料載入失敗，請稍後再試。</p>';
     });
+
+  // ---- IG 限時動態（首頁圓圈列＋動態牆＋燈箱） ----
+  function initStories() {
+    var strip = document.getElementById("story-strip");
+    var wall = document.getElementById("story-wall");
+    if (!strip && !wall) return;
+
+    fetch("/data/stories.json")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var stories = data.stories || [];
+        if (!stories.length) {
+          if (wall) wall.innerHTML = '<p class="empty">現在沒有進行中的限時動態 — 限動 24 小時後就會消失，晚點再來看看。</p>';
+          return;
+        }
+        // 依帳號分組，組序 = 該帳號最新限動時間
+        var groups = {}, order = [];
+        stories.forEach(function (s) {
+          if (!groups[s.username]) { groups[s.username] = []; order.push(s.username); }
+          groups[s.username].push(s);
+        });
+        var flat = [];
+        order.forEach(function (u) { groups[u].forEach(function (s) { flat.push(s); }); });
+
+        function ago(iso) {
+          var h = Math.max(0, (Date.now() - new Date(iso).getTime()) / 36e5);
+          return h < 1 ? Math.round(h * 60) + " 分鐘前" : Math.round(h) + " 小時前";
+        }
+
+        if (strip) {
+          strip.hidden = false;
+          strip.innerHTML = order.map(function (u) {
+            var g = groups[u];
+            return '<button class="story-item" data-user="' + esc(u) + '" aria-label="' + esc(g[0].name) + ' 的限時動態">' +
+              '<span class="story-ring ring-' + esc(g[0].school) + '">' +
+              '<img src="' + esc(g[0].media) + '" alt="">' +
+              (g.length > 1 ? '<span class="story-count">' + g.length + "</span>" : "") +
+              '</span><span class="story-name">' + esc(g[0].name) + "</span></button>";
+          }).join("");
+          strip.addEventListener("click", function (ev) {
+            var b = ev.target.closest(".story-item");
+            if (b) openLightbox(flat.indexOf(groups[b.dataset.user][0]));
+          });
+        }
+
+        if (wall) {
+          wall.innerHTML = flat.map(function (s, i) {
+            return '<button class="story-card" data-i="' + i + '">' +
+              '<img src="' + esc(s.media) + '" alt="' + esc(s.name) + ' 的限時動態" loading="lazy">' +
+              (s.is_video ? '<span class="sc-video">▶</span>' : "") +
+              '<span class="sc-meta"><strong>' + esc(s.name) + "</strong>" + ago(s.taken_at) + "</span></button>";
+          }).join("");
+          wall.addEventListener("click", function (ev) {
+            var b = ev.target.closest(".story-card");
+            if (b) openLightbox(parseInt(b.dataset.i, 10));
+          });
+        }
+
+        var lb = null, cur = 0;
+        function openLightbox(i) {
+          cur = i;
+          if (!lb) {
+            lb = document.createElement("div");
+            lb.className = "story-lightbox";
+            lb.innerHTML = '<button class="slb-close" aria-label="關閉">×</button>' +
+              '<div class="slb-figure"><div class="slb-head"></div><div class="slb-media"></div>' +
+              '<button class="slb-nav slb-prev" aria-label="上一則">‹</button>' +
+              '<button class="slb-nav slb-next" aria-label="下一則">›</button></div>';
+            document.body.appendChild(lb);
+            lb.addEventListener("click", function (ev) {
+              if (ev.target === lb || ev.target.classList.contains("slb-close")) close();
+              else if (ev.target.classList.contains("slb-prev")) show(cur - 1);
+              else if (ev.target.classList.contains("slb-next")) show(cur + 1);
+            });
+            document.addEventListener("keydown", onKey);
+          }
+          lb.style.display = "flex";
+          document.body.style.overflow = "hidden";
+          show(i);
+        }
+        function onKey(ev) {
+          if (!lb || lb.style.display === "none") return;
+          if (ev.key === "Escape") close();
+          if (ev.key === "ArrowLeft") show(cur - 1);
+          if (ev.key === "ArrowRight") show(cur + 1);
+        }
+        function close() {
+          lb.style.display = "none";
+          document.body.style.overflow = "";
+        }
+        function show(i) {
+          cur = (i + flat.length) % flat.length;
+          var s = flat[cur];
+          lb.querySelector(".slb-head").innerHTML =
+            '<span class="who"><strong>' + esc(s.name) + '</strong><span class="sub">@' + esc(s.username) + " ・ " + ago(s.taken_at) + "</span></span>" +
+            '<a href="' + esc(s.ig_url) + '" rel="noopener" target="_blank">在 IG 開啟 ↗</a>';
+          lb.querySelector(".slb-media").innerHTML =
+            '<img src="' + esc(s.media) + '" alt="">' +
+            (s.is_video ? '<p class="slb-video-note">影片限動 — <a href="' + esc(s.ig_url) + '" rel="noopener" target="_blank">到 IG 觀看</a></p>' : "");
+        }
+      })
+      .catch(function () { if (wall) wall.innerHTML = '<p class="empty">限時動態載入失敗。</p>'; });
+  }
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {

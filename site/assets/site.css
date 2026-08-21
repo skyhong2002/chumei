@@ -65,6 +65,95 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .hero h1 { font-size: clamp(1.6rem, 3.2vw, 2.4rem); margin: 0 0 8px; line-height: 1.3; }
 .hero p { color: var(--color-text-secondary); margin: 0; max-width: var(--layout-reading, 720px); }
 
+/* ---------- IG 限時動態 ---------- */
+.story-strip {
+  display: flex; gap: 14px; overflow-x: auto; padding: 10px 2px 14px;
+  scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+}
+.story-item {
+  flex: 0 0 auto; width: 72px; border: none; background: none; padding: 0;
+  cursor: pointer; text-align: center; font-family: inherit;
+}
+.story-ring {
+  width: 64px; height: 64px; margin: 0 auto; border-radius: 50%;
+  padding: 3px; background: linear-gradient(135deg, var(--chumei-bamboo-text), var(--chumei-plum-strong));
+  position: relative;
+}
+.story-ring.ring-nthu { background: linear-gradient(135deg, var(--chumei-plum-strong), #D081E8); }
+.story-ring.ring-nycu { background: linear-gradient(135deg, #0045F2, #5A78FF); }
+.story-ring img {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+  border: 2.5px solid var(--color-surface); display: block;
+}
+.story-count {
+  position: absolute; bottom: -2px; right: -2px;
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: var(--color-surface); color: var(--color-text-secondary);
+  font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--color-border-subtle);
+}
+.story-name {
+  display: block; margin-top: 5px; font-size: 0.72rem; color: var(--color-text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.story-wall {
+  display: grid; gap: 14px; margin-top: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.story-card {
+  position: relative; border: none; padding: 0; cursor: pointer; font-family: inherit;
+  aspect-ratio: 9 / 16; border-radius: var(--radius-md); overflow: hidden;
+  background: var(--color-surface-soft);
+}
+.story-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.story-card .sc-meta {
+  position: absolute; inset: auto 0 0 0; padding: 24px 10px 8px; text-align: left;
+  background: linear-gradient(transparent, rgba(0,0,0,.72));
+  color: #fff; font-size: 0.78rem; line-height: 1.4;
+}
+.story-card .sc-meta strong { display: block; font-size: 0.85rem; }
+.story-card .sc-video {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(0,0,0,.55); color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem;
+}
+
+.story-lightbox {
+  position: fixed; inset: 0; z-index: 100; background: rgba(8,8,12,.92);
+  display: flex; align-items: center; justify-content: center;
+}
+.slb-figure { position: relative; max-height: 88vh; max-width: min(92vw, 460px); }
+.slb-figure img { max-height: 82vh; max-width: 100%; border-radius: 12px; display: block; }
+.slb-head {
+  display: flex; align-items: center; gap: 10px; color: #fff;
+  padding: 0 2px 10px; font-size: 0.9rem;
+}
+.slb-head .who { flex: 1; min-width: 0; }
+.slb-head strong { display: block; line-height: 1.3; }
+.slb-head .sub { color: rgba(255,255,255,.65); font-size: 0.78rem; }
+.slb-head a { color: #9db4ff; font-size: 0.82rem; white-space: nowrap; }
+.slb-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255,255,255,.14); color: #fff; font-size: 1.3rem;
+}
+.slb-prev { left: -56px; } .slb-next { right: -56px; }
+.slb-close {
+  position: absolute; top: 18px; right: 20px; border: none; background: none;
+  color: #fff; font-size: 1.8rem; cursor: pointer; width: 44px; height: 44px;
+}
+.slb-video-note {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: rgba(0,0,0,.6); color: #fff; padding: 10px 18px; border-radius: var(--radius-pill);
+  font-size: 0.9rem; white-space: nowrap;
+}
+.slb-video-note a { color: #9db4ff; }
+@media (max-width: 640px) {
+  .slb-prev { left: 8px; } .slb-next { right: 8px; }
+  .slb-nav { background: rgba(0,0,0,.4); }
+}
+
 /* ---------- filters ---------- */
 .filters {
   position: sticky; top: 0; z-index: 10;
