@@ -152,8 +152,10 @@
           ? '<img class="feed-avatar" src="' + esc(p.avatar) + '" alt="">'
           : '<span class="feed-avatar src-avatar-fallback av-' + esc(p.school) + '">' +
             esc((p.source_name || "？").replace(/^(清大|交大|陽明|國立)/, "").charAt(0)) + "</span>";
-        var head = '<div class="feed-head">' + avatar +
-          '<span class="feed-who"><strong>' + esc(p.source_name || "") + "</strong>" +
+        var orgHref = p.org_id ? '/org/' + p.org_id + '/' : null;
+        var head = '<div class="feed-head">' +
+          (orgHref ? '<a class="feed-org-link" href="' + orgHref + '" aria-label="' + esc(p.source_name || "") + ' 的單位頁">' + avatar + "</a>" : avatar) +
+          '<span class="feed-who"><strong>' + (orgHref ? '<a class="feed-org-link" href="' + orgHref + '">' + esc(p.source_name || "") + "</a>" : esc(p.source_name || "")) + "</strong>" +
           '<span class="feed-sub">' + esc(PLAT[p.platform] || p.platform) + " ・ " + esc(ago(p.posted_at)) +
           '<span class="chip chip-' + esc(p.school) + '">' + esc((data.labels.school || {})[p.school] || "") + "</span></span></span>" +
           (p.url ? '<a class="feed-orig" href="' + esc(p.url) + '" rel="noopener" target="_blank">原文 ↗</a>' : "") + "</div>";

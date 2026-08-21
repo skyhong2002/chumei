@@ -890,7 +890,7 @@ def source_page(events, entries):
     return org_pages(entries, events)
 
 
-def build_posts_data(events):
+def build_posts_data(events, sid_to_entry=None):
     """貼文河道 site/data/posts.json：每則含活動的來源貼文＋其抽出的活動。"""
     from chumei_lib import iter_inbox, AVATAR_DIR
     groups = {}
@@ -939,6 +939,7 @@ def build_posts_data(events):
             "org_type": it.get("org_type") or lead.get("organizer_type"),
             "text": text[:500] + ("…" if len(text) > 500 else ""),
             "image": image, "avatar": avatar,
+            "org_id": (sid_to_entry.get(sid) or {}).get("id") if sid_to_entry else None,
             "events": sorted(({"id": e["id"], "title": e["title"], "start_at": e["start_at"],
                                "all_day": e.get("all_day"), "campus": e.get("campus"),
                                "category": e.get("category"),
@@ -1038,7 +1039,7 @@ def main():
         (d / "index.html").write_text(detail_page(e, org=org, siblings=siblings))
 
     org_ids = source_page(events, entries)
-    build_posts_data(events)
+    build_posts_data(events, sid_to_entry)
 
     urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
