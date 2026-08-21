@@ -27,7 +27,7 @@ nthuphotoclub,清大攝影社,nthu,club,藝文,true,search result facebook.com/n
 nthuastro,清大天文社,nthu,club,學術,true,search result facebook.com/nthuastro; linktr.ee/Astroclub_nthu 同社團
 NthuStarKids,清華大學星空之子天文營,nthu,club,營隊,true,search result facebook.com/NthuStarKids; 天文社主辦營隊
 nthudmcc,清大數位媒體創作社,nthu,club,藝文,true,search result facebook.com/nthudmcc; IG 同名
-NTHUdramaclub,清華戲劇社,nthu,club,藝文,true,handle 來自搜尋結果 zh-tw.facebook.com/NTHUdramaclub; unverified
+NTHUdramaclub,清華戲劇社,nthu,club,藝文,false,handle 來自搜尋結果 zh-tw.facebook.com/NTHUdramaclub; unverified；2026-08 sweep：登入瀏覽器實測頁面已消失（另有倒社公告佐證），停用
 nthu.magic.club,清大魔術社,nthu,club,藝文,true,search result facebook.com/nthu.magic.club; 每年清交聯合慈善晚會(ACCUPASS 2024/2025)
 nthuaiyu,清華大學愛慾實務社,nthu,club,生活,true,search result facebook.com/nthuaiyu
 ghanaeco,清華大學國際志工迦納團,nthu,club,服務,true,search result facebook.com/ghanaeco
@@ -108,7 +108,7 @@ https://www.facebook.com/kgacamp2022,清大雄友會,nthu,club,綜合性,true,�
 https://www.facebook.com/nthuhkmsa/,清大港澳同學會,nthu,club,綜合性,true,FB粉專「清大港澳同學會 NTHU HKMAC」；清大全球事務處頁面亦列出
 https://www.facebook.com/nthu.math.stu/,清大數學系系學會,nthu,department,自治,true,搜尋結果顯示 FB 專頁「清華大學數學系系學會」
 https://www.facebook.com/nthumaterial/,清大材料系學會,nthu,department,自治,true,搜尋結果顯示 FB 專頁「國立清華大學材料系學會」
-https://www.facebook.com/QingDaHuaGongXiXueHui/,清大化學工程系系學會,nthu,department,自治,true,搜尋結果顯示 FB 專頁「國立清華大學化學工程系系學會」
+https://www.facebook.com/QingDaHuaGongXiXueHui/,清大化學工程系系學會,nthu,department,自治,false,2026-08 sweep：登入瀏覽器實測頁面已消失，停用
 https://www.facebook.com/DSPMTSA/,清大科技管理學院學士班系學會,nthu,department,自治,true,搜尋結果顯示 FB 專頁「國立清華大學科技管理學院學士班系學會」
 https://www.facebook.com/nthuclssa/,清大生命科學暨醫學院院學會,nthu,department,自治,true,對應名冊「生科系會」；FB 專頁「國立清華大學生命科學暨醫學院院學會」，另有官網 nthuclssa.wixsite.com
 https://www.facebook.com/nthugrad/,清大畢業生聯誼會,nthu,official,自治,true,搜尋結果顯示 FB 專頁「清大畢聯會」（nthugrad）
