@@ -11,6 +11,13 @@
 	</array>
 	<key>WorkingDirectory</key>
 	<string>/Users/skyhong/Projects/chumei</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/Users/skyhong/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
 	<key>StartInterval</key>
 	<integer>10800</integer>
 	<key>RunAtLoad</key>

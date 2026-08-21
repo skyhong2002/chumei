@@ -1,4 +1,4 @@
-"""竹梅 pipeline orchestrator：fetch → extract → build。
+"""竹梅 pipeline orchestrator：fetch → extract → build → Telegram。
 
 設計原則：單一來源掛掉不影響整輪；IG 一天最多跑一輪（cookie 額度是共用資源）。
 launchd 每 3 小時呼叫一次即可。
@@ -65,14 +65,16 @@ def main():
     results["map"] = run_step("map", ["build_map_data.py"])
     results["build"] = (results["map"] and run_step("build", ["build_site.py"])
                         and run_step("validate", ["validate_outputs.py"]))
+    if results["build"]:
+        results["telegram"] = run_step("telegram", ["publish_telegram.py"])
 
     state["last_run"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state["last_results"] = results
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps(state, indent=1))
 
-    # build 成功就算整輪成功；fetcher 局部失敗只記錄
-    return 0 if results.get("build") else 1
+    # fetcher 局部失敗只記錄；公開輸出與通知投遞需成功。
+    return 0 if results.get("build") and results.get("telegram", True) else 1
 
 
 if __name__ == "__main__":

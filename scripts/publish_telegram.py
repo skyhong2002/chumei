@@ -1,0 +1,281 @@
+"""Publish newly discovered Chumei events to the public Telegram channel.
+
+The first normal run creates a baseline from current upcoming events so enabling
+the publisher never floods a new channel with the existing catalogue.
+"""
+
+import argparse
+import html
+import json
+import sys
+import time
+from datetime import date, datetime
+from pathlib import Path
+
+import requests
+
+from chumei_lib import ROOT, TZ_TAIPEI, load_env, now_iso
+
+EVENTS_PATH = ROOT / "site" / "data" / "events.json"
+STATE_PATH = ROOT / "state" / "telegram.json"
+BASE_URL = "https://chumei.observe.tw"
+SCHOOL_LABEL = {"nthu": "清大", "nycu": "陽明交大", "both": "清大 × 交大", "external": "校外"}
+CAMPUS_LABEL = {
+    "nthu-main": "清大校本部",
+    "nthu-nanda": "清大南大校區",
+    "nycu-guangfu": "交大光復校區",
+    "nycu-boai": "交大博愛校區",
+    "nycu-yangming": "陽明校區",
+    "online": "線上",
+    "other": "其他地點",
+}
+
+
+class TelegramError(RuntimeError):
+    def __init__(self, message, error_code=None):
+        super().__init__(message)
+        self.error_code = error_code
+
+
+def load_events(path=EVENTS_PATH):
+    return json.loads(path.read_text())["events"]
+
+
+def load_state(path=STATE_PATH):
+    if not path.exists():
+        return None
+    state = json.loads(path.read_text())
+    state.setdefault("sent", {})
+    return state
+
+
+def save_state(state, path=STATE_PATH):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1))
+    tmp.replace(path)
+
+
+def eligible_events(events, today=None):
+    today = today or date.today().isoformat()
+    return [
+        event for event in events
+        if event.get("id")
+        and (event.get("start_at") or "")[:10] >= today
+        and event.get("status") != "rejected"
+    ]
+
+
+def pending_events(events, state, today=None):
+    sent = state.get("sent", {})
+    pending = [event for event in eligible_events(events, today) if event["id"] not in sent]
+    return sorted(pending, key=lambda event: (event.get("first_seen") or "", event["start_at"], event["id"]))
+
+
+def initialize_state(events, today=None):
+    ts = now_iso()
+    sent = {event["id"]: {"baselined_at": ts} for event in eligible_events(events, today)}
+    return {"version": 1, "initialized_at": ts, "sent": sent}
+
+
+def format_datetime(value, all_day=False):
+    if not value:
+        return "時間請見活動頁"
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    weekday = "一二三四五六日"[dt.weekday()]
+    result = f"{dt.month}/{dt.day}（{weekday}）"
+    if not all_day and (dt.hour, dt.minute) != (0, 0):
+        result += f" {dt:%H:%M}"
+    return result
+
+
+def event_location(event):
+    campus = CAMPUS_LABEL.get(event.get("campus"), "")
+    venue = (event.get("venue") or "").strip()
+    if campus and venue and campus not in venue:
+        return f"{campus} ・ {venue}"
+    return venue or campus or "地點請見活動頁"
+
+
+def compact(text, limit):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def format_event(event):
+    title = html.escape(compact(event.get("title"), 180))
+    school = html.escape(SCHOOL_LABEL.get(event.get("school"), event.get("school") or "校園活動"))
+    when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
+    location = html.escape(event_location(event))
+    organizer = html.escape(compact(event.get("organizer"), 120))
+    summary = html.escape(compact(event.get("summary"), 320))
+    lines = [f"📣 <b>{title}</b>", "", f"🏫 {school}", f"🗓 {when}", f"📍 {location}"]
+    if organizer:
+        lines.append(f"🎤 {organizer}")
+    if summary:
+        lines.extend(["", summary])
+    if (event.get("extraction") or {}).get("needs_review"):
+        lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
+    return "\n".join(lines)
+
+
+def is_silent_hour(now=None):
+    now = now or datetime.now(TZ_TAIPEI)
+    return now.hour >= 22 or now.hour < 8
+
+
+class TelegramClient:
+    def __init__(self, token, channel, session=None):
+        self.channel = channel
+        self.base = f"https://api.telegram.org/bot{token}"
+        self.session = session or requests.Session()
+
+    def call(self, method, payload, attempts=2):
+        last_error = None
+        for attempt in range(attempts):
+            try:
+                response = self.session.post(f"{self.base}/{method}", json=payload, timeout=30)
+                data = response.json()
+            except (requests.RequestException, ValueError) as exc:
+                last_error = TelegramError(f"{method} network/response error: {exc}")
+                if attempt + 1 < attempts:
+                    time.sleep(2)
+                    continue
+                raise last_error
+            if data.get("ok"):
+                return data["result"]
+            code = data.get("error_code")
+            description = data.get("description") or "unknown Telegram error"
+            retry_after = (data.get("parameters") or {}).get("retry_after")
+            last_error = TelegramError(f"{method} failed ({code}): {description}", code)
+            if attempt + 1 < attempts and (code == 429 or (code and code >= 500)):
+                time.sleep(min(int(retry_after or 2), 30))
+                continue
+            raise last_error
+        raise last_error
+
+    def check(self):
+        bot = self.call("getMe", {})
+        chat = self.call("getChat", {"chat_id": self.channel})
+        member = self.call("getChatMember", {"chat_id": self.channel, "user_id": bot["id"]})
+        if member.get("status") not in {"administrator", "creator"} or member.get("can_post_messages") is not True:
+            raise TelegramError("bot is not a channel administrator with can_post_messages")
+        return bot, chat
+
+    def send_event(self, event, silent=False):
+        detail_url = f"{BASE_URL}/event/{event['id']}/"
+        common = {
+            "chat_id": self.channel,
+            "parse_mode": "HTML",
+            "disable_notification": silent,
+            "reply_markup": {"inline_keyboard": [[{"text": "查看活動詳情", "url": detail_url}]]},
+        }
+        text = format_event(event)
+        poster = event.get("poster_image")
+        if poster:
+            photo = poster if poster.startswith("http") else BASE_URL + "/" + poster.lstrip("/")
+            try:
+                return self.call("sendPhoto", {**common, "photo": photo, "caption": text})
+            except TelegramError as exc:
+                if exc.error_code != 400:
+                    raise
+                print(f"telegram: photo rejected for {event['id']}; falling back to text", file=sys.stderr)
+        return self.call(
+            "sendMessage",
+            {**common, "text": text, "link_preview_options": {"is_disabled": True}},
+        )
+
+    def announce(self, text, silent=False):
+        return self.call(
+            "sendMessage",
+            {
+                "chat_id": self.channel,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_notification": silent,
+                "reply_markup": {"inline_keyboard": [[{"text": "瀏覽近期活動", "url": BASE_URL}]]},
+                "link_preview_options": {"is_disabled": True},
+            },
+        )
+
+
+def configured_client():
+    env = load_env()
+    enabled = env.get("CHUMEI_TELEGRAM_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if not enabled:
+        return None
+    token = env.get("CHUMEI_TELEGRAM_BOT_TOKEN", "").strip()
+    channel = env.get("CHUMEI_TELEGRAM_CHANNEL_ID", "").strip()
+    if not token or not channel:
+        raise TelegramError("Telegram is enabled but token/channel configuration is missing")
+    return TelegramClient(token, channel)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true", help="show pending events without sending or changing state")
+    parser.add_argument("--check", action="store_true", help="verify bot identity and channel publishing permission")
+    parser.add_argument("--announce", help="send a one-off HTML announcement instead of publishing events")
+    parser.add_argument("--silent", action="store_true", help="force silent delivery")
+    parser.add_argument("--max-messages", type=int, default=10)
+    args = parser.parse_args()
+
+    try:
+        client = configured_client()
+        if client is None:
+            print("telegram: disabled")
+            return 0
+        if args.check:
+            bot, chat = client.check()
+            print(f"telegram: OK (bot=@{bot.get('username')}, channel=@{chat.get('username')})")
+            return 0
+        silent = args.silent or is_silent_hour()
+        if args.announce is not None:
+            if args.dry_run:
+                print(f"telegram dry-run: announcement ({len(args.announce)} chars, silent={silent})")
+                return 0
+            message = client.announce(args.announce, silent=silent)
+            print(f"telegram: announcement sent (message_id={message['message_id']}, silent={silent})")
+            return 0
+
+        events = load_events()
+        state = load_state()
+        if state is None:
+            baseline = eligible_events(events)
+            if args.dry_run:
+                print(f"telegram dry-run: would baseline {len(baseline)} current upcoming events")
+                return 0
+            state = initialize_state(events)
+            save_state(state)
+            print(f"telegram: initialized baseline ({len(baseline)} upcoming events, 0 sent)")
+            return 0
+
+        pending = pending_events(events, state)
+        if args.dry_run:
+            print(f"telegram dry-run: {len(pending)} pending")
+            for event in pending[: args.max_messages]:
+                print(f"  {event['id']} {event.get('start_at')} {event.get('title')}")
+            return 0
+
+        sent_count = 0
+        for event in pending[: args.max_messages]:
+            message = client.send_event(event, silent=silent)
+            state["sent"][event["id"]] = {"sent_at": now_iso(), "message_id": message["message_id"]}
+            state["last_success_at"] = now_iso()
+            save_state(state)
+            sent_count += 1
+            print(f"telegram: sent {event['id']} (message_id={message['message_id']})")
+            if sent_count < min(len(pending), args.max_messages):
+                time.sleep(1)
+        print(f"telegram: OK ({sent_count} sent, {max(0, len(pending) - sent_count)} remaining, silent={silent})")
+        return 0
+    except (OSError, KeyError, json.JSONDecodeError, TelegramError) as exc:
+        print(f"telegram: FAILED: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
