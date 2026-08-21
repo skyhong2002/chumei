@@ -605,23 +605,29 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .src-none { font-size: 0.8rem; color: var(--color-text-muted); }
 .src-ev { text-align: right; font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .src-uncovered .src-ev { color: var(--color-text-muted); font-weight: 400; }
+.chip-m { display: none; }
 @media (max-width: 700px) {
-  /* compact：上行＝頭貼＋名稱＋場數，中行＝chips，下行＝連結＋更新 */
+  /* compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
   .src-row {
     grid-template-columns: 1fr auto;
-    grid-template-areas: "name ev" "chips chips" "links upd";
-    gap: 3px 10px; padding: 8px 2px;
+    grid-template-areas: "name ev" "links upd";
+    gap: 2px 10px; padding: 6px 2px;
   }
-  .src-c-name { grid-area: name; font-size: 0.88rem; gap: 8px; }
-  .src-c-chips { grid-area: chips; padding-left: 38px; }
-  .src-links { grid-area: links; justify-content: flex-start; padding-left: 38px; gap: 12px; }
-  .src-upd { grid-area: upd; font-size: 0.72rem; }
-  .src-ev { grid-area: ev; font-size: 0.8rem; }
+  .src-c-name { grid-area: name; font-size: 0.85rem; gap: 8px; }
+  .src-c-chips { display: none; }
+  .chip-m {
+    display: inline-flex; flex-shrink: 0; align-items: center;
+    font-size: 0.66rem; font-weight: 600; line-height: 1;
+    padding: 3px 6px; border-radius: 999px; min-height: 0; height: auto;
+  }
+  .src-links { grid-area: links; justify-content: flex-start; padding-left: 32px; gap: 10px; }
+  .src-upd { grid-area: upd; font-size: 0.68rem; }
+  .src-ev { grid-area: ev; font-size: 0.78rem; }
   .src-id { display: none; }
-  .src-avatar { width: 28px; height: 28px; }
-  .src-c-chips .chip-extra { display: none; }
-  .src-link { font-size: 0.78rem; }
-  .src-none { font-size: 0.74rem; }
+  .src-avatar { width: 24px; height: 24px; }
+  .src-avatar-fallback { font-size: 0.72rem; }
+  .src-link { font-size: 0.74rem; }
+  .src-none { font-size: 0.72rem; }
 }
 
 /* ---------- org pages ---------- */
