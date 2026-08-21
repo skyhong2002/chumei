@@ -291,6 +291,53 @@ def format_event(event):
     return format_event_messages(event)[0]
 
 
+def group_pending_by_post(pending):
+    """同一則貼文的多場活動合併成一組，一組發一則訊息。"""
+    groups, order = {}, []
+    for event in pending:
+        src = event.get("source") or {}
+        key = (src.get("source_id"), src.get("post_id"))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(event)
+    return [groups[k] for k in order]
+
+
+def format_post_messages(group, first_limit=4096):
+    """一則來源貼文（可含多場活動）→ 訊息串。單場活動沿用原格式。"""
+    if len(group) == 1:
+        return format_event_messages(group[0], first_limit=first_limit)
+    lead = group[0]
+    lines = []
+    source_line = format_source(lead)
+    if source_line:
+        lines.append(source_line)
+    lines.append(f"這則貼文包含 <b>{len(group)}</b> 場活動：")
+    for event in group:
+        title = html.escape(compact(event.get("title"), 120))
+        url = html.escape(f"{BASE_URL}/event/{event['id']}/", quote=True)
+        when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
+        loc = format_location(event)
+        lines.extend(["", f'▸ <a href="{url}"><b>{title}</b></a>', f"　🗓 {when}", f"　{loc}"])
+    if any((e.get("extraction") or {}).get("needs_review") for e in group):
+        lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
+    header = "\n".join(lines)
+    original_chunks = split_text(lead.get("original_text"))
+    if not original_chunks:
+        return [header]
+    first_block = f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"
+    if rendered_length(header + "\n\n" + first_block) <= first_limit:
+        messages = [header + "\n\n" + first_block]
+        remaining = original_chunks[1:]
+    else:
+        messages = [header]
+        remaining = original_chunks
+    for chunk in remaining:
+        messages.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
+    return messages
+
+
 def is_silent_hour(now=None):
     now = now or datetime.now(TZ_TAIPEI)
     return now.hour >= 22 or now.hour < 8
@@ -334,8 +381,9 @@ class TelegramClient:
             raise TelegramError("bot is not a channel administrator with can_post_messages")
         return bot, chat
 
-    def send_event(self, event, silent=False, start_part=0, on_sent=None):
-        messages = format_event_messages(event, first_limit=TELEGRAM_CAPTION_LIMIT)
+    def send_post(self, group, silent=False, start_part=0, on_sent=None):
+        event = group[0]
+        messages = format_post_messages(group, first_limit=TELEGRAM_CAPTION_LIMIT)
         results = []
         for index, text in enumerate(messages[start_part:], start=start_part):
             if index == 0:
@@ -362,6 +410,9 @@ class TelegramClient:
             if index + 1 < len(messages):
                 time.sleep(1)
         return results
+
+    def send_event(self, event, silent=False, start_part=0, on_sent=None):
+        return self.send_post([event], silent=silent, start_part=start_part, on_sent=on_sent)
 
     def announce(self, text, silent=False):
         return self.call(
@@ -429,17 +480,20 @@ def main():
             return 0
 
         pending = pending_events(events, state)
+        groups = group_pending_by_post(pending)
         if args.dry_run:
-            print(f"telegram dry-run: {len(pending)} pending")
-            for event in pending[: args.max_messages]:
-                parts = len(format_event_messages(event))
-                print(f"  {event['id']} {event.get('start_at')} {event.get('title')} ({parts} message part(s))")
+            print(f"telegram dry-run: {len(pending)} pending events in {len(groups)} post group(s)")
+            for group in groups[: args.max_messages]:
+                parts = len(format_post_messages(group))
+                titles = "；".join(compact(e.get("title"), 40) for e in group)
+                print(f"  [{len(group)} 場/{parts} part(s)] {group[0]['id']} {titles}")
             return 0
 
         sent_count = 0
-        for event in pending[: args.max_messages]:
+        for group in groups[: args.max_messages]:
+            lead = group[0]
             delivery = state["sent"].setdefault(
-                event["id"], {"started_at": now_iso(), "message_ids": []}
+                lead["id"], {"started_at": now_iso(), "message_ids": []}
             )
             delivery.setdefault("message_ids", [])
 
@@ -447,22 +501,26 @@ def main():
                 delivery["message_ids"].append(message["message_id"])
                 save_state(state)
 
-            client.send_event(
-                event,
+            client.send_post(
+                group,
                 silent=silent,
                 start_part=len(delivery["message_ids"]),
                 on_sent=record_part,
             )
-            delivery["sent_at"] = now_iso()
-            delivery["status"] = "sent"
-            delivery["message_id"] = delivery["message_ids"][0]
-            state["last_success_at"] = now_iso()
+            stamp = now_iso()
+            for event in group:  # 同貼文的所有活動共享發送狀態
+                rec = state["sent"].setdefault(event["id"], {"started_at": stamp})
+                rec["sent_at"] = stamp
+                rec["status"] = "sent"
+                rec["message_id"] = delivery["message_ids"][0]
+                rec.setdefault("message_ids", delivery["message_ids"])
+            state["last_success_at"] = stamp
             save_state(state)
             sent_count += 1
-            print(f"telegram: sent {event['id']} (message_ids={delivery['message_ids']})")
-            if sent_count < min(len(pending), args.max_messages):
+            print(f"telegram: sent post {lead['id']} (+{len(group)-1} merged, message_ids={delivery['message_ids']})")
+            if sent_count < min(len(groups), args.max_messages):
                 time.sleep(1)
-        print(f"telegram: OK ({sent_count} sent, {max(0, len(pending) - sent_count)} remaining, silent={silent})")
+        print(f"telegram: OK ({sent_count} posts sent, {max(0, len(groups) - sent_count)} post(s) remaining, silent={silent})")
         return 0
     except (OSError, KeyError, json.JSONDecodeError, TelegramError) as exc:
         print(f"telegram: FAILED: {exc}", file=sys.stderr)

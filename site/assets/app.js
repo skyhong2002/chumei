@@ -45,6 +45,7 @@
   var calEl = document.getElementById("cal-months");
   initStories();
   initSources();
+  initFeed();
   if (!listEl && !calEl) return;
 
   fetch("/data/events.json")
@@ -58,6 +59,122 @@
       var el = listEl || calEl;
       el.innerHTML = '<p class="empty">活動資料載入失敗，請稍後再試。</p>';
     });
+
+  // ---- 首頁貼文河道 ----
+  function initFeed() {
+    var feed = document.getElementById("post-feed");
+    if (!feed) return;
+    var PLAT = { instagram: "IG", facebook: "FB", threads: "Threads", x: "X", bulletin: "公告", api: "官方" };
+
+    fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
+      var posts = data.posts;
+      var state = { school: "all", platform: "all", q: "" };
+      var params = new URLSearchParams(location.search);
+      Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
+
+      var groups = {};
+      function chips(id, options, key) {
+        var host = document.getElementById(id);
+        if (!host) return;
+        groups[key] = { options: options, buttons: {} };
+        options.forEach(function (opt) {
+          var b = document.createElement("button");
+          b.className = "fchip";
+          b.dataset.value = opt[0];
+          b.innerHTML = '<span class="fchip-label">' + esc(opt[1]) + '</span><span class="fchip-count" aria-hidden="true"></span>';
+          b.setAttribute("aria-pressed", String(state[key] === opt[0]));
+          groups[key].buttons[opt[0]] = b;
+          b.addEventListener("click", function () {
+            state[key] = opt[0];
+            host.querySelectorAll(".fchip").forEach(function (x) {
+              x.setAttribute("aria-pressed", String(x.dataset.value === opt[0]));
+            });
+            render();
+          });
+          host.appendChild(b);
+        });
+      }
+      chips("pf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
+      chips("pf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["bulletin", "公告"]], "platform");
+
+      var search = document.getElementById("search");
+      if (search) {
+        search.value = state.q;
+        search.addEventListener("input", function () { state.q = search.value.trim(); render(); });
+      }
+
+      function matches(p, ok, ov) {
+        function v(k) { return ok === k ? ov : state[k]; }
+        if (v("school") !== "all" && p.school !== v("school") && !(v("school") !== "both" && p.school === "both")) return false;
+        if (v("platform") !== "all" && p.platform !== v("platform")) return false;
+        if (state.q) {
+          var hay = ((p.source_name || "") + " " + (p.text || "") + " " +
+            p.events.map(function (e) { return e.title; }).join(" ")).toLowerCase();
+          if (hay.indexOf(state.q.toLowerCase()) === -1) return false;
+        }
+        return true;
+      }
+
+      function ago(iso) {
+        var ms = Date.now() - new Date(iso).getTime();
+        var h = ms / 36e5;
+        if (h < 1) return Math.max(1, Math.round(h * 60)) + " 分鐘前";
+        if (h < 24) return Math.round(h) + " 小時前";
+        var d = new Date(iso);
+        return (d.getMonth() + 1) + "/" + d.getDate();
+      }
+
+      function evChip(e) {
+        var d = new Date(e.start_at);
+        var when = (d.getMonth() + 1) + "/" + d.getDate() +
+          (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
+        return '<a class="feed-ev" href="/event/' + e.id + '/">🗓 ' + esc(when) + "｜" + esc(e.title) + "</a>";
+      }
+
+      function row(p) {
+        var avatar = p.avatar
+          ? '<img class="feed-avatar" src="' + esc(p.avatar) + '" alt="">'
+          : '<span class="feed-avatar src-avatar-fallback av-' + esc(p.school) + '">' +
+            esc((p.source_name || "？").replace(/^(清大|交大|陽明|國立)/, "").charAt(0)) + "</span>";
+        var head = '<div class="feed-head">' + avatar +
+          '<span class="feed-who"><strong>' + esc(p.source_name || "") + "</strong>" +
+          '<span class="feed-sub">' + esc(PLAT[p.platform] || p.platform) + " ・ " + esc(ago(p.posted_at)) +
+          '<span class="chip chip-' + esc(p.school) + '">' + esc((data.labels.school || {})[p.school] || "") + "</span></span></span>" +
+          (p.url ? '<a class="feed-orig" href="' + esc(p.url) + '" rel="noopener" target="_blank">原文 ↗</a>' : "") + "</div>";
+        var body = '<div class="feed-body">' +
+          (p.text ? '<p class="feed-text">' + esc(p.text) + "</p>" : "") +
+          (p.image ? '<img class="feed-img" src="' + esc(p.image) + '" alt="" loading="lazy">' : "") + "</div>";
+        var evs = '<div class="feed-evs">' + p.events.map(evChip).join("") + "</div>";
+        return '<article class="feed-post">' + head + body + evs + "</article>";
+      }
+
+      var shown = 30;
+      function render(more) {
+        var list = posts.filter(function (p) { return matches(p); });
+        if (!more) shown = 30;
+        document.getElementById("feed-count").textContent = "共 " + list.length + " 則活動貼文。";
+        feed.innerHTML = list.slice(0, shown).map(row).join("") +
+          (list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + " 則）</button>" : "") ||
+          '<p class="empty">沒有符合的貼文。</p>';
+        Object.keys(groups).forEach(function (key) {
+          groups[key].options.forEach(function (opt) {
+            var b = groups[key].buttons[opt[0]];
+            if (b) b.querySelector(".fchip-count").textContent =
+              String(posts.filter(function (p) { return matches(p, key, opt[0]); }).length);
+          });
+        });
+        var qs = new URLSearchParams();
+        Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
+        history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+      }
+      feed.addEventListener("click", function (ev) {
+        if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); }
+      });
+      render();
+    }).catch(function () {
+      feed.innerHTML = '<p class="empty">貼文載入失敗。</p>';
+    });
+  }
 
   // ---- /source/ 機構名錄（表格＋篩選） ----
   function initSources() {

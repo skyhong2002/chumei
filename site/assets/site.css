@@ -667,3 +667,42 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .cal-cell.cal-empty { background: none; border: none; min-height: 0; }
 :root[data-theme="dark"] .cal-cell.cal-empty { background: none; border: none; }
+
+/* ---------- 貼文河道 ---------- */
+.post-feed { max-width: 680px; display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+.feed-post {
+  background: var(--color-surface); border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg); padding: 14px 16px;
+}
+.feed-head { display: flex; align-items: center; gap: 10px; }
+.feed-avatar {
+  width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--color-border-subtle); background: var(--color-surface-soft);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.feed-who { min-width: 0; flex: 1; display: flex; flex-direction: column; line-height: 1.35; }
+.feed-who strong { font-size: 0.94rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-sub { font-size: 0.76rem; color: var(--color-text-muted); display: flex; gap: 6px; align-items: center; }
+.feed-orig { font-size: 0.8rem; white-space: nowrap; }
+.feed-body { margin-top: 10px; display: flex; gap: 12px; }
+.feed-text {
+  margin: 0; font-size: 0.9rem; line-height: 1.65; flex: 1; min-width: 0;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.feed-img {
+  width: 92px; height: 92px; border-radius: var(--radius-md); object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--color-border-subtle);
+}
+.feed-evs { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.feed-ev {
+  font-size: 0.85rem; font-weight: 500; padding: 7px 12px;
+  background: var(--color-surface-soft); border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.feed-ev:hover { background: var(--chumei-bamboo-surface); text-decoration: none; }
+.feed-more { margin: 8px auto; display: block; }
+@media (max-width: 640px) {
+  .feed-post { padding: 12px; }
+  .feed-img { width: 72px; height: 72px; }
+}

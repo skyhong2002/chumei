@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>竹梅活動觀測站｜清大×交大校園活動</title>
+<title>活動總覽｜竹梅活動觀測站</title>
 <meta name="description" content="竹梅活動觀測站彙整清華大學與陽明交通大學的校園活動：演講、社團、表演、工作坊、市集，一站看完，支援 RSS 與行事曆訂閱。">
-<link rel="canonical" href="https://chumei.observe.tw/">
-<meta property="og:title" content="竹梅活動觀測站｜清大×交大校園活動">
+<link rel="canonical" href="https://chumei.observe.tw/events/">
+<meta property="og:title" content="活動總覽｜竹梅活動觀測站">
 <meta property="og:description" content="清交校園活動一站看完：校方公告＋社團 IG 動態，支援 RSS 與行事曆訂閱。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="竹梅活動觀測站">
@@ -33,16 +33,40 @@
 </header>
 <main>
   <section class="hero">
-    <h1>這禮拜，校園裡有什麼？</h1>
-    <p>清大與陽明交大的活動貼文河道——社團 IG、FB、公告新貼文即時彙整。<span id="feed-count" aria-live="polite"></span></p>
+    <h1>活動總覽</h1>
+    <p>竹梅自動彙整清大與陽明交大的公開活動——校方公告、社團 IG 都在這裡。<span id="count" aria-live="polite"></span></p>
   </section>
-  <section id="story-strip" class="story-strip" hidden aria-label="社團限時動態"></section>
-  <section class="filters" aria-label="貼文篩選">
-    <div class="filter-row"><span class="label">學校</span><span id="pf-school" class="fgroup"></span>
-      <span class="search-hit"><input id="search" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋貼文"></span></div>
-    <div class="filter-row"><span class="label">平台</span><span id="pf-platform" class="fgroup"></span></div>
+  <section class="filters" aria-label="活動篩選">
+    <div class="filter-row"><span class="label">時間</span><span id="f-time" class="fgroup"></span>
+      <label class="search-hit"><input id="search" type="search" placeholder="搜尋活動、社團、地點…" aria-label="搜尋活動"></label>
+    </div>
+    <details id="more-filters">
+      <summary>更多篩選</summary>
+      <div class="filter-row"><span class="label">學校</span><span id="f-school" class="fgroup"></span></div>
+      <div class="filter-row"><span class="label">校區</span><span id="f-campus" class="fgroup"></span></div>
+      <div class="filter-row"><span class="label">類型</span><span id="f-cat" class="fgroup"></span></div>
+      <div class="filter-row"><span class="label">主辦</span><span id="f-org" class="fgroup"></span></div>
+    </details>
   </section>
-  <div id="post-feed" class="post-feed" aria-label="貼文河道"></div>
+  <section id="map-view" class="results-section" aria-labelledby="map-heading">
+    <div class="section-head">
+      <h2 id="map-heading">活動地圖</h2>
+      <span id="map-count" class="result-count"></span>
+    </div>
+    <div id="map"></div>
+    <p id="map-note" class="map-note"></p>
+  </section>
+  <section class="results-section" aria-labelledby="list-heading">
+    <div class="section-head">
+      <h2 id="list-heading">活動</h2>
+      <span id="list-count" class="result-count"></span>
+      <span class="view-toggle" role="group" aria-label="活動顯示方式">
+        <button id="mode-list" class="fchip" aria-pressed="false">列表</button>
+        <button id="mode-cards" class="fchip" aria-pressed="false">卡片</button>
+      </span>
+    </div>
+    <div id="event-list" class="grid"></div>
+  </section>
 </main>
 <footer class="site-footer">
   <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>

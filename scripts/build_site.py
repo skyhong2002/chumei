@@ -416,7 +416,8 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <header class="site-header">
   <a class="brand" href="/"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a>
   <nav class="site-nav">
-    <a href="/">活動</a>
+    <a href="/">最新</a>
+    <a href="/events/">活動</a>
     <a href="/calendar/">日曆</a>
     <a href="/stories/">限動</a>
     <a href="/subscribe/">訂閱</a>
@@ -768,6 +769,56 @@ def source_page(events):
         content, canonical=f"{BASE_URL}/source/"))
 
 
+def build_posts_data(events):
+    """貼文河道 site/data/posts.json：每則含活動的來源貼文＋其抽出的活動。"""
+    from chumei_lib import iter_inbox, AVATAR_DIR
+    groups = {}
+    for e in events:
+        src = e["source"]
+        groups.setdefault((src["source_id"], src["post_id"]), []).append(e)
+
+    inbox = {}
+    for it in iter_inbox():
+        inbox[(it["source_id"], it["post_id"])] = it
+
+    posts = []
+    for key, evs in groups.items():
+        it = inbox.get(key)
+        sid, pid = key
+        lead = evs[0]
+        if it is None:  # NYCU LIFE API 等結構化來源沒有貼文原文
+            it = {"source_name": lead.get("organizer"), "platform": lead["source"]["platform"],
+                  "school": lead.get("school"), "org_type": lead.get("organizer_type"),
+                  "url": lead["source"].get("url"), "posted_at": lead.get("first_seen") or lead["start_at"],
+                  "text": lead.get("summary") or ""}
+        avatar = None
+        for prefix in ("ig_", "threads_", "fb_", "x_"):
+            if sid.startswith(prefix) and (AVATAR_DIR / f"{sid}.jpg").exists():
+                avatar = f"/assets/avatars/{sid}.jpg"
+                break
+        image = next((e.get("cover_image") or e.get("poster_image") for e in evs
+                      if e.get("cover_image") or e.get("poster_image")), None)
+        text = re.sub(r"\s+", " ", it.get("text") or "").strip()
+        posts.append({
+            "source_id": sid, "post_id": pid,
+            "source_name": it.get("source_name"), "platform": it.get("platform"),
+            "school": it.get("school") or lead.get("school"),
+            "url": it.get("url"), "posted_at": it.get("posted_at"),
+            "text": text[:400] + ("…" if len(text) > 400 else ""),
+            "image": image, "avatar": avatar,
+            "events": sorted(({"id": e["id"], "title": e["title"], "start_at": e["start_at"],
+                               "all_day": e.get("all_day"), "campus": e.get("campus"),
+                               "venue": e.get("venue")} for e in evs), key=lambda x: x["start_at"]),
+        })
+    posts.sort(key=lambda p: p.get("posted_at") or "", reverse=True)
+    posts = posts[:200]
+    (SITE / "data").mkdir(parents=True, exist_ok=True)
+    (SITE / "data" / "posts.json").write_text(json.dumps(
+        {"generated_at": now_iso(), "posts": posts,
+         "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL}}, ensure_ascii=False))
+    print(f"posts: {len(posts)} event-posts in feed")
+
+
 def main():
     events = dedupe(apply_overrides(load_events()))
     events = [e for e in events if e.get("start_at")]
@@ -806,8 +857,9 @@ def main():
         (d / "index.html").write_text(detail_page(e))
 
     org_ids = source_page(events)
+    build_posts_data(events)
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/"] + \
+    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
            [f"{BASE_URL}/org/{i}/" for i in (org_ids or [])]
     (SITE / "sitemap.xml").write_text(
