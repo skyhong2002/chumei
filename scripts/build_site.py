@@ -202,7 +202,8 @@ def attach_reg_status(events):
     import re as _re
     FREE_KW = ("免報名", "自由入場", "自由參加", "無需報名", "不須報名", "不需報名", "免費入場")
     NEED_KW = ("報名連結", "報名表", "報名網址", "報名截止", "請報名", "須報名", "需報名", "填寫表單", "購票", "售票")
-    PAID_KW = ("購票", "售票", "票價", "報名費", "收費")
+    PAID_RE = _re.compile(r"(?:報名費|入場費|門票|票價|收費)[^。\n]{0,10}?(?:NT\$|\$)?\s*\d+\s*元?|購票|售票")
+    BENEFIT_RE = _re.compile(r"(?:補助|獎金|首獎|貳獎|參獎|獎品|回饋|折抵|抵用)[^。\n]{0,12}?\d+\s*元")
     n_reg = n_fee = 0
     for e in events:
         text = (e.get("summary") or "") + (e.get("description") or "")
@@ -219,11 +220,13 @@ def attach_reg_status(events):
             e["reg"] = None
 
         price = (e.get("price") or "").strip()
+        # 補助/獎金的金額是給你錢，不是收費——先剔除再判斷
+        fee_text = BENEFIT_RE.sub("", text)
         if price:
             e["fee"] = "free" if ("免費" in price or price.lower() == "free") else "paid"
         elif "免費" in text:
             e["fee"] = "free"
-        elif any(k in text for k in PAID_KW) or _re.search(r"(?:NT\$|\$|新台幣)\s*\d+|\d+\s*元", text):
+        elif PAID_RE.search(fee_text):
             e["fee"] = "paid"
         else:
             e["fee"] = None
