@@ -40,7 +40,16 @@ def load_events():
     events = []
     nl = ROOT / "state" / "nycu_life_activities.json"
     if nl.exists():
-        events += json.loads(nl.read_text())
+        nl_events = json.loads(nl.read_text())
+        # first_seen 用 seen-state 的首次收錄時間，否則貼文時間每次 build 都會被蓋成現在
+        seen_path = ROOT / "state" / "seen" / "nycu-life-api.json"
+        seen = json.loads(seen_path.read_text()) if seen_path.exists() else {}
+        for ev in nl_events:
+            pid = (ev.get("source") or {}).get("post_id")
+            ts = seen.get(f"nycu_life_api\t{pid}")
+            if ts:
+                ev.setdefault("first_seen", ts)
+        events += nl_events
     for path in sorted(EXTRACT_DIR.glob("*.json")):
         for pid, rec in json.loads(path.read_text()).items():
             for ev in rec.get("events", []):
