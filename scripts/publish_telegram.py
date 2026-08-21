@@ -29,6 +29,14 @@ CAMPUS_LABEL = {
     "online": "線上",
     "other": "其他地點",
 }
+PLATFORM_LABEL = {
+    "facebook": "Facebook",
+    "instagram": "Instagram",
+    "bulletin": "官方網站",
+    "api": "API",
+    "rss": "RSS",
+    "web": "網站",
+}
 
 
 class TelegramError(RuntimeError):
@@ -41,8 +49,8 @@ def load_events(path=EVENTS_PATH):
     return json.loads(path.read_text())["events"]
 
 
-def load_original_texts(inbox_dir=INBOX_DIR):
-    """Return the newest raw inbox text keyed by (source_id, post_id)."""
+def load_source_records(inbox_dir=INBOX_DIR):
+    """Return the newest raw inbox record keyed by (source_id, post_id)."""
     records = {}
     if not inbox_dir.exists():
         return {}
@@ -54,13 +62,21 @@ def load_original_texts(inbox_dir=INBOX_DIR):
                     continue
                 item = json.loads(line)
                 key = (str(item.get("source_id") or ""), str(item.get("post_id") or ""))
-                text = str(item.get("text") or "").strip()
-                if not all(key) or not text:
+                if not all(key):
                     continue
                 fetched_at = item.get("fetched_at") or ""
                 if key not in records or fetched_at >= records[key][0]:
-                    records[key] = (fetched_at, text)
+                    records[key] = (fetched_at, {
+                        "text": str(item.get("text") or "").strip(),
+                        "source_name": str(item.get("source_name") or "").strip(),
+                        "platform": str(item.get("platform") or "").strip(),
+                    })
     return {key: value[1] for key, value in records.items()}
+
+
+def load_original_texts(inbox_dir=INBOX_DIR):
+    """Backward-compatible raw-text view used by callers and tests."""
+    return {key: record["text"] for key, record in load_source_records(inbox_dir).items() if record["text"]}
 
 
 def attach_original_texts(events, originals):
@@ -68,6 +84,17 @@ def attach_original_texts(events, originals):
         source = event.get("source") or {}
         key = (str(source.get("source_id") or ""), str(source.get("post_id") or ""))
         event["original_text"] = originals.get(key) or event.get("description") or event.get("summary") or ""
+    return events
+
+
+def attach_source_context(events, records):
+    for event in events:
+        source = event.get("source") or {}
+        key = (str(source.get("source_id") or ""), str(source.get("post_id") or ""))
+        record = records.get(key) or {}
+        event["original_text"] = record.get("text") or event.get("description") or event.get("summary") or ""
+        event["source_name"] = record.get("source_name") or source.get("source_name") or ""
+        event["source_platform"] = record.get("platform") or source.get("platform") or ""
     return events
 
 
@@ -139,6 +166,37 @@ def compact(text, limit):
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+def formal_source_name(name):
+    name = str(name or "").strip()
+    if name.startswith("交大公告-"):
+        return "國立陽明交通大學校園公告－" + name.removeprefix("交大公告-")
+    replacements = (
+        ("陽明交大", "國立陽明交通大學"),
+        ("交大", "國立陽明交通大學"),
+        ("清華大學", "國立清華大學"),
+        ("清大", "國立清華大學"),
+    )
+    for prefix, formal in replacements:
+        if name.startswith(prefix):
+            return formal + name[len(prefix):]
+    return name
+
+
+def format_source(event):
+    source = event.get("source") or {}
+    name = formal_source_name(event.get("source_name"))
+    if not name:
+        name = str(source.get("source_id") or "").strip()
+    platform = event.get("source_platform") or source.get("platform") or ""
+    platform = PLATFORM_LABEL.get(platform.lower(), platform)
+    if not name:
+        return ""
+    label = html.escape(compact(name, 180))
+    if platform:
+        label += f" ({html.escape(compact(platform, 40))})"
+    return f"🔗 <b>來源</b>：{label}"
+
+
 def split_text(text, limit=2500):
     """Split a long original post without discarding any non-whitespace text."""
     remaining = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -169,6 +227,9 @@ def format_event_messages(event):
     lines = [f'📣 <a href="{safe_detail_url}"><b>{title}</b></a>', "", f"🏫 {school}", f"🗓 {when}", f"📍 {location}"]
     if organizer:
         lines.append(f"🎤 {organizer}")
+    source_line = format_source(event)
+    if source_line:
+        lines.append(source_line)
     if summary:
         lines.extend(["", "📝 <b>活動摘要</b>", summary])
     if (event.get("extraction") or {}).get("needs_review"):
@@ -322,7 +383,7 @@ def main():
             print(f"telegram: announcement sent (message_id={message['message_id']}, silent={silent})")
             return 0
 
-        events = attach_original_texts(load_events(), load_original_texts())
+        events = attach_source_context(load_events(), load_source_records())
         state = load_state()
         if state is None:
             baseline = eligible_events(events)
