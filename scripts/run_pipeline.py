@@ -54,6 +54,13 @@ def main():
         else:
             print(f"instagram: skipped (last run {(time.time()-last_ig)/3600:.1f}h ago)")
 
+        # FB 走 Apify 按結果計費，一天一輪就好
+        fb_script = ROOT / "scripts" / "fetch_facebook.py"
+        last_fb = state.get("last_fb_run", 0)
+        if fb_script.exists() and (time.time() - last_fb) > IG_MIN_INTERVAL_H * 3600:
+            results["facebook"] = run_step("facebook", ["fetch_facebook.py", "--limit", "5"])
+            state["last_fb_run"] = time.time()
+
     results["extract"] = run_step("extract", ["extract_events.py"])
     results["build"] = run_step("build", ["build_site.py"]) and run_step("validate", ["validate_outputs.py"])
 
