@@ -24,7 +24,10 @@ EXTRACT_DIR = ROOT / "state" / "extraction"
 
 SYSTEM_PROMPT = """你是「竹梅」（清大＋交大校園活動聚合站）的資料抽取引擎。輸入是一則校園社群貼文或公告（含海報圖片），你要判斷它是否在宣傳「有明確時間的實體或線上活動」，並抽出結構化欄位。
 
-輸出 JSON 物件：{"is_event": bool, "events": [Event, ...]}
+輸出 JSON 物件：{"is_event": bool, "events": [Event, ...], "recurrings": [Recurring, ...]}
+Recurring＝**例行時段**（每週固定的社課/團練/讀書會）：{"title": "社課", "weekday": 1-7（一=1…日=7）, "time": "19:00" 或 null, "venue": 地點或 null, "note": 補充或 null}。
+「每週二 19:00 社課」這類**週期性**資訊放 recurrings、不要放 events；但貼文若同時寫了特定日期的場次（如「第一堂 9/9」），該場次照樣輸出成 Event。
+recurrings 門檻：原文必須**明確寫出**確切時間（幾點）和地點，缺一就不要輸出，禁止推算或猜測。沒有就輸出空陣列。
 非活動（純心得、招募幹部無活動時間、商品販售、政令宣導、活動回顧/花絮）→ {"is_event": false, "events": []}。
 一則貼文可含多場活動（例如社課系列、初選＋決賽）就輸出多個 Event，但同活動多場次若間隔規律可只留最近一場並在 description 註明。
 
@@ -273,9 +276,21 @@ def process_item(env, item, lock, caches):
             },
             "status": "review" if needs_review else "published",
         })
+    recurrings = []
+    for rc in (parsed.get("recurrings") or []):
+        try:
+            wd = int(rc.get("weekday"))
+        except (TypeError, ValueError):
+            continue
+        # 使用者要求：確切時間＋地點都有才算，不能推算
+        if 1 <= wd <= 7 and rc.get("title") and rc.get("time") and rc.get("venue"):
+            recurrings.append({"title": rc["title"], "weekday": wd, "time": rc.get("time"),
+                               "venue": rc.get("venue"), "note": rc.get("note"),
+                               "source": {"platform": item["platform"], "url": item["url"],
+                                          "source_id": source_id, "post_id": post_id}})
     return source_id, post_id, {
         "prompt_version": PROMPT_VERSION, "ts": now_iso(),
-        "model": model_name(env), "events": events,
+        "model": model_name(env), "events": events, "recurrings": recurrings,
     }
 
 

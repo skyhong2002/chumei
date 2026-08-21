@@ -253,6 +253,18 @@ def event_photo_url(event):
     return BASE_URL + "/" + cover.lstrip("/")
 
 
+WEEKDAY_ZH = "一二三四五六日"
+
+
+def format_recurrings_line(event):
+    """同貼文宣告的例行時段（定期社課），附一行就好，保持訊息簡潔。"""
+    recs = event.get("post_recurrings") or []
+    parts = [f"每週{WEEKDAY_ZH[r['weekday'] - 1]} {r['time']} {r['title']}"
+             + (f"（{r['venue']}）" if r.get("venue") else "")
+             for r in recs if r.get("weekday") and r.get("time")]
+    return "📅 例行時段：" + html.escape("；".join(parts)) if parts else None
+
+
 def format_event_messages(event, first_limit=4096):
     detail_url = f"{BASE_URL}/event/{event['id']}/"
     title = html.escape(compact(event.get("title"), 180))
@@ -265,6 +277,9 @@ def format_event_messages(event, first_limit=4096):
     if source_line:
         lines.append(source_line)
     lines.extend([f"🗓 {when}", format_location(event)])
+    rec_line = format_recurrings_line(event)
+    if rec_line:
+        lines.append(rec_line)
     if summary:
         lines.extend(["", summary])
     if (event.get("extraction") or {}).get("needs_review"):
@@ -320,6 +335,9 @@ def format_post_messages(group, first_limit=4096):
         when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
         loc = format_location(event)
         lines.extend(["", f'▸ <a href="{url}"><b>{title}</b></a>', f"　🗓 {when}", f"　{loc}"])
+    rec_line = format_recurrings_line(lead)
+    if rec_line:
+        lines.extend(["", rec_line])
     if any((e.get("extraction") or {}).get("needs_review") for e in group):
         lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
     header = "\n".join(lines)

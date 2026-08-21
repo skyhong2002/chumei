@@ -6,7 +6,7 @@ import io
 import json
 import re
 import sys
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -54,8 +54,41 @@ def load_events():
         for pid, rec in json.loads(path.read_text()).items():
             for ev in rec.get("events", []):
                 ev.setdefault("first_seen", rec.get("ts"))
+                # 同貼文的例行時段（社課），Telegram 推播時附一行
+                if rec.get("recurrings"):
+                    ev["post_recurrings"] = [
+                        {k: r.get(k) for k in ("title", "weekday", "time", "venue")}
+                        for r in rec["recurrings"]]
                 events.append(ev)
     return events
+
+
+WEEKDAY_ZH = "一二三四五六日"
+
+
+def recurring_label(r):
+    lab = f"每週{WEEKDAY_ZH[r['weekday'] - 1]} {r['time']} {r['title']}"
+    return lab + (f"（{r['venue']}）" if r.get("venue") else "")
+
+
+def load_recurrings():
+    """例行時段（定期社課）：sid → 去重後清單。半年內有貼文重申才算數，避免陳年資訊誤導。"""
+    cutoff = (datetime.now(TZ_TAIPEI) - timedelta(days=180)).isoformat()
+    best = {}  # (sid, weekday, time) → recurring（取最新一次宣告）
+    for path in sorted(EXTRACT_DIR.glob("*.json")):
+        for pid, rec in json.loads(path.read_text()).items():
+            for r in rec.get("recurrings", []):
+                ts = rec.get("ts") or ""
+                if ts < cutoff:
+                    continue
+                sid = (r.get("source") or {}).get("source_id") or path.stem
+                key = (sid, r["weekday"], r["time"])
+                if ts > best.get(key, ({}, ""))[1]:
+                    best[key] = ({**r, "sid": sid, "seen": ts}, ts)
+    by_sid = {}
+    for (sid, _, _), (r, _) in sorted(best.items()):
+        by_sid.setdefault(sid, []).append(r)
+    return by_sid
 
 
 def apply_overrides(events):
@@ -771,6 +804,24 @@ def build_sources_data(events):
         e["id"] = id_map[key]
     id_path.write_text(json.dumps(id_map, ensure_ascii=False, indent=0))
 
+    # 例行時段（定期社課）：掛到單位條目，同單位多帳號重申的同一時段只留一筆
+    rec_by_sid = load_recurrings()
+    n_sched = 0
+    for e in entries:
+        slots = {}
+        for sid in e.get("sids", []):
+            for r in rec_by_sid.get(sid, []):
+                slots.setdefault((r["weekday"], r["time"]), r)
+        if slots:
+            e["schedule"] = [
+                {"title": r["title"], "weekday": r["weekday"], "time": r["time"],
+                 "venue": r["venue"], "note": r.get("note"),
+                 "url": (r.get("source") or {}).get("url")}
+                for r in sorted(slots.values(), key=lambda r: (r["weekday"], r["time"]))]
+            n_sched += 1
+    if n_sched:
+        print(f"recurring schedules: {n_sched} orgs")
+
     # 頭貼：IG/Threads/X 由 fetcher 從 RSSHub channel image 存；FB 用 graph 公開頭貼端點補
     from chumei_lib import save_avatar, AVATAR_DIR
     for e in entries:
@@ -840,6 +891,17 @@ def org_pages(entries, events):
         if not ent["links"]:
             body.append('<p class="review-note">這個單位還沒有被竹梅收錄——如果你知道它的公開社群帳號，'
                         '歡迎到<a href="/about/">回報管道</a>告訴我們。</p>')
+        if ent.get("schedule"):
+            def sched_row(r):
+                lab = f'每週{WEEKDAY_ZH[r["weekday"] - 1]} {r["time"]}'
+                inner = (f'<span class="org-ev-date">{lab}</span>{esc(r["title"])}'
+                         f'<span class="org-sched-venue">{esc(r["venue"])}</span>')
+                if r.get("url"):
+                    inner = f'<a href="{esc(r["url"])}" rel="noopener">{inner}</a>'
+                return f'<li class="org-ev org-sched-row">{inner}</li>'
+            body.append('<h2>例行時段</h2><ul class="org-evs">'
+                        + "".join(sched_row(r) for r in ent["schedule"])
+                        + '</ul><p class="src-desc">依社團近期公開貼文整理，實際時間以社團公告為準。</p>')
         if upcoming:
             body.append(f'<h2>即將舉行（{len(upcoming)}）</h2><ul class="org-evs">'
                         + "".join(ev_row(e) for e in upcoming) + "</ul>")

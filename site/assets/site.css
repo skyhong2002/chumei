@@ -641,10 +641,18 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .org-ev a:hover { background: var(--color-surface-soft); text-decoration: none; }
 .org-ev-date { flex-shrink: 0; font-size: 0.82rem; color: var(--color-text-muted); min-width: 9em; }
+.org-sched-row a { align-items: baseline; }
+.org-sched-row:not(:has(a)) {
+  display: flex; gap: 14px; align-items: baseline; padding: 9px 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.org-sched-row .org-ev-date { color: var(--color-action, #0045F2); font-weight: 600; }
+.org-sched-venue { margin-left: auto; font-size: 0.82rem; color: var(--color-text-muted); flex-shrink: 0; }
 @media (max-width: 520px) {
   .org-head { gap: 14px; }
   .org-avatar { width: 64px; height: 64px; }
   .org-ev a { flex-direction: column; gap: 2px; }
+  .org-sched-venue { margin-left: 0; }
 }
 
 /* ---------- footer ---------- */
