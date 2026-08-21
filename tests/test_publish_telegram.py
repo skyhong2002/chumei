@@ -104,12 +104,6 @@ class PublisherTests(unittest.TestCase):
         self.assertNotIn("原始內文", rendered)
         self.assertTrue(all(len(message) < 4096 for message in messages))
 
-    def test_source_and_detail_buttons(self):
-        buttons = telegram.event_buttons(event(source={"url": "https://example.com/source"}))
-        row = buttons["inline_keyboard"][0]
-        self.assertEqual([button["text"] for button in row], ["活動詳情", "原始來源"])
-        self.assertEqual(row[1]["url"], "https://example.com/source")
-
     def test_send_event_disables_preview_and_records_each_part(self):
         client = telegram.TelegramClient("token", "@channel")
         calls = []
@@ -125,7 +119,7 @@ class PublisherTests(unittest.TestCase):
             on_sent=lambda message, index, total: recorded.append((message["message_id"], index, total)),
         )
         self.assertEqual(calls[0][0], "sendMessage")
-        self.assertEqual(calls[0][1]["reply_markup"]["inline_keyboard"][0][1]["text"], "原始來源")
+        self.assertNotIn("reply_markup", calls[0][1])
         self.assertEqual(calls[0][1]["link_preview_options"], {"is_disabled": True})
         self.assertEqual(recorded, [(1, 0, 1)])
 

@@ -268,18 +268,6 @@ def format_event(event):
     return format_event_messages(event)[0]
 
 
-def event_buttons(event):
-    row = [{"text": "活動詳情", "url": f"{BASE_URL}/event/{event['id']}/"}]
-    source_url = (event.get("source") or {}).get("url")
-    if source_url:
-        row.append({"text": "原始來源", "url": source_url})
-    keyboard = [row]
-    registration_url = event.get("registration_url")
-    if registration_url and registration_url != source_url:
-        keyboard.append([{"text": "報名／活動頁", "url": registration_url}])
-    return {"inline_keyboard": keyboard}
-
-
 def is_silent_hour(now=None):
     now = now or datetime.now(TZ_TAIPEI)
     return now.hour >= 22 or now.hour < 8
@@ -334,8 +322,6 @@ class TelegramClient:
                 "disable_notification": silent,
                 "link_preview_options": {"is_disabled": True},
             }
-            if index == 0:
-                payload["reply_markup"] = event_buttons(event)
             result = self.call("sendMessage", payload)
             results.append(result)
             if on_sent:
