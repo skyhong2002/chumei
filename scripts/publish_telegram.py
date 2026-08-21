@@ -256,14 +256,10 @@ def format_event_messages(event):
     if not original_chunks:
         return ["\n".join(lines)]
 
-    lines.extend(["", "📄 <b>原始內文</b>", html.escape(original_chunks[0])])
+    lines.extend(["", f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"])
     messages = ["\n".join(lines)]
-    total = len(original_chunks)
-    for index, chunk in enumerate(original_chunks[1:], start=2):
-        messages.append(
-            f"📄 <b>原始內文（續 {index}/{total}）</b>\n\n"
-            f"{html.escape(chunk)}"
-        )
+    for chunk in original_chunks[1:]:
+        messages.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
     return messages
 
 

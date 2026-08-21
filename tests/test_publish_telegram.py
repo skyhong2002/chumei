@@ -70,7 +70,9 @@ class PublisherTests(unittest.TestCase):
         self.assertIn("📍 <a href=", text)
         self.assertIn(">工程館</a>", text)
         self.assertIn('國立清華大學藝術與設計學系 (<a href="https://example.com/source">Facebook</a>)', text)
-        self.assertNotIn("<blockquote", text)
+        self.assertIn("<blockquote expandable>", text)
+        self.assertNotIn("原始內文", text)
+        self.assertNotIn("📄", text)
         self.assertNotIn("📣", text)
         self.assertNotIn("🏫", text)
         self.assertNotIn("🎤", text)
@@ -98,6 +100,8 @@ class PublisherTests(unittest.TestCase):
         rendered = "".join(messages)
         self.assertIn("第一段", rendered)
         self.assertIn("最後一句", rendered)
+        self.assertTrue(all(message.startswith("<blockquote expandable>") for message in messages[1:]))
+        self.assertNotIn("原始內文", rendered)
         self.assertTrue(all(len(message) < 4096 for message in messages))
 
     def test_source_and_detail_buttons(self):
