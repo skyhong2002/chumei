@@ -147,10 +147,14 @@
 
     function card(e) {
       var d = new Date(e.start_at);
-      var npCls = e.school === "nthu" ? "np-nthu" : e.school === "nycu" ? "np-nycu" : "np-other";
-      var media = e.poster_image
-        ? '<img src="' + esc(e.poster_image) + '" alt="" loading="lazy">'
-        : '<div class="no-poster ' + npCls + '">' + (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "竹梅") + "</div>";
+      var cover = e.cover_image || e.poster_image || "/assets/fallback/event-cover.webp";
+      var media = e.image_kind !== "illustration" && e.poster_image
+        ? '<img src="' + esc(cover) + '" alt="" loading="lazy">'
+        : '<div class="event-cover event-cover-' + esc(e.school || "other") + '" role="img" aria-label="' +
+          esc((e.category || "活動") + "活動示意封面") + '">' +
+          '<img class="event-cover-bg" src="' + esc(cover) + '" alt="" loading="lazy">' +
+          '<div class="event-cover-content"><span class="event-cover-kicker">竹梅活動</span>' +
+          '<strong>' + esc(e.category || "其他") + '</strong><span class="event-cover-note">示意封面</span></div></div>';
       var when = (d.getMonth() + 1) + "/" + d.getDate() + (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
       var where = [e.campus ? bundle.labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
       return '<div class="card"><a class="card-link" href="/event/' + e.id + '/">' +

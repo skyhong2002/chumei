@@ -38,6 +38,11 @@ def main():
         p = e.get("poster_image")
         if p and not (SITE / p.lstrip("/")).exists():
             errors += fail(f"poster missing on disk: {p}")
+        cover = e.get("cover_image")
+        if not cover:
+            errors += fail(f"event missing cover image: {e['id']}")
+        elif not (SITE / cover.lstrip("/")).exists():
+            errors += fail(f"cover missing on disk: {cover}")
         if not (SITE / "event" / e["id"] / "index.html").exists():
             errors += fail(f"detail page missing: {e['id']}")
 

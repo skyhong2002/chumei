@@ -2,11 +2,14 @@
 
 import csv
 import html
+import io
 import json
 import re
 import sys
 from datetime import datetime, date
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -184,27 +187,118 @@ def attach_geo(events, venues):
 
 
 def cache_posters(events):
+    """保留原始海報；失效或缺圖時再從原始活動頁找公開主圖。"""
+    from PIL import Image
+    from fetch_infonews import HttpClient, parse_detail, _RelaxedAdapter
+
+    class DiscoveryParser(HTMLParser):
+        VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+
+        def __init__(self, page_url):
+            super().__init__(convert_charrefs=True)
+            self.page_url = page_url
+            self.meta_images = []
+            self.descriptions = []
+            self.content_images = []
+            self.content_depth = 0
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "meta":
+                key = (attrs.get("property") or attrs.get("name") or "").lower()
+                content = attrs.get("content") or ""
+                if key in ("og:image", "og:image:url", "twitter:image") and content:
+                    self.meta_images.append(urljoin(self.page_url, html.unescape(content)))
+                elif key == "description" and content:
+                    self.descriptions.append(content)
+            classes = set((attrs.get("class") or "").split())
+            if tag == "div" and ("meditor" in classes or attrs.get("id") == "changeWidh"):
+                self.content_depth = 1
+            elif self.content_depth and tag not in self.VOID_TAGS:
+                self.content_depth += 1
+            if self.content_depth and tag == "img" and attrs.get("src"):
+                self.content_images.append(urljoin(self.page_url, html.unescape(attrs["src"])))
+
+        def handle_endtag(self, tag):
+            if self.content_depth and tag not in self.VOID_TAGS:
+                self.content_depth -= 1
+
+    def discover(source_url):
+        if not source_url:
+            return []
+        try:
+            page = HttpClient(delay=0, timeout=25).get_text(source_url)
+            parser = DiscoveryParser(source_url)
+            parser.feed(page)
+            candidates = list(parser.meta_images)
+            if "infonews.nycu.edu.tw" in urlparse(source_url).netloc:
+                candidates.extend(parse_detail(page, source_url)[1])
+            candidates.extend(parser.content_images)
+            for desc in parser.descriptions:
+                for raw in re.findall(r'<img\b[^>]+src=["\']([^"\']+)', html.unescape(desc), re.I):
+                    candidates.append(urljoin(source_url, html.unescape(raw)))
+            out = []
+            for candidate in candidates:
+                low = candidate.lower()
+                if any(token in low for token in ("favicon", "logo", "clear.gif", "fonts.gstatic.com")):
+                    continue
+                if candidate not in out:
+                    out.append(candidate)
+            return out
+        except Exception as ex:
+            print(f"  cover discovery fail {source_url}: {str(ex)[:80]}", file=sys.stderr)
+            return []
+
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0 (chumei.observe.tw)"})
+    session.mount("https://", _RelaxedAdapter())
+    source_cache = {}
+
+    def save_candidate(url, dest):
+        try:
+            r = session.get(html.unescape(url), timeout=25)
+            r.raise_for_status()
+            if not r.headers.get("content-type", "").startswith("image/") or len(r.content) <= 2000:
+                return False
+            image = Image.open(io.BytesIO(r.content)).convert("RGB")
+            if min(image.size) < 250 or max(image.size) < 400:
+                return False
+            image.thumbnail((1200, 1200))
+            image.save(dest, "JPEG", quality=84, optimize=True)
+            return True
+        except Exception:
+            return False
+
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
+    today = date.today().isoformat()
     for e in events:
         url = e.get("poster_image")
-        if not url:
-            continue
-        if url.startswith("/assets/posters/"):
-            continue
-        url = html.unescape(url)
         dest = POSTER_DIR / f"{e['id']}.jpg"
-        if not dest.exists():
-            try:
-                r = requests.get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw)"})
-                r.raise_for_status()
-                if r.headers.get("content-type", "").startswith("image/") and len(r.content) > 2000:
-                    dest.write_bytes(r.content)
-            except Exception as ex:
-                print(f"  poster fail {e['id']}: {str(ex)[:80]}", file=sys.stderr)
         if dest.exists():
             e["poster_image"] = f"/assets/posters/{e['id']}.jpg"
+            e["image_kind"] = "source"
+            e["cover_image"] = e["poster_image"]
+            continue
+
+        candidates = []
+        if url and not url.startswith("/assets/posters/"):
+            candidates.append(url)
+        source_url = (e.get("source") or {}).get("url")
+        if e.get("start_at", "")[:10] >= today and source_url:
+            if source_url not in source_cache:
+                source_cache[source_url] = discover(source_url)
+            candidates.extend(source_cache[source_url])
+        for candidate in dict.fromkeys(candidates):
+            if save_candidate(candidate, dest):
+                break
+        if dest.exists():
+            e["poster_image"] = f"/assets/posters/{e['id']}.jpg"
+            e["image_kind"] = "source"
+            e["cover_image"] = e["poster_image"]
         else:
             e["poster_image"] = None
+            e["image_kind"] = "illustration"
+            e["cover_image"] = "/assets/fallback/event-cover.webp"
 
 
 def esc(s):
@@ -376,8 +470,17 @@ def detail_page(e):
     meta_html = "".join(f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>" for k, v in rows if v)
     review = ('<p class="review-note">⚠️ 此活動由 AI 從公開貼文擷取，欄位尚待確認，請以原始貼文為準。</p>'
               if e["extraction"].get("needs_review") else "")
-    poster = (f'<img class="detail-poster" src="{esc(e["poster_image"])}" alt="{esc(e["title"])} 活動海報">'
-              if e.get("poster_image") else "")
+    if e.get("poster_image"):
+        poster = f'<img class="detail-poster" src="{esc(e["poster_image"])}" alt="{esc(e["title"])} 活動海報">'
+    else:
+        school_class = esc(e.get("school") or "other")
+        category = esc(e.get("category") or "其他")
+        cover = esc(e.get("cover_image") or "/assets/fallback/event-cover.webp")
+        poster = (f'<div class="detail-event-cover event-cover event-cover-{school_class}" role="img" '
+                  f'aria-label="{category}活動示意封面">'
+                  f'<img class="event-cover-bg" src="{cover}" alt="">'
+                  '<div class="event-cover-content"><span class="event-cover-kicker">竹梅活動</span>'
+                  f'<strong>{category}</strong><span class="event-cover-note">示意封面</span></div></div>')
     actions = "".join(filter(None, [
         f'<a class="btn btn-primary" href="{esc(e["registration_url"])}" rel="noopener">報名／活動頁</a>' if e.get("registration_url") else None,
         f'<a class="btn" href="{gcal}" rel="noopener">加入 Google 日曆</a>' if gcal else None,
