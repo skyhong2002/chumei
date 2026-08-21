@@ -558,7 +558,7 @@
           var dayEvents = byDay[key] || [];
           monthTotal += dayEvents.length;
           evs = dayEvents.map(function (e) {
-            return '<a class="cal-ev ev-' + esc(e.school) + '" href="/event/' + e.id + '/" title="' + esc(e.title) + '">' + esc(e.title) + "</a>";
+            return '<a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' + esc(e.title) + "</a>";
           }).join("");
         }
         cells += '<div class="' + cls + '"><span class="cal-day">' + d.getDate() + "</span>" + evs + "</div>";
@@ -606,6 +606,51 @@
           redraw();
         }
       }, { rootMargin: "600px" }).observe(sentinel);
+    }
+
+    // hover 預覽卡（僅指標裝置）
+    if (window.matchMedia("(hover: hover)").matches) {
+      var byId = {};
+      bundle.events.forEach(function (e) { byId[e.id] = e; });
+      var pop = document.createElement("div");
+      pop.className = "cal-pop";
+      pop.hidden = true;
+      document.body.appendChild(pop);
+
+      function fmtWhen(e) {
+        var d = new Date(e.start_at);
+        var wd = "日一二三四五六"[d.getDay()];
+        var base = (d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）";
+        return e.all_day ? base : base + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      }
+
+      calEl.addEventListener("mouseover", function (ev) {
+        var a = ev.target.closest(".cal-ev");
+        if (!a) return;
+        var e = byId[a.dataset.id];
+        if (!e) return;
+        var cover = e.cover_image || e.poster_image;
+        var where = [e.campus ? labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
+        pop.innerHTML =
+          (cover ? '<img src="' + esc(cover) + '" alt="">' : "") +
+          '<div class="cal-pop-body"><p class="chips"><span class="chip chip-' + esc(e.school) + '">' +
+          esc(labels.school[e.school] || "") + '</span><span class="chip">' + esc(e.category || "其他") + "</span></p>" +
+          "<strong>" + esc(e.title) + "</strong>" +
+          '<span class="cal-pop-meta">' + esc(fmtWhen(e)) + (where ? "｜" + esc(where) : "") + "</span>" +
+          '<span class="cal-pop-meta">' + esc(e.organizer || "") + "</span></div>";
+        pop.hidden = false;
+        var r = a.getBoundingClientRect();
+        var pw = 280, ph = pop.offsetHeight || 200;
+        var x = Math.min(Math.max(8, r.left), window.innerWidth - pw - 12);
+        var y = r.bottom + 8;
+        if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 8);
+        pop.style.left = x + "px";
+        pop.style.top = y + "px";
+      });
+      calEl.addEventListener("mouseout", function (ev) {
+        if (ev.target.closest(".cal-ev") && !(ev.relatedTarget && ev.relatedTarget.closest(".cal-ev"))) pop.hidden = true;
+      });
+      window.addEventListener("scroll", function () { pop.hidden = true; }, { passive: true });
     }
 
     monthsAfter = 2;
