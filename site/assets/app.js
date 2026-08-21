@@ -150,6 +150,9 @@
       var cover = e.cover_image || e.poster_image || "/assets/fallback/event-cover.webp";
       var media = e.image_kind !== "illustration" && e.poster_image
         ? '<img src="' + esc(cover) + '" alt="" loading="lazy">'
+        : e.image_kind === "source_screenshot"
+          ? '<div class="source-cover" role="img" aria-label="' + esc(e.title + " 原始公告網頁截圖") + '">' +
+            '<img src="' + esc(cover) + '" alt="" loading="lazy"><span class="source-cover-note">原始網頁截圖</span></div>'
         : '<div class="event-cover event-cover-' + esc(e.school || "other") + '" role="img" aria-label="' +
           esc((e.category || "活動") + "活動示意封面") + '">' +
           '<img class="event-cover-bg" src="' + esc(cover) + '" alt="" loading="lazy">' +

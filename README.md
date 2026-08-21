@@ -28,7 +28,7 @@ site/                       靜態輸出（Caddy file_server）
 ## 開發
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install requests
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env        # 填 CHUMEI_LLM_API_KEY 等
 .venv/bin/python scripts/run_pipeline.py
 python3 -m http.server -d site 8899

@@ -190,6 +190,7 @@ def cache_posters(events):
     """保留原始海報；失效或缺圖時再從原始活動頁找公開主圖。"""
     from PIL import Image
     from fetch_infonews import HttpClient, parse_detail, _RelaxedAdapter
+    from render_source_covers import cached_source_cover
 
     class DiscoveryParser(HTMLParser):
         VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
@@ -284,7 +285,8 @@ def cache_posters(events):
         if url and not url.startswith("/assets/posters/"):
             candidates.append(url)
         source_url = (e.get("source") or {}).get("url")
-        if e.get("start_at", "")[:10] >= today and source_url:
+        source_shot_cached = cached_source_cover(source_url)
+        if e.get("start_at", "")[:10] >= today and source_url and not source_shot_cached:
             if source_url not in source_cache:
                 source_cache[source_url] = discover(source_url)
             candidates.extend(source_cache[source_url])
@@ -472,6 +474,11 @@ def detail_page(e):
               if e["extraction"].get("needs_review") else "")
     if e.get("poster_image"):
         poster = f'<img class="detail-poster" src="{esc(e["poster_image"])}" alt="{esc(e["title"])} 活動海報">'
+    elif e.get("image_kind") == "source_screenshot":
+        cover = esc(e.get("cover_image"))
+        poster = (f'<div class="detail-source-cover source-cover" role="img" '
+                  f'aria-label="{esc(e["title"])} 原始公告網頁截圖">'
+                  f'<img src="{cover}" alt=""><span class="source-cover-note">原始網頁截圖</span></div>')
     else:
         school_class = esc(e.get("school") or "other")
         category = esc(e.get("category") or "其他")
@@ -583,6 +590,11 @@ def main():
     events = [e for e in events if e.get("start_at")]
     events.sort(key=lambda e: e["start_at"])
     cache_posters(events)
+    from render_source_covers import attach_source_screenshots
+    screenshot_limit = int(load_env().get("CHUMEI_SCREENSHOT_LIMIT", "20"))
+    n_screenshots = attach_source_screenshots(events, limit=screenshot_limit)
+    n_screenshot_events = sum(e.get("image_kind") == "source_screenshot" for e in events)
+    print(f"source screenshots: {n_screenshots} created, {n_screenshot_events} events attached")
     venues = load_venues()
     n_geo = attach_geo(events, venues)
     print(f"geo: {n_geo}/{sum(1 for e in events if e.get('venue'))} venue-matched ({len(venues)} registry rows)")
