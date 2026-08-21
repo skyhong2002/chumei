@@ -1003,7 +1003,39 @@
       });
     }
 
+    function agendaMonthHtml(m) {
+      // 手機：議程列表 — 只列有活動的日子
+      var daysInMonth = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+      var t = todayStr();
+      var monthTotal = 0;
+      var body = "";
+      for (var day = 1; day <= daysInMonth; day++) {
+        var key = m.getFullYear() + "-" + String(m.getMonth() + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+        var dayEvents = byDay[key] || [];
+        if (!dayEvents.length) continue;
+        monthTotal += dayEvents.length;
+        var d = new Date(m.getFullYear(), m.getMonth(), day);
+        var wd = "日一二三四五六"[d.getDay()];
+        body += '<div class="agd-day' + (key === t ? " today" : "") + '">' +
+          '<span class="agd-date">' + (m.getMonth() + 1) + "/" + day + "（" + wd + "）</span>" +
+          dayEvents.map(function (e) {
+            var ed = new Date(e.start_at);
+            var when = e.all_day ? "全天" : String(ed.getHours()).padStart(2, "0") + ":" + String(ed.getMinutes()).padStart(2, "0");
+            var where = [e.campus ? labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
+            return '<a class="agd-ev ev-' + esc(e.school) + '" href="/event/' + e.id + '/">' +
+              '<span class="agd-when">' + esc(when) + "</span>" +
+              '<span class="agd-main"><span class="agd-title">' + esc(e.title) + "</span>" +
+              (where ? '<span class="agd-meta">' + esc(where) + "</span>" : "") + "</span></a>";
+          }).join("") + "</div>";
+      }
+      return '<section class="cal-month" id="cal-' + m.getFullYear() + "-" + (m.getMonth() + 1) + '">' +
+        '<h2 class="cal-month-title">' + m.getFullYear() + " 年 " + (m.getMonth() + 1) + " 月" +
+        '<span class="cal-month-n">' + monthTotal + " 場</span></h2>" +
+        (body || '<p class="agd-empty">這個月（在目前篩選下）沒有活動。</p>') + "</section>";
+    }
+
     function monthHtml(m) {
+      if (window.innerWidth <= 700) return agendaMonthHtml(m);
       var startDow = m.getDay(); // 週日起始
       var first = new Date(m);
       first.setDate(1 - startDow);
@@ -1077,6 +1109,12 @@
     var byIdCal = {};
     bundle.events.forEach(function (e) { byIdCal[e.id] = e; });
     bindEventHover(calEl, ".cal-ev", function (a) { return byIdCal[a.dataset.id]; }, labels);
+
+    var calResizeT;
+    window.addEventListener("resize", function () {
+      clearTimeout(calResizeT);
+      calResizeT = setTimeout(redraw, 200);
+    });
 
     monthsAfter = 2;
     redraw();
