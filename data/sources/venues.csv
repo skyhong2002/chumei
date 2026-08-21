@@ -5,7 +5,7 @@ name,aliases,campus,lat,lng
 竹軒宿舍,Chu-Hsuan Female Dormitory 1,nycu-guangfu,24.789569,120.99813
 科學一館,Science Building 1,nycu-guangfu,24.787987,120.99676
 中正堂,Chung Cheng Auditorium,nycu-guangfu,24.788401,120.998565
-工程一館,Engineering Building 1,nycu-guangfu,24.788687,120.998072
+工程一館,Engineering Building 1;ICT創創工坊;創創工坊;ICT工坊,nycu-guangfu,24.788687,120.998072
 管理一館,,nycu-guangfu,24.787628,121.000557
 工程三館,Engineering Building 3,nycu-guangfu,24.786934,120.997359
 工程四館,Engineering Building 4,nycu-guangfu,24.786993,120.996764
@@ -13,9 +13,9 @@ name,aliases,campus,lat,lng
 綜合一館,,nycu-guangfu,24.784708,120.997409
 管理二館,Management Building 2,nycu-guangfu,24.785329,120.998496
 工程六館,Engineering Building 6,nycu-guangfu,24.785936,120.995955
-電子資訊大樓,Microelectronics and Information Systems Research Center,nycu-guangfu,24.786629,121.001742
+電子資訊大樓,Microelectronics and Information Systems Research Center;電子與資訊研究中心;電資中心;電資大樓;MIRC,nycu-guangfu,24.786629,121.001742
 人社二舘,HA Building 2,nycu-guangfu,24.787077,121.000089
-浩然圖書資訊中心,Library and Information Center,nycu-guangfu,24.786577,120.998406
+浩然圖書資訊中心,Library and Information Center;交大圖書館;陽明交大圖書館;資訊電腦教室,nycu-guangfu,24.786577,120.998406
 工程五館,,nycu-guangfu,24.7859,120.997313
 學生八舍,Student Dormitory 8,nycu-guangfu,24.785282,120.999623
 交映樓,CPT Building,nycu-guangfu,24.786775,120.995905
@@ -43,11 +43,11 @@ name,aliases,campus,lat,lng
 服務大樓,,nycu-guangfu,24.783264,120.997474
 人社三館,HA Building 3,nycu-guangfu,24.785977,120.999864
 司令台,Stage,nycu-guangfu,24.788889,120.995193
-游泳館,Swimming Plaza,nycu-guangfu,24.789778,120.995704
+游泳館,Swimming Plaza;光復校區室外游泳池;室外游泳池,nycu-guangfu,24.789778,120.995704
 奈米電子研究大樓,Nano Electronics Research Building,nycu-guangfu,24.785291,121.000776
 工程二館,Engineering Building 2,nycu-guangfu,24.788769,120.997434
 第二餐廳,,nycu-guangfu,24.789211,120.997261
-學生活動中心,,nycu-guangfu,24.786541,120.999631
+學生活動中心,交大活動中心;光復校區活動中心;活動中心B1;活動中心 2 樓;活動中心二樓;演藝廳,nycu-guangfu,24.786541,120.999631
 茶曇,,nycu-guangfu,24.78917,120.997251
 拉亞漢堡,Laya Burger,nycu-guangfu,24.789144,120.997276
 Morning House早餐,Morning-House Breakfasts,nycu-guangfu,24.78914,120.997373
@@ -89,7 +89,7 @@ Morning House早餐,Morning-House Breakfasts,nycu-guangfu,24.78914,120.997373
 水木生活中心,水木,nthu-main,24.792332,120.994127
 小吃部,,nthu-main,24.793028,120.993061
 創新育成中心,,nthu-main,24.795137,120.996609
-總圖書館,旺宏館;旺宏;學習資源中心;清大圖書館,nthu-main,24.795574,120.994609
+總圖書館,旺宏館;旺宏;學習資源中心;清大圖書館;國立清華大學圖書館;圖書館一樓清沙龍;清沙龍,nthu-main,24.795574,120.994609
 第四綜合大樓,,nthu-main,24.795392,120.996835
 工程一館,,nthu-main,24.794931,120.996259
 化工館,,nthu-main,24.796326,120.994965
@@ -231,3 +231,21 @@ T-house,,nthu-main,24.791038,120.994794
 勤學樓,,nycu-boai,24.79966,120.984293
 希望樓,,nycu-boai,24.799629,120.984525
 聯強國際會議中心,,nycu-boai,24.797565,120.980276
+陽明校區,YM Campus;陽明交大陽明校區,nycu-yangming,25.1225588,121.5129598
+圖書資訊暨研究大樓,圖資大樓;圖書資訊大樓;陽明交大圖書館;陽明大學圖書館,nycu-yangming,25.1204266,121.5137331
+陽明校區活動中心,活動中心;大禮堂;表演廳;演藝廳;第一會議室;學生活動中心,nycu-yangming,25.12156,121.51387
+教學大樓,綜合教室;第一教學大樓;教學大樓綜一教室,nycu-yangming,25.1235551,121.5137472
+護理館,,nycu-yangming,25.1223222,121.5155941
+行政大樓,,nycu-yangming,25.1225065,121.5148245
+醫學院二館,醫學二館,nycu-yangming,25.1228827,121.5158423
+醫學館,,nycu-yangming,25.1227645,121.5143034
+實驗大樓,,nycu-yangming,25.12316,121.51464
+博雅中心,,nycu-yangming,25.1212423,121.5127833
+傳統醫學大樓甲棟,傳統醫學大樓,nycu-yangming,25.1197811,121.5145736
+高齡研究中心,,nycu-yangming,25.1202992,121.5128867
+室內游泳池,,nycu-yangming,25.122964,121.5107913
+科管局活動中心B館,Garage Hub;車庫餐廳;新安路2-2號,other,24.7831745,121.0059551
+台中車站,台中火車站,other,24.1382343,120.6844017
+台北世貿一館,台北世貿;世貿一館,other,25.0340384,121.5623552
+Samyan Mitrtown Hall,,other,13.7343891,100.5280788
+東京,日本東京,other,35.6812,139.7671

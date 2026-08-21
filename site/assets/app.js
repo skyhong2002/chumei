@@ -43,12 +43,13 @@
   // ---- 活動河道 ----
   function initList(bundle) {
     var labels = bundle.labels;
-    var state = { time: "upcoming", school: "all", campus: "all", cat: "all", org: "all", q: "" };
+    var state = { time: "7d", school: "all", campus: "all", cat: "all", org: "all", q: "" };
 
     var params = new URLSearchParams(location.search);
     ["time", "school", "campus", "cat", "org", "q"].forEach(function (k) {
       if (params.get(k)) state[k] = params.get(k);
     });
+    if (state.time === "week") state.time = "7d";
 
     var moreFilters = document.getElementById("more-filters");
     if (moreFilters && (window.innerWidth > 700 || state.school !== "all" || state.campus !== "all" || state.cat !== "all" || state.org !== "all")) {
@@ -61,14 +62,13 @@
     var cats = {};
     bundle.events.forEach(function (e) { cats[e.category || "其他"] = 1; });
 
-    var start = new Date();
-    start = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-    var weekEnd = new Date(start);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-    function md(d) { return (d.getMonth() + 1) + "/" + d.getDate(); }
+    var rangeStart = new Date();
 
     var chipGroups = {};
-    buildChips("f-time", [["upcoming", md(start) + " 起"], ["week", md(start) + "–" + md(weekEnd)], ["all", "全部"]], "time");
+    buildChips("f-time", [
+      ["24h", "24 小時"], ["3d", "3 天"], ["7d", "7 天"], ["30d", "1 個月"],
+      ["upcoming", "未來全部"], ["all", "全部"]
+    ], "time");
     buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
     buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
@@ -105,12 +105,21 @@
 
     function matches(e, overrideKey, overrideValue) {
       function value(key) { return overrideKey === key ? overrideValue : state[key]; }
-      var t = todayStr();
-      var day = (e.start_at || "").slice(0, 10);
-      if (value("time") === "upcoming" && day < t) return false;
-      if (value("time") === "week") {
-        var endStr = weekEnd.getFullYear() + "-" + String(weekEnd.getMonth() + 1).padStart(2, "0") + "-" + String(weekEnd.getDate()).padStart(2, "0");
-        if (day < t || day > endStr) return false;
+      var timeRange = value("time");
+      if (timeRange !== "all") {
+        var starts = new Date(e.start_at);
+        var ends = e.end_at ? new Date(e.end_at) : starts;
+        if (isNaN(starts.getTime())) return false;
+        if (ends < rangeStart && !e.all_day) return false;
+        if (e.all_day && (e.start_at || "").slice(0, 10) < todayStr()) return false;
+        if (timeRange !== "upcoming") {
+          var rangeEnd = new Date(rangeStart);
+          if (timeRange === "24h") rangeEnd.setHours(rangeEnd.getHours() + 24);
+          if (timeRange === "3d") rangeEnd.setDate(rangeEnd.getDate() + 3);
+          if (timeRange === "7d") rangeEnd.setDate(rangeEnd.getDate() + 7);
+          if (timeRange === "30d") rangeEnd.setMonth(rangeEnd.getMonth() + 1);
+          if (starts > rangeEnd) return false;
+        }
       }
       if (value("school") !== "all" && e.school !== value("school") && !(value("school") !== "both" && e.school === "both")) return false;
       if (value("campus") !== "all" && e.campus !== value("campus")) return false;
@@ -195,41 +204,47 @@
       });
       m.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
       m.on("load", function () {
-        m.addSource("campuses", { type: "geojson", data: "/data/map/campuses.geojson" });
-        m.addLayer({
-          id: "campus-fill", type: "fill", source: "campuses",
-          paint: {
-            "fill-color": ["match", ["get", "campus"], "nthu-main", "#8E24AA", "#0045F2"],
-            "fill-opacity": 0.1
-          }
-        });
-        m.addLayer({
-          id: "campus-line", type: "line", source: "campuses",
-          paint: {
-            "line-color": ["match", ["get", "campus"], "nthu-main", "#8E24AA", "#0045F2"],
-            "line-width": 2.2, "line-opacity": 0.8
-          }
-        });
-        m.addSource("buildings", { type: "geojson", data: "/data/map/buildings.geojson" });
-        m.addLayer({
-          id: "campus-buildings", type: "fill-extrusion", source: "buildings", minzoom: 14.5,
-          paint: {
-            "fill-extrusion-color": dark ? "#566171" : "#9AA7B2",
-            "fill-extrusion-height": ["coalesce", ["get", "height"], 5],
-            "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": dark ? 0.48 : 0.34
-          }
-        });
         mapState.ready = true;
         renderMap(mapState.pending);
+        try {
+          m.addSource("campuses", { type: "geojson", data: "/data/map/campuses.geojson" });
+          m.addLayer({
+            id: "campus-fill", type: "fill", source: "campuses",
+            paint: {
+              "fill-color": ["match", ["get", "campus"], "nthu-main", "#8E24AA", "#0045F2"],
+              "fill-opacity": 0.1
+            }
+          });
+          m.addLayer({
+            id: "campus-line", type: "line", source: "campuses",
+            paint: {
+              "line-color": ["match", ["get", "campus"], "nthu-main", "#8E24AA", "#0045F2"],
+              "line-width": 2.2, "line-opacity": 0.8
+            }
+          });
+          m.addSource("buildings", { type: "geojson", data: "/data/map/buildings.geojson" });
+          m.addLayer({
+            id: "campus-buildings", type: "fill-extrusion", source: "buildings", minzoom: 14.5,
+            paint: {
+              "fill-extrusion-color": dark ? "#566171" : "#9AA7B2",
+              "fill-extrusion-height": ["coalesce", ["get", "height"], 5],
+              "fill-extrusion-base": 0,
+              "fill-extrusion-opacity": dark ? 0.48 : 0.34
+            }
+          });
+        } catch (e) {
+          // 校界與 3D 建築是輔助圖層；即使失敗，活動標記仍照常顯示。
+        }
       });
       window.addEventListener("chumei-theme", function () {
         if (!mapState.ready) return;
         var isDark = document.documentElement.dataset.theme === "dark";
         m.setPaintProperty("base-map", "raster-brightness-max", isDark ? 0.62 : 1);
         m.setPaintProperty("base-map", "raster-saturation", isDark ? -0.35 : 0);
-        m.setPaintProperty("campus-buildings", "fill-extrusion-color", isDark ? "#566171" : "#9AA7B2");
-        m.setPaintProperty("campus-buildings", "fill-extrusion-opacity", isDark ? 0.48 : 0.34);
+        if (m.getLayer("campus-buildings")) {
+          m.setPaintProperty("campus-buildings", "fill-extrusion-color", isDark ? "#566171" : "#9AA7B2");
+          m.setPaintProperty("campus-buildings", "fill-extrusion-opacity", isDark ? 0.48 : 0.34);
+        }
       });
       mapState.map = m;
       return m;
@@ -248,9 +263,11 @@
       mapState.markers = [];
       var groups = {};
       var located = 0;
+      var approximate = 0;
       list.forEach(function (e) {
         if (!e.geo) return;
         located++;
+        if (e.geo.approximate) approximate++;
         var key = e.geo.lat.toFixed(5) + "," + e.geo.lng.toFixed(5);
         (groups[key] = groups[key] || { geo: e.geo, events: [] }).events.push(e);
       });
@@ -276,11 +293,25 @@
         mapState.markers.push(new maplibregl.Marker({ element: pin, anchor: "center" })
           .setLngLat([g.geo.lng, g.geo.lat]).setPopup(popup).addTo(m));
       });
-      // 預設視角固定在光復＋清大本部核心區，不隨標記自動縮放（南大/陽明的活動自行拖曳查看）
+      var visibleGroups = Object.keys(groups).map(function (k) { return groups[k]; });
+      if (state.campus === "all") {
+        var hsinchu = visibleGroups.filter(function (g) {
+          return g.geo.lat > 24.75 && g.geo.lat < 24.85 && g.geo.lng > 120.9 && g.geo.lng < 121.05;
+        });
+        if (hsinchu.length) visibleGroups = hsinchu;
+      }
+      if (visibleGroups.length === 1) {
+        m.easeTo({ center: [visibleGroups[0].geo.lng, visibleGroups[0].geo.lat], zoom: 15.5, duration: 350 });
+      } else if (visibleGroups.length > 1) {
+        var bounds = new maplibregl.LngLatBounds();
+        visibleGroups.forEach(function (g) { bounds.extend([g.geo.lng, g.geo.lat]); });
+        m.fitBounds(bounds, { padding: 64, maxZoom: 15.5, duration: 350 });
+      }
       var note = document.getElementById("map-note");
       if (note) {
         var unlocated = list.length - located;
         note.textContent = "地圖顯示 " + located + " 場可定位的活動" +
+          (approximate > 0 ? "（其中 " + approximate + " 場為校區約略位置）" : "") +
           (unlocated > 0 ? "；另有 " + unlocated + " 場為線上活動或地點未定，請見下方活動卡片。" : "。");
       }
       var mapCount = document.getElementById("map-count");
@@ -291,7 +322,7 @@
     function syncUrl() {
       var qs = new URLSearchParams();
       Object.keys(state).forEach(function (k) {
-        if (state[k] && state[k] !== "all" && !(k === "time" && state[k] === "upcoming")) qs.set(k, state[k]);
+        if (state[k] && state[k] !== "all" && !(k === "time" && state[k] === "7d")) qs.set(k, state[k]);
       });
       history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
     }

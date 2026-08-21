@@ -24,6 +24,13 @@ CAMPUS_LABEL = {
     "nycu-yangming": "陽明校區", "online": "線上", "other": "其他地點",
 }
 ORG_LABEL = {"official": "校方", "department": "系所", "club": "社團", "external": "校外單位"}
+CAMPUS_GEO = {
+    "nthu-main": (24.7929, 120.9937),
+    "nthu-nanda": (24.7934, 120.9647),
+    "nycu-guangfu": (24.7874, 120.9972),
+    "nycu-boai": (24.7977, 120.9819),
+    "nycu-yangming": (25.12256, 121.51296),
+}
 
 
 def load_events():
@@ -120,7 +127,7 @@ def load_venues():
 
 
 def attach_geo(events, venues):
-    """venue 字串 → 建築座標。先用 campus 過濾，找不到再全域唯一比對。"""
+    """venue 字串 → 建築座標；無精確場館時退回校區約略位置。"""
     def match(venue, cands):
         hits = []
         for v in cands:
@@ -140,16 +147,38 @@ def attach_geo(events, venues):
     n = 0
     for e in events:
         venue = (e.get("venue") or "").strip()
-        if not venue:
-            continue
         if e.get("campus") in ("online",):
             continue
-        if e.get("campus"):
+        hit = None
+        if venue and e.get("campus"):
             hit = match(venue, [v for v in venues if v["campus"] == e["campus"]])
-        else:
+        elif venue:
             hit = match(venue, venues)
+        # 擷取的校區可能只來自學校名；全域唯一場館登錄的實際校區優先。
+        if venue and not hit:
+            hit = match(venue, venues)
+            if hit and hit["campus"] in CAMPUS_LABEL and hit["campus"] != "online":
+                e["campus"] = hit["campus"]
         if hit:
             e["geo"] = {"lat": float(hit["lat"]), "lng": float(hit["lng"]), "name": hit["name"]}
+            n += 1
+            continue
+
+        # 未寫教室的 ICT 訓練以官方主要基地工程一館標示為約略位置。
+        if not venue and "ICT創創工坊" in (e.get("organizer") or ""):
+            base = next((v for v in venues if v["campus"] == "nycu-guangfu" and v["name"] == "工程一館"), None)
+            if base:
+                e["geo"] = {"lat": float(base["lat"]), "lng": float(base["lng"]),
+                            "name": "ICT 創創工坊（工程一館約略位置）", "approximate": True}
+                n += 1
+                continue
+
+        # 活動確定屬於某實體校區但未公告教室時，仍讓地圖可見，並明確標示精度。
+        campus = e.get("campus")
+        if campus in CAMPUS_GEO:
+            lat, lng = CAMPUS_GEO[campus]
+            label = CAMPUS_LABEL[campus]
+            e["geo"] = {"lat": lat, "lng": lng, "name": f"{label}（約略位置）", "approximate": True}
             n += 1
     return n
 
