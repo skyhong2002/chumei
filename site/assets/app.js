@@ -53,6 +53,9 @@
     if (moreFilters && (window.innerWidth > 700 || state.school !== "all" || state.campus !== "all" || state.cat !== "all" || state.org !== "all")) {
       moreFilters.open = true;
     }
+    window.addEventListener("resize", function () {
+      if (moreFilters && window.innerWidth > 700) moreFilters.open = true;
+    });
 
     var cats = {};
     bundle.events.forEach(function (e) { cats[e.category || "其他"] = 1; });
