@@ -537,17 +537,26 @@ def detail_page(e):
 
 
 def _norm_org(s):
-    s = re.sub(r"[（(].*?[)）]", "", s or "")
-    s = re.sub(r"國立|清華大學|陽明交通大學|清大|交大|陽明|NTHU|NYCU|學生|大學", "", s, flags=re.I)
-    return re.sub(r"[\\W_]+", "", s.lower())
+    raw = re.sub(r"[（(].*?[)）]", "", s or "")
+    out = re.sub(r"國立|清華大學|陽明交通大學|清大|交大|陽明|NTHU|NYCU|學生|大學", "", raw, flags=re.I)
+    out = re.sub(r"[\W_]+", "", out.lower())
+    if not out:  # 全稱剝完變空（如「國立清華大學」）→ 退回原名比對
+        out = re.sub(r"[\W_]+", "", raw.lower())
+    return out
 
 
 def _org_campus(text):
-    """從名稱/備註推斷 NYCU 校區：yangming / guangfu / None。"""
-    t = text or ""
-    if "陽明" in t and "陽明交通" not in t.replace("陽明交大", ""):
+    """從名稱/備註推斷 NYCU 校區：yangming / guangfu / None。
+    「陽明交大／陽明交通大學」是全校前綴，先剝除再判斷；兩關鍵字都在時取先出現者。"""
+    t = (text or "")
+    for whole in ("國立陽明交通大學", "陽明交通大學", "陽明交大"):
+        t = t.replace(whole, "")
+    i_ym = t.find("陽明")
+    cands = [i for i in (t.find("交大"), t.find("交通"), t.find("光復"), t.lower().find("nctu")) if i != -1]
+    i_gf = min(cands) if cands else -1
+    if i_ym != -1 and (i_gf == -1 or i_ym < i_gf):
         return "yangming"
-    if any(k in t for k in ("交大", "交通", "光復")) or "nctu" in t.lower():
+    if i_gf != -1:
         return "guangfu"
     return None
 
@@ -594,12 +603,26 @@ def build_sources_data(events):
             notes = r.get("notes") or ""
             campus = None
             if school == "nycu":
-                campus = "yangming" if "陽明" in notes else "guangfu" if "光復" in notes else _org_campus(r["club_name"])
+                i_ym, i_gf = notes.find("陽明"), notes.find("光復")
+                if i_gf != -1 and (i_ym == -1 or i_gf < i_ym):
+                    campus = "guangfu"
+                elif i_ym != -1:
+                    campus = "yangming"
+                else:
+                    campus = _org_campus(r["club_name"])
             entries.append({
                 "name": r["club_name"], "school": school, "kind": kind,
                 "category": re.sub(r"社團$", "", cat), "campus": campus,
                 "links": [], "events": 0, "roster": True,
             })
+    # 正名：官方名冊的通用名（口琴社）換成社團的專屬名（揚鳴口琴社）
+    for ov in read_sources_csv("org_overrides.csv"):
+        for e in entries:
+            if (e["school"] == ov["school"] and e["name"] == ov["roster_name"]
+                    and (e.get("campus") or "") == (ov.get("campus") or "")):
+                e["name"] = ov["display_name"]
+                break
+
     norms = [_norm_org(e["name"]) for e in entries]
 
     def attach(name, school, org_type, platform, url, label, sid, note=None):
@@ -673,11 +696,17 @@ def build_sources_data(events):
 
     entries.sort(key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
     next_id = max(id_map.values(), default=0) + 1
-    for e in entries:
-        key = f"{e['school']}|{e['name']}"
+    claimed_legacy = set()
+    for e in sorted(entries, key=lambda x: (not x["roster"], x["name"])):
+        key = f"{e['school']}|{e.get('campus') or ''}|{e['name']}"
         if key not in id_map:
-            id_map[key] = next_id
-            next_id += 1
+            legacy = f"{e['school']}|{e['name']}"
+            if legacy in id_map and legacy not in claimed_legacy:
+                id_map[key] = id_map[legacy]
+                claimed_legacy.add(legacy)
+            else:
+                id_map[key] = next_id
+                next_id += 1
         e["id"] = id_map[key]
     id_path.write_text(json.dumps(id_map, ensure_ascii=False, indent=0))
 
@@ -765,6 +794,14 @@ def org_pages(entries, events):
             f"{ent['name']}｜竹梅活動觀測站",
             f"{ent['name']}的公開帳號與活動記錄。",
             "\n".join(body), canonical=f"{BASE_URL}/org/{ent['id']}/"))
+    # 清掉已不存在的舊單位頁（條目合併/改名後）
+    valid = {str(ent["id"]) for ent in entries}
+    import shutil
+    org_root = SITE / "org"
+    if org_root.exists():
+        for d in org_root.iterdir():
+            if d.is_dir() and d.name not in valid:
+                shutil.rmtree(d)
     print(f"org pages: {len(entries)}")
     return [ent["id"] for ent in entries]
 
