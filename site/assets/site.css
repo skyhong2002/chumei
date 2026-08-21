@@ -719,3 +719,15 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .feed-img { max-height: 260px; }
 }
 .chip-campus { background: var(--color-category-orange-surface); color: var(--color-category-orange-text); }
+
+/* 桌機雙欄河道 */
+.post-feed.feed-wide { max-width: 1160px; }
+.feed-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 48px; align-items: start; }
+.feed-col { min-width: 0; }
+.feed-col-title {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 1.05rem; margin: 0 0 4px; padding: 8px 0 8px 54px;
+  border-bottom: 2px solid var(--color-border-strong);
+}
+.feed-cols .feed-col:first-child .feed-col-title { border-bottom-color: var(--chumei-plum-strong); }
+.feed-cols .feed-col:last-child .feed-col-title { border-bottom-color: var(--color-action-primary); }

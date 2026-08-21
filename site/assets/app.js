@@ -68,7 +68,7 @@
 
     fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
       var posts = data.posts;
-      var state = { school: "all", platform: "all", q: "" };
+      var state = { school: "all", platform: "all", cat: "all", org: "all", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
@@ -96,6 +96,10 @@
       }
       chips("pf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
       chips("pf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["bulletin", "公告"]], "platform");
+      var feedCats = {};
+      posts.forEach(function (p) { p.events.forEach(function (e) { feedCats[e.category || "其他"] = 1; }); });
+      chips("pf-cat", [["all", "全部類型"]].concat(Object.keys(feedCats).sort().map(function (k) { return [k, k]; })), "cat");
+      chips("pf-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
 
       var search = document.getElementById("search");
       if (search) {
@@ -107,6 +111,8 @@
         function v(k) { return ok === k ? ov : state[k]; }
         if (v("school") !== "all" && p.school !== v("school") && !(v("school") !== "both" && p.school === "both")) return false;
         if (v("platform") !== "all" && p.platform !== v("platform")) return false;
+        if (v("cat") !== "all" && !p.events.some(function (e) { return (e.category || "其他") === v("cat"); })) return false;
+        if (v("org") !== "all" && p.org_type !== v("org")) return false;
         if (state.q) {
           var hay = ((p.source_name || "") + " " + (p.text || "") + " " +
             p.events.map(function (e) { return e.title; }).join(" ")).toLowerCase();
@@ -149,13 +155,31 @@
       }
 
       var shown = 30;
+      function colHtml(title, list) {
+        return '<section class="feed-col"><h2 class="feed-col-title">' + title +
+          '<span class="result-count">' + list.length + " 則</span></h2>" +
+          (list.slice(0, shown).map(row).join("") || '<p class="empty">尚無貼文。</p>') + "</section>";
+      }
       function render(more) {
         var list = posts.filter(function (p) { return matches(p); });
         if (!more) shown = 30;
         document.getElementById("feed-count").textContent = "共 " + list.length + " 則活動貼文。";
-        feed.innerHTML = list.slice(0, shown).map(row).join("") +
-          (list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + " 則）</button>" : "") ||
-          '<p class="empty">沒有符合的貼文。</p>';
+        var wide = window.innerWidth >= 1080 && state.school === "all";
+        feed.classList.toggle("feed-wide", wide);
+        var remaining;
+        if (wide) {
+          // 雙欄：清大｜陽明交大；兩校聯合同時出現在兩欄
+          var nthu = list.filter(function (p) { return p.school === "nthu" || p.school === "both"; });
+          var nycu = list.filter(function (p) { return p.school === "nycu" || p.school === "both"; });
+          remaining = Math.max(nthu.length, nycu.length) - shown;
+          feed.innerHTML = '<div class="feed-cols">' + colHtml("清大", nthu) + colHtml("陽明交大", nycu) + "</div>" +
+            (remaining > 0 ? '<button class="fchip feed-more">載入更多</button>' : "");
+        } else {
+          remaining = list.length - shown;
+          feed.innerHTML = list.slice(0, shown).map(row).join("") +
+            (remaining > 0 ? '<button class="fchip feed-more">載入更多（還有 ' + remaining + " 則）</button>" : "") ||
+            '<p class="empty">沒有符合的貼文。</p>';
+        }
         Object.keys(groups).forEach(function (key) {
           groups[key].options.forEach(function (opt) {
             var b = groups[key].buttons[opt[0]];
@@ -169,6 +193,11 @@
       }
       feed.addEventListener("click", function (ev) {
         if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); }
+      });
+      var resizeT;
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeT);
+        resizeT = setTimeout(function () { render(true); }, 200);
       });
       var feedEvById = {};
       posts.forEach(function (p) { p.events.forEach(function (e) { feedEvById[e.id] = e; }); });

@@ -836,10 +836,12 @@ def build_posts_data(events):
             "source_name": it.get("source_name"), "platform": it.get("platform"),
             "school": it.get("school") or lead.get("school"),
             "url": it.get("url"), "posted_at": posted,
+            "org_type": it.get("org_type") or lead.get("organizer_type"),
             "text": text[:500] + ("…" if len(text) > 500 else ""),
             "image": image, "avatar": avatar,
             "events": sorted(({"id": e["id"], "title": e["title"], "start_at": e["start_at"],
                                "all_day": e.get("all_day"), "campus": e.get("campus"),
+                               "category": e.get("category"),
                                "venue": e.get("venue")} for e in evs), key=lambda x: x["start_at"]),
         })
     posts.sort(key=lambda p: p.get("posted_at") or "", reverse=True)
