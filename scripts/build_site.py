@@ -406,7 +406,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <meta property="og:image" content="{og_img}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="竹梅活動觀測站">
-<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-square-32.png"><link rel="icon" type="image/png" sizes="256x256" href="/assets/brand/logo-square-256.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png">
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="alternate" type="application/rss+xml" title="竹梅活動 RSS" href="/feeds/all.xml">
