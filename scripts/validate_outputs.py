@@ -56,6 +56,14 @@ def main():
     if len(api.get("events", [])) != len(events):
         errors += fail("api/events.json count mismatch")
 
+    for name in ("data/map/campuses.geojson", "data/map/buildings.geojson"):
+        try:
+            geo = json.loads((SITE / name).read_text())
+            if geo.get("type") != "FeatureCollection" or not geo.get("features"):
+                errors += fail(f"{name} has no map features")
+        except Exception as e:
+            errors += fail(f"{name} unparseable: {e}")
+
     if errors:
         return 1
     print(f"validate: OK ({len(events)} events)")

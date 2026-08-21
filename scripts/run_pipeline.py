@@ -62,7 +62,9 @@ def main():
             state["last_fb_run"] = time.time()
 
     results["extract"] = run_step("extract", ["extract_events.py"])
-    results["build"] = run_step("build", ["build_site.py"]) and run_step("validate", ["validate_outputs.py"])
+    results["map"] = run_step("map", ["build_map_data.py"])
+    results["build"] = (results["map"] and run_step("build", ["build_site.py"])
+                        and run_step("validate", ["validate_outputs.py"]))
 
     state["last_run"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state["last_results"] = results

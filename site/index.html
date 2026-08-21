@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="alternate" type="application/rss+xml" title="竹梅活動 RSS" href="/feeds/all.xml">
-<link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.dataset.theme='dark'}catch(e){}</script>
 </head>
 <body>
@@ -37,10 +37,7 @@
   <section class="filters" aria-label="活動篩選">
     <div class="filter-row"><span class="label">時間</span><span id="f-time"></span>
       <input id="search" type="search" placeholder="搜尋活動、社團、地點…" aria-label="搜尋活動">
-      <span class="view-toggle" role="group" aria-label="檢視方式">
-        <button id="view-list" class="fchip" aria-pressed="true">卡片</button>
-        <button id="view-map" class="fchip" aria-pressed="false">地圖</button>
-      </span></div>
+    </div>
     <details id="more-filters">
       <summary>更多篩選</summary>
       <div class="filter-row"><span class="label">學校</span><span id="f-school"></span></div>
@@ -49,17 +46,27 @@
       <div class="filter-row"><span class="label">主辦</span><span id="f-org"></span></div>
     </details>
   </section>
-  <section id="map-view" hidden aria-label="活動地圖">
+  <section id="map-view" class="results-section" aria-labelledby="map-heading">
+    <div class="section-head">
+      <h2 id="map-heading">活動地圖</h2>
+      <span id="map-count" class="result-count"></span>
+    </div>
     <div id="map"></div>
     <p id="map-note" class="map-note"></p>
   </section>
-  <section id="event-list" class="grid" aria-label="活動列表"></section>
+  <section class="results-section" aria-labelledby="list-heading">
+    <div class="section-head">
+      <h2 id="list-heading">活動卡片</h2>
+      <span id="list-count" class="result-count"></span>
+    </div>
+    <div id="event-list" class="grid"></div>
+  </section>
 </main>
 <footer class="site-footer">
   <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
   <p><a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p>
 </footer>
-<script src="/assets/vendor/leaflet/leaflet.js" defer></script>
+<script src="/assets/vendor/maplibre/maplibre-gl.js" defer></script>
 <script src="/assets/app.js" defer></script>
 </body>
 </html>
