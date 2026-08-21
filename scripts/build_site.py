@@ -602,7 +602,7 @@ def build_sources_data(events):
         e = entries[best_i]
         e["links"].append({"platform": platform, "url": url, "label": label,
                            "events": counts.get(sid, 0)})
-        e.setdefault("_avatar_keys", []).append(sid)
+        e.setdefault("sids", []).append(sid)
         e["events"] += counts.get(sid, 0)
         ts = latest.get(sid)
         if ts and ts > (e.get("updated") or ""):
@@ -652,7 +652,7 @@ def build_sources_data(events):
     # 頭貼：IG/Threads/X 由 fetcher 從 RSSHub channel image 存；FB 用 graph 公開頭貼端點補
     from chumei_lib import save_avatar, AVATAR_DIR
     for e in entries:
-        keys = e.pop("_avatar_keys", [])
+        keys = e.get("sids", [])
         for k in keys:
             if k.startswith("fb_"):
                 save_avatar(k, f"https://graph.facebook.com/{k[3:]}/picture?type=large", max_age_days=30)
@@ -671,11 +671,72 @@ def build_sources_data(events):
     covered = sum(1 for e in entries if e["links"])
     print(f"sources: {len(entries)} entries, {covered} covered, "
           f"{sum(1 for e in entries if e['roster'] and not e['links'])} roster-uncovered")
+    return entries
+
+
+KIND_LABEL = {"club": "社團", "gov": "自治組織", "dept": "系所", "unit": "校方單位",
+              "bulletin": "公告系統", "ext": "校外"}
+
+
+def org_pages(entries, events):
+    """每個名錄條目一頁 /org/<id>/：頭貼、連結、該單位的活動。"""
+    by_sid = {}
+    for e in events:
+        by_sid.setdefault(e["source"]["source_id"], []).append(e)
+    today = date.today().isoformat()
+    PLAT = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads",
+            "x": "X", "bulletin": "公告頁"}
+    for ent in entries:
+        evs = [e for sid in ent.get("sids", []) for e in by_sid.get(sid, [])]
+        for l in ent["links"]:
+            if l["platform"] == "bulletin":
+                evs += by_sid.get(next((s for s in ent.get("sids", [])), ""), [])
+        evs = list({e["id"]: e for e in evs}.values())
+        upcoming = sorted([e for e in evs if e["start_at"][:10] >= today], key=lambda e: e["start_at"])
+        past = sorted([e for e in evs if e["start_at"][:10] < today], key=lambda e: e["start_at"], reverse=True)[:20]
+
+        def ev_row(e):
+            return (f'<li class="org-ev"><a href="/event/{e["id"]}/">'
+                    f'<span class="org-ev-date">{fmt_dt(e["start_at"], e.get("all_day"))}</span>'
+                    f'{esc(e["title"])}</a></li>')
+
+        avatar = (f'<img class="org-avatar" src="{esc(ent["avatar"])}" alt="">' if ent.get("avatar")
+                  else '<span class="org-avatar src-avatar-fallback av-' + esc(ent["school"]) + '">'
+                       + esc((ent["name"] or "？")[len(ent["name"]) > 2 and ent["name"][:2] in ("清大", "交大", "陽明") and 2 or 0]) + "</span>")
+        links = "".join(f'<a class="btn" href="{esc(l["url"])}" rel="noopener">{PLAT.get(l["platform"], l["platform"])}</a>'
+                        for l in ent["links"])
+        chips = (f'<span class="chip chip-{esc(ent["school"])}">{SCHOOL_LABEL.get(ent["school"], "其他")}</span>'
+                 f'<span class="chip">{KIND_LABEL.get(ent["kind"], "")}</span>'
+                 + (f'<span class="chip">{esc(ent["category"])}</span>' if ent.get("category") else ""))
+        body = [f'<article class="org-page"><div class="org-head">{avatar}<div>'
+                f'<p class="chips">{chips}</p><h1>{esc(ent["name"])}</h1>'
+                f'<div class="actions">{links}</div></div></div>']
+        if not ent["links"]:
+            body.append('<p class="review-note">這個單位還沒有被竹梅收錄——如果你知道它的公開社群帳號，'
+                        '歡迎到<a href="/about/">回報管道</a>告訴我們。</p>')
+        if upcoming:
+            body.append(f'<h2>即將舉行（{len(upcoming)}）</h2><ul class="org-evs">'
+                        + "".join(ev_row(e) for e in upcoming) + "</ul>")
+        if past:
+            body.append(f'<h2>過往活動</h2><ul class="org-evs">'
+                        + "".join(ev_row(e) for e in past) + "</ul>")
+        if not evs and ent["links"]:
+            body.append('<p class="src-desc">尚未從這個來源收錄到活動。</p>')
+        body.append('<p class="src-desc"><a href="/source/">← 回資料來源名錄</a></p></article>')
+        d = SITE / "org" / str(ent["id"])
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "index.html").write_text(page_shell(
+            f"{ent['name']}｜竹梅活動觀測站",
+            f"{ent['name']}的公開帳號與活動記錄。",
+            "\n".join(body), canonical=f"{BASE_URL}/org/{ent['id']}/"))
+    print(f"org pages: {len(entries)}")
+    return [ent["id"] for ent in entries]
 
 
 def source_page(events):
     """/source/ 靜態殼：資料由 app.js 讀 sources.json 渲染（表格＋篩選）。"""
-    build_sources_data(events)
+    entries = build_sources_data(events)
+    return org_pages(entries, events)
     content = """<section class="hero"><h1>資料來源與機構名錄</h1>
 <p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告系統與社群帳號。
 還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
@@ -733,10 +794,11 @@ def main():
         d.mkdir(parents=True, exist_ok=True)
         (d / "index.html").write_text(detail_page(e))
 
-    source_page(events)
+    org_ids = source_page(events)
 
     urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/"] + \
-           [f"{BASE_URL}/event/{e['id']}/" for e in events]
+           [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
+           [f"{BASE_URL}/org/{i}/" for i in (org_ids or [])]
     (SITE / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
         + "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>")

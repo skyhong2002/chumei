@@ -116,7 +116,7 @@
           '<span class="chip chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
           '<span class="chip">' + esc(KIND[e.kind] || "") + "</span>" +
           (e.category ? '<span class="chip">' + esc(e.category) + "</span>" : "") +
-          "</span><strong>" + esc(e.name) + "</strong></div>" +
+          '</span><strong><a class="src-name" href="/org/' + e.id + '/">' + esc(e.name) + "</a></strong></div>" +
           '<div class="src-links">' + (links || '<span class="src-none">尚未找到公開帳號</span>') + "</div>" +
           '<div class="src-upd" title="' + esc(e.updated || "") + '">' + fmtUpdated(e.updated) + "</div>" +
           '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div></div>";

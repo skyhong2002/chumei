@@ -568,6 +568,29 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .src-ev, .src-upd { text-align: left; display: inline-block; margin-right: 12px; }
 }
 
+/* ---------- org pages ---------- */
+.org-page { padding-top: 16px; max-width: var(--layout-reading, 720px); }
+.org-head { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
+.org-avatar {
+  width: 88px; height: 88px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--color-border-subtle); background: var(--color-surface-soft);
+  font-size: 1.6rem;
+}
+.org-head h1 { font-size: clamp(1.4rem, 2.4vw, 1.9rem); margin: 4px 0 10px; line-height: 1.3; }
+.org-page h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+.org-evs { list-style: none; padding: 0; margin: 0; }
+.org-ev a {
+  display: flex; gap: 14px; align-items: baseline; padding: 9px 4px;
+  border-bottom: 1px solid var(--color-border-subtle); color: var(--color-text-primary);
+}
+.org-ev a:hover { background: var(--color-surface-soft); text-decoration: none; }
+.org-ev-date { flex-shrink: 0; font-size: 0.82rem; color: var(--color-text-muted); min-width: 9em; }
+@media (max-width: 520px) {
+  .org-head { gap: 14px; }
+  .org-avatar { width: 64px; height: 64px; }
+  .org-ev a { flex-direction: column; gap: 2px; }
+}
+
 /* ---------- footer ---------- */
 .site-footer {
   border-top: 1px solid var(--color-border-subtle);
@@ -580,3 +603,5 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .card, .fchip { transition: none; }
   .card:hover { transform: none; }
 }
+.src-name { color: inherit; }
+.src-name:hover { color: var(--chumei-bamboo-text); text-decoration: none; }
