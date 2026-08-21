@@ -41,6 +41,16 @@
     });
   });
 
+  // 更多篩選（手機摺疊）：桌機自動展開 — 全站通用
+  (function () {
+    var mf = document.getElementById("more-filters");
+    if (!mf) return;
+    if (window.innerWidth > 700) mf.open = true;
+    window.addEventListener("resize", function () {
+      if (window.innerWidth > 700) mf.open = true;
+    });
+  })();
+
   var listEl = document.getElementById("event-list");
   var calEl = document.getElementById("cal-months");
   initStories();
@@ -413,7 +423,9 @@
             return '<button class="story-card" data-i="' + i + '">' +
               '<img src="' + esc(s.media) + '" alt="' + esc(s.name) + ' 的限時動態" loading="lazy">' +
               (s.is_video ? '<span class="sc-video">▶</span>' : "") +
-              '<span class="sc-meta"><strong>' + esc(s.name) + "</strong>" + ago(s.taken_at) + "</span></button>";
+              '<span class="sc-meta">' +
+              (s.avatar ? '<img class="sc-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
+              '<span class="sc-who"><strong>' + esc(s.name) + "</strong>" + ago(s.taken_at) + "</span></span></button>";
           }).join("");
           wall.addEventListener("click", function (ev) {
             var b = ev.target.closest(".story-card");
@@ -897,7 +909,7 @@
   // ---- 日曆 ----
   function initCalendar(bundle) {
     var labels = bundle.labels;
-    var state = { school: "all", campus: "all", cat: "all", org: "all", q: "" };
+    var state = { school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
     var params = new URLSearchParams(location.search);
     Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 

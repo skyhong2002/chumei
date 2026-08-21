@@ -118,8 +118,11 @@ def main():
             if not media:
                 continue
             taken = item.date_utc.replace(tzinfo=timezone.utc)
+            from chumei_lib import AVATAR_DIR
+            av = f"/assets/avatars/ig_{username}.jpg" if (AVATAR_DIR / f"ig_{username}.jpg").exists() else None
             state[key] = {
                 "username": username,
+                "avatar": av,
                 "name": row.get("name") or username,
                 "school": row.get("school") or "other",
                 "taken_at": taken.isoformat(timespec="seconds"),
@@ -146,6 +149,12 @@ def main():
         state.pop(key)
 
     STORIES_STATE.write_text(json.dumps(state, ensure_ascii=False, indent=0))
+    from chumei_lib import AVATAR_DIR as _AD
+    for v in active.values():
+        if not v.get("avatar"):
+            cand = _AD / f"ig_{v['username']}.jpg"
+            if cand.exists():
+                v["avatar"] = f"/assets/avatars/ig_{v['username']}.jpg"
     live = {k: v for k, v in active.items() if not v.get("archived")}
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
