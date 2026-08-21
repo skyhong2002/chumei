@@ -534,74 +534,122 @@ def detail_page(e):
     )
 
 
-def source_page(events):
-    """公開來源索引 /source/ — 列出每一個資料來源與收錄活動數。"""
+def _norm_org(s):
+    s = re.sub(r"[（(].*?[)）]", "", s or "")
+    s = re.sub(r"國立|清華大學|陽明交通大學|清大|交大|陽明|NTHU|NYCU|學生|大學", "", s, flags=re.I)
+    return re.sub(r"[\\W_]+", "", s.lower())
+
+
+def _org_sim(a, b):
+    if not a or not b:
+        return 0
+    if len(a) >= 3 and len(b) >= 3 and (a in b or b in a):
+        return 1
+    A, B = _bigrams(a), _bigrams(b)
+    return len(A & B) / max(1, len(A | B))
+
+
+def build_sources_data(events):
+    """全機構名錄 site/data/sources.json：官方名冊為底＋監測帳號＋公告來源，含未收錄單位。"""
     counts = {}
     for e in events:
         sid = e["source"]["source_id"]
         counts[sid] = counts.get(sid, 0) + 1
 
-    def row_html(name, url, sid, tags):
-        n = counts.get(sid, 0)
-        chips = "".join(f'<span class="chip {c}">{esc(t)}</span>' for t, c in tags if t)
-        cnt = f'<span class="src-count">{n} 場</span>' if n else '<span class="src-count src-zero">尚無收錄</span>'
-        return (f'<li class="src-item"><a href="{esc(url)}" rel="noopener">{esc(name)}</a>'
-                f'<span class="src-meta">{chips}{cnt}</span></li>')
+    entries = []
+    # 1. 官方名冊打底
+    for school, fname in (("nthu", "club_roster_nthu.csv"), ("nycu", "club_roster_nycu.csv")):
+        for r in read_sources_csv(fname):
+            cat = r["category"]
+            kind = "gov" if ("自治" in cat or "學生會" in cat) else "club"
+            entries.append({
+                "name": r["club_name"], "school": school, "kind": kind,
+                "category": re.sub(r"社團$", "", cat), "campus": r.get("notes") or None,
+                "links": [], "events": 0, "roster": True,
+            })
+    norms = [_norm_org(e["name"]) for e in entries]
 
-    def school_chip(s):
-        return (SCHOOL_LABEL.get(s, s), f"chip-{s}")
+    def attach(name, school, org_type, platform, url, label, sid, note=None):
+        n = _norm_org(name)
+        best_i, best = -1, 0.55
+        for i, e in enumerate(entries):
+            if e["school"] != school:
+                continue
+            v = _org_sim(n, norms[i])
+            if v > best:
+                best_i, best = i, v
+        if best_i == -1:
+            kind = {"official": "unit", "department": "dept", "club": "club", "external": "ext"}.get(org_type, "club")
+            entries.append({"name": name, "school": school, "kind": kind, "category": None,
+                            "campus": None, "links": [], "events": 0, "roster": False})
+            norms.append(_norm_org(name))
+            best_i = len(entries) - 1
+        e = entries[best_i]
+        e["links"].append({"platform": platform, "url": url, "label": label,
+                           "events": counts.get(sid, 0)})
+        e["events"] += counts.get(sid, 0)
 
-    sections = []
-    bulletin_rows = []
-    for r in read_sources_csv("bulletin_sources.csv"):
-        bulletin_rows.append(row_html(r["name"], r["url"], r["source_id"], [school_chip(r["school"])]))
-    sections.append(("校方公告與官方 API", "兩校公告系統與 NYCU LIFE 的結構化活動資料。", bulletin_rows))
-
-    ig_rows = []
-    for r in sorted(read_sources_csv("ig_accounts.csv"), key=lambda r: -counts.get(f"ig_{r['username']}", 0)):
+    for r in read_sources_csv("ig_accounts.csv"):
         if r.get("active", "true").lower() == "false":
             continue
         u = r["username"].strip().lstrip("@")
-        ig_rows.append(row_html(f"{r['name']}（@{u}）", f"https://www.instagram.com/{u}/",
-                                f"ig_{u}", [school_chip(r["school"]), (r.get("category_hint"), "")]))
-    sections.append(("Instagram 帳號", "學生社團與校內單位的公開貼文，活動欄位由 AI 從貼文與海報擷取。", ig_rows))
-
-    social_rows = []
-    SOCIAL_URL = {"threads": "https://www.threads.com/@{u}", "x": "https://x.com/{u}"}
-    SOCIAL_TAG = {"threads": "Threads", "x": "X"}
-    for r in sorted(read_sources_csv("social_accounts.csv"),
-                    key=lambda r: (r["platform"], r["name"])):
-        if r.get("active", "true").lower() == "false" or r["platform"] not in SOCIAL_URL:
-            continue
-        u = r["username"].strip().lstrip("@")
-        social_rows.append(row_html(
-            f"{r['name']}（@{u}）", SOCIAL_URL[r["platform"]].format(u=u),
-            f"{r['platform']}_{u}",
-            [(SOCIAL_TAG[r["platform"]], ""), school_chip(r["school"])]))
-    sections.append(("Threads 與 X", "兩校官方與學生社群在 Threads/X 上的公開帳號。", social_rows))
-
-    fb_rows = []
-    for r in sorted(read_sources_csv("fb_pages.csv"), key=lambda r: r["name"]):
+        attach(r["name"], r.get("school") or "other", r.get("org_type"), "instagram",
+               f"https://www.instagram.com/{u}/", f"@{u}", f"ig_{u}")
+    from fetch_facebook import page_slug
+    for r in read_sources_csv("fb_pages.csv"):
         if r.get("active", "true").lower() == "false":
             continue
         page = r["page"].strip()
         url = page if page.startswith("http") else f"https://www.facebook.com/{page}"
-        from fetch_facebook import page_slug
-        fb_rows.append(row_html(r["name"], url, f"fb_{page_slug(page)}", [school_chip(r["school"]), (r.get("category_hint"), "")]))
-    sections.append(("Facebook 專頁", "校方單位、系學會與老牌社團的公開專頁，經 Apify 取得公開貼文。", fb_rows))
+        attach(r["name"], r.get("school") or "other", r.get("org_type"), "facebook",
+               url, "Facebook", f"fb_{page_slug(page)}")
+    SOCIAL_URL = {"threads": "https://www.threads.com/@{u}", "x": "https://x.com/{u}"}
+    for r in read_sources_csv("social_accounts.csv"):
+        if r.get("active", "true").lower() == "false" or r["platform"] not in SOCIAL_URL:
+            continue
+        u = r["username"].strip().lstrip("@")
+        attach(r["name"], r.get("school") or "other", r.get("org_type"), r["platform"],
+               SOCIAL_URL[r["platform"]].format(u=u), f"@{u}", f"{r['platform']}_{u}")
 
-    body = ['<div class="prose"><h1>資料來源</h1>',
-            f'<p>竹梅活動觀測站目前監測 {sum(len(s[2]) for s in sections)} 個公開來源。所有內容皆為公開資訊，'
-            '活動頁都附原始連結；來源單位若希望調整或移除內容，請見<a href="/about/">關於頁</a>的回報管道。</p></div>']
-    for title, desc, rows in sections:
-        body.append(f'<section class="src-section"><h2>{title}<span class="src-n">{len(rows)}</span></h2>'
-                    f'<p class="src-desc">{desc}</p><ul class="source-list">{"".join(rows)}</ul></section>')
+    # 3. 公告系統／官方 API（獨立條目）
+    for r in read_sources_csv("bulletin_sources.csv"):
+        entries.append({"name": r["name"], "school": r["school"], "kind": "bulletin",
+                        "category": None, "campus": None,
+                        "links": [{"platform": "bulletin", "url": r["url"], "label": "公告頁",
+                                   "events": counts.get(r["source_id"], 0)}],
+                        "events": counts.get(r["source_id"], 0), "roster": False})
+
+    entries.sort(key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
+    (SITE / "data").mkdir(parents=True, exist_ok=True)
+    (SITE / "data" / "sources.json").write_text(json.dumps({
+        "generated_at": now_iso(), "entries": entries,
+    }, ensure_ascii=False))
+    covered = sum(1 for e in entries if e["links"])
+    print(f"sources: {len(entries)} entries, {covered} covered, "
+          f"{sum(1 for e in entries if e['roster'] and not e['links'])} roster-uncovered")
+
+
+def source_page(events):
+    """/source/ 靜態殼：資料由 app.js 讀 sources.json 渲染（表格＋篩選）。"""
+    build_sources_data(events)
+    content = """<section class="hero"><h1>資料來源與機構名錄</h1>
+<p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告系統與社群帳號。
+還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
+<span id="src-count" aria-live="polite"></span></p></section>
+<section class="filters" aria-label="名錄篩選">
+  <div class="filter-row"><span class="label">學校</span><span id="sf-school"></span>
+    <span class="search-hit"><input id="search" type="search" placeholder="搜尋社團、單位…" aria-label="搜尋名錄"></span></div>
+  <div class="filter-row"><span class="label">狀態</span><span id="sf-status"></span></div>
+  <div class="filter-row"><span class="label">類型</span><span id="sf-kind"></span></div>
+  <div class="filter-row"><span class="label">平台</span><span id="sf-platform"></span></div>
+</section>
+<div id="source-table" class="src-table" aria-label="機構名錄"></div>"""
     d = SITE / "source"
     d.mkdir(parents=True, exist_ok=True)
     (d / "index.html").write_text(page_shell(
-        "資料來源｜竹梅活動觀測站",
-        "竹梅活動觀測站監測的所有公開資料來源：兩校公告系統、NYCU LIFE、學生社團 Instagram 與 Facebook。",
-        "\n".join(body), canonical=f"{BASE_URL}/source/"))
+        "資料來源與機構名錄｜竹梅活動觀測站",
+        "清大×交大全部社團與單位的名錄：竹梅監測中的公告系統、IG、FB、Threads、X 帳號，以及尚未收錄的單位。",
+        content, canonical=f"{BASE_URL}/source/"))
 
 
 def main():

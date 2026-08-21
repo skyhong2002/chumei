@@ -17,6 +17,7 @@
   var listEl = document.getElementById("event-list");
   var calEl = document.getElementById("cal-months");
   initStories();
+  initSources();
   if (!listEl && !calEl) return;
 
   fetch("/data/events.json")
@@ -29,6 +30,101 @@
       var el = listEl || calEl;
       el.innerHTML = '<p class="empty">活動資料載入失敗，請稍後再試。</p>';
     });
+
+  // ---- /source/ 機構名錄（表格＋篩選） ----
+  function initSources() {
+    var table = document.getElementById("source-table");
+    if (!table) return;
+    var KIND = { club: "社團", gov: "自治組織", dept: "系所", unit: "校方單位", bulletin: "公告系統", ext: "校外" };
+    var PLAT = { instagram: "IG", facebook: "FB", threads: "Threads", x: "X", bulletin: "公告" };
+
+    fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
+      var entries = data.entries;
+      var state = { school: "all", status: "all", kind: "all", platform: "all", q: "" };
+      var params = new URLSearchParams(location.search);
+      Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
+
+      var groups = {};
+      function chips(id, options, key) {
+        var host = document.getElementById(id);
+        if (!host) return;
+        groups[key] = { options: options, buttons: {} };
+        options.forEach(function (opt) {
+          var b = document.createElement("button");
+          b.className = "fchip";
+          b.dataset.value = opt[0];
+          b.innerHTML = '<span class="fchip-label">' + esc(opt[1]) + '</span><span class="fchip-count" aria-hidden="true"></span>';
+          b.setAttribute("aria-pressed", String(state[key] === opt[0]));
+          groups[key].buttons[opt[0]] = b;
+          b.addEventListener("click", function () {
+            state[key] = opt[0];
+            host.querySelectorAll(".fchip").forEach(function (x) {
+              x.setAttribute("aria-pressed", String(x.dataset.value === opt[0]));
+            });
+            render();
+          });
+          host.appendChild(b);
+        });
+      }
+      chips("sf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"]], "school");
+      chips("sf-status", [["all", "全部"], ["covered", "已收錄"], ["uncovered", "尚未收錄"]], "status");
+      chips("sf-kind", [["all", "全部"]].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; })), "kind");
+      chips("sf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["x", "X"]], "platform");
+
+      var search = document.getElementById("search");
+      if (search) {
+        search.value = state.q;
+        search.addEventListener("input", function () { state.q = search.value.trim(); render(); });
+      }
+
+      function matches(e, ok, ov) {
+        function v(k) { return ok === k ? ov : state[k]; }
+        if (v("school") !== "all" && e.school !== v("school")) return false;
+        if (v("status") === "covered" && !e.links.length) return false;
+        if (v("status") === "uncovered" && e.links.length) return false;
+        if (v("kind") !== "all" && e.kind !== v("kind")) return false;
+        if (v("platform") !== "all" && !e.links.some(function (l) { return l.platform === v("platform"); })) return false;
+        if (state.q) {
+          var hay = (e.name + " " + (e.category || "") + " " + e.links.map(function (l) { return l.label; }).join(" ")).toLowerCase();
+          if (hay.indexOf(state.q.toLowerCase()) === -1) return false;
+        }
+        return true;
+      }
+
+      function row(e) {
+        var links = e.links.map(function (l) {
+          return '<a class="src-link" href="' + esc(l.url) + '" rel="noopener" target="_blank">' +
+            esc(PLAT[l.platform] || l.platform) + (l.label && l.label !== "Facebook" && l.label !== "公告頁" ? " " + esc(l.label) : "") + "</a>";
+        }).join("");
+        return '<div class="src-row' + (e.links.length ? "" : " src-uncovered") + '">' +
+          '<div class="src-main"><span class="chips">' +
+          '<span class="chip chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
+          '<span class="chip">' + esc(KIND[e.kind] || "") + "</span>" +
+          (e.category ? '<span class="chip">' + esc(e.category) + "</span>" : "") +
+          "</span><strong>" + esc(e.name) + "</strong></div>" +
+          '<div class="src-links">' + (links || '<span class="src-none">尚未找到公開帳號</span>') + "</div>" +
+          '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div></div>";
+      }
+
+      function render() {
+        Object.keys(groups).forEach(function (key) {
+          groups[key].options.forEach(function (opt) {
+            var b = groups[key].buttons[opt[0]];
+            if (b) b.querySelector(".fchip-count").textContent = String(entries.filter(function (e) { return matches(e, key, opt[0]); }).length);
+          });
+        });
+        var list = entries.filter(function (e) { return matches(e); });
+        document.getElementById("src-count").textContent = "目前列出 " + list.length + " 個單位。";
+        table.innerHTML = list.map(row).join("") || '<p class="empty">沒有符合的單位。</p>';
+        var qs = new URLSearchParams();
+        Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
+        history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+      }
+      render();
+    }).catch(function () {
+      table.innerHTML = '<p class="empty">名錄載入失敗。</p>';
+    });
+  }
 
   // ---- IG 限時動態（首頁圓圈列＋動態牆＋燈箱） ----
   function initStories() {
