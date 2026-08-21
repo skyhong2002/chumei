@@ -151,8 +151,10 @@
       var media = e.image_kind !== "illustration" && e.poster_image
         ? '<img src="' + esc(cover) + '" alt="" loading="lazy">'
         : e.image_kind === "source_screenshot"
-          ? '<div class="source-cover" role="img" aria-label="' + esc(e.title + " 原始公告網頁截圖") + '">' +
-            '<img src="' + esc(cover) + '" alt="" loading="lazy"><span class="source-cover-note">原始網頁截圖</span></div>'
+          ? '<div class="source-cover source-cover-' + esc(e.school || "other") + '" role="img" aria-label="' + esc(e.title + " 原始公告網頁截圖") + '">' +
+            '<div class="source-cover-shot"><img src="' + esc(cover) + '" alt="" loading="lazy"></div>' +
+            '<div class="source-cover-caption"><span>原始網頁截圖 · ' + esc(e.category || "活動") + '</span>' +
+            '<strong>' + esc(e.title) + '</strong></div></div>'
         : '<div class="event-cover event-cover-' + esc(e.school || "other") + '" role="img" aria-label="' +
           esc((e.category || "活動") + "活動示意封面") + '">' +
           '<img class="event-cover-bg" src="' + esc(cover) + '" alt="" loading="lazy">' +

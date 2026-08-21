@@ -476,9 +476,13 @@ def detail_page(e):
         poster = f'<img class="detail-poster" src="{esc(e["poster_image"])}" alt="{esc(e["title"])} 活動海報">'
     elif e.get("image_kind") == "source_screenshot":
         cover = esc(e.get("cover_image"))
-        poster = (f'<div class="detail-source-cover source-cover" role="img" '
+        school_class = esc(e.get("school") or "other")
+        category = esc(e.get("category") or "活動")
+        poster = (f'<div class="detail-source-cover source-cover source-cover-{school_class}" role="img" '
                   f'aria-label="{esc(e["title"])} 原始公告網頁截圖">'
-                  f'<img src="{cover}" alt=""><span class="source-cover-note">原始網頁截圖</span></div>')
+                  f'<div class="source-cover-shot"><img src="{cover}" alt=""></div>'
+                  f'<div class="source-cover-caption"><span>原始網頁截圖 · {category}</span>'
+                  f'<strong>{esc(e["title"])}</strong></div></div>')
     else:
         school_class = esc(e.get("school") or "other")
         category = esc(e.get("category") or "其他")
