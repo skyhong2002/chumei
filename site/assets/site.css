@@ -90,7 +90,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   flex-wrap: wrap; align-items: center; min-height: var(--layout-tap-target, 44px);
 }
 .filter-row .label {
-  min-width: 3.5rem; height: 32px; align-self: flex-start;
+  min-width: 3.5rem; height: 32px; align-self: center;
   display: inline-flex; align-items: center;
   color: var(--color-text-muted); font-size: var(--text-small, 0.875rem); line-height: 1;
 }
