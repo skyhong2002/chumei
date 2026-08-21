@@ -118,6 +118,9 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   display: grid; gap: 14px; margin-top: 16px;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
+@media (max-width: 700px) {
+  .story-wall { gap: 8px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+}
 .story-card {
   position: relative; border: none; padding: 0; cursor: pointer; font-family: inherit;
   aspect-ratio: 9 / 16; border-radius: var(--radius-md); overflow: hidden;
@@ -596,9 +599,23 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .src-ev { text-align: right; font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .src-uncovered .src-ev { color: var(--color-text-muted); font-weight: 400; }
 @media (max-width: 700px) {
-  .src-row { grid-template-columns: 1fr; gap: 4px; }
-  .src-links { justify-content: flex-start; }
-  .src-ev, .src-upd { text-align: left; display: inline-block; margin-right: 12px; }
+  /* compact 兩行列：上行＝頭貼＋校chip＋名稱＋場數，下行＝連結＋更新時間 */
+  .src-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "main ev" "links upd";
+    gap: 3px 10px; padding: 8px 2px;
+  }
+  .src-main { grid-area: main; gap: 8px; flex-wrap: nowrap; overflow: hidden; }
+  .src-links { grid-area: links; justify-content: flex-start; padding-left: 36px; gap: 12px; }
+  .src-upd { grid-area: upd; font-size: 0.72rem; }
+  .src-ev { grid-area: ev; font-size: 0.8rem; }
+  .src-id { display: none; }
+  .src-avatar { width: 28px; height: 28px; }
+  .src-main .chip-extra { display: none; }
+  .src-main .chips { flex-wrap: nowrap; flex-shrink: 0; }
+  .src-main strong { font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .src-link { font-size: 0.78rem; }
+  .src-none { font-size: 0.74rem; }
 }
 
 /* ---------- org pages ---------- */

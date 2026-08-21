@@ -141,9 +141,9 @@
           '<div class="src-main">' + avatar +
           '<span class="src-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
           '<span class="chips">' +
-          '<span class="chip chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
-          '<span class="chip">' + esc(KIND[e.kind] || "") + "</span>" +
-          (e.category ? '<span class="chip">' + esc(e.category) + "</span>" : "") +
+          '<span class="chip chip-school chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
+          '<span class="chip chip-extra">' + esc(KIND[e.kind] || "") + "</span>" +
+          (e.category ? '<span class="chip chip-extra">' + esc(e.category) + "</span>" : "") +
           '</span><strong><a class="src-name" href="/org/' + e.id + '/">' + esc(e.name) + "</a></strong></div>" +
           '<div class="src-links">' + (links || '<span class="src-none">尚未找到公開帳號</span>') + "</div>" +
           '<div class="src-upd" title="' + esc(e.updated || "") + '">' + fmtUpdated(e.updated) + "</div>" +
