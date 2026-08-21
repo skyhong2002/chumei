@@ -16,7 +16,7 @@ ipta.nthu,清華大學藝術學院學士班,nthu,department,藝文,true,search r
 NTHU.HTC.DELT,清大教育與學習科技學系,nthu,department,學術,true,search result facebook.com/NTHU.HTC.DELT
 econstudents,清大經濟系學會,nthu,department,學術,true,search result facebook.com/econstudents
 nthu.cssa,清大資工系學會,nthu,department,學術,true,search result facebook.com/nthu.cssa; IG 清單 nthu_cssa 同單位
-NTHUEESA,清大電機系學會,nthu,department,學術,true,search result facebook.com/NTHUEESA; IG 清單 nthu_eesa 同單位
+NTHUEESA,電機系會,nthu,department,學術,true,search result facebook.com/NTHUEESA; IG 清單 nthu_eesa 同單位
 nthueecssa,清華電資院學士班系學會,nthu,department,學術,true,search result facebook.com/nthueecssa
 nthueeoffice,清大電機系(系官方),nthu,department,學術,true,search result facebook.com/nthueeoffice
 csofficeNTHU,清大資工系(系官方),nthu,department,學術,true,handle 來自搜尋結果 facebook.com/csofficeNTHU; 頁面名稱 unverified
@@ -190,7 +190,7 @@ blisswisdom.nthu,清大福智青年社,nthu,club,服務性A,true,課外組名錄
 NTHUScienceServiceClub,清大科學服務社,nthu,club,服務性A,true,1972年創社最老服務性社團；2026暑期科學營仍在辦；官網 nthussc.wixsite.com/home
 NTHUWHYOU,清大懷幼社,nthu,club,服務性A,true,搜尋結果佐證「清大 懷幼 WHYOU」粉專
 NTHU.ERSA,清大親善大使團,nthu,club,服務性A,true,清華紫荊大使(ERSA) 粉專
-NTHUCDYoungVolunteers,清大崇德青年志工社,nthu,club,服務性A,true,課外組名錄連出；可能低度更新
+NTHUCDYoungVolunteers,清大崇德青年志工社,nthu,club,服務性A,false,課外組名錄連出；可能低度更新；2026-08 sweep：頁面已消失，停用
 nthufic,清大理財投資研習社,nthu,club,學術性A,true,課外組社團介紹頁指向此粉專；IG 未找到
 https://www.facebook.com/pages/category/Community/%E6%B8%85%E8%8F%AF%E5%95%86%E6%A5%AD%E7%A0%94%E7%A9%B6%E7%A4%BE-NTHU-Business-Club-819069725153099/,清大商業研究社,nthu,club,學術性A,true,粉專無自訂 username(Page ID 819069725153099)；linktr.ee/businessclub.nthu；2026課外組公告評鑑丁等予以解散、疑似停更
 nthu.acgacademic,清大ACG蔓延社,nthu,club,學術性A,true,2025社刊仍出刊；IG 未找到
@@ -208,7 +208,7 @@ CIE.at.NTHU,清大中國工程師學會清華分會,nthu,club,學術性B,true,�
 nthunatureclub,清大自然保育社,nthu,club,學術性B,true,課外組社團頁連出；2025評鑑優等
 NTHUKorea,清大韓語交流文化學習社,nthu,club,學術性B,true,課外組學術性社團頁連出；更新狀態未確認
 nthuleadership,清大青年領袖研習社,nthu,club,學術性B,true,課外組學術性社團頁連出
-NTHUSRchan,清大禪學社(南大),nthu,club,學術性B,true,課外組學術性社團頁連出；更新狀態未確認
+NTHUSRchan,清大禪學社(南大),nthu,club,學術性B,false,課外組學術性社團頁連出；2026-08 sweep：slug 已無索引（頁面消失），停用
 NYCUIEC,交大創新創業社,nycu,club,學術性社團,true,學務處社團介紹頁與官方連結頁均直連；FB專頁名「陽明交大創創社NYCU Innovation and Entrepreneurship Club」；光復校區
 nctufhl,交大信望愛社,nycu,club,學術性社團,true,學務處社團介紹頁直連www.facebook.com/nctufhl；官方連結頁另連公開社團groups/nctufhl；光復校區
 https://www.facebook.com/YM.LifeScience,陽明生科系學會（生命科學系系學會）,nycu,department,學生自治組織,true,學務處院系所學會列表直連(YMLS)；FB頁名「YMLS 國立陽明大學生命科學系暨基因體科學研究所」與系學會共用；陽明校區
@@ -219,5 +219,85 @@ https://www.facebook.com/NYCU-%E7%B2%B5%E8%AA%9E%E6%96%87%E5%8C%96%E7%A0%94%E7%A
 https://www.facebook.com/YM.PTATSA/,物理治療暨輔助科技學系系學會,nycu,department,學生自治組織,true,學務處院系所學會列表與官方連結頁均直連此粉專；陽明校區
 https://www.facebook.com/people/%E6%97%A5%E5%87%BA%E9%9B%BB%E5%BD%B1%E7%A4%BE/61574773697443/,陽明日出電影社,nycu,club,學藝性社團,true,NYCU學務處社團介紹頁(osa.nycu.edu.tw openData)直連此FB;陽明校區
 ymmcc999,陽明調酒文化研究社,nycu,club,學藝性社團,true,NYCU學務處社團介紹頁直連此FB;陽明校區
-NYCUArtFest,交大藝趣節團隊,nycu,club,學藝性社團,true,NYCU學務處社團介紹頁直連此FB;光復校區
+NYCUArtFest,交大藝趣節團隊,nycu,club,學藝性社團,false,NYCU學務處社團介紹頁直連此FB;光復校區;2026-08 sweep：頁面已消失，停用
 nycubmhc,交大竹韻口琴社,nycu,club,學藝性社團,true,使用者提供 2026-08-21
+thegreatIPE,工學院學士班,nthu,department,學生自治,true,2026-08 sweep：課指組社團系統直連
+nthu.cssa,資工系會,nthu,department,學生自治,true,2026-08 sweep：課指組社團系統直連（pg/about URL 正規化）
+nthuclsa,中文系會,nthu,department,學生自治,true,2026-08 sweep：課指組社團系統直連
+nthubmessa,醫環系會,nthu,department,學生自治,true,2026-08 sweep：課指組社團系統直連
+https://www.facebook.com/清大原子科學院學士班-IPNS-1640491809558827/,原科院學士班,nthu,department,學生自治,true,2026-08 sweep：課指組社團系統直連
+NHCUEartdesign,藝設系系學會,nthu,department,學生自治,true,2026-08 sweep：課指組社團系統直連（竹師教育學院）
+nthusc,學生議會,nthu,official,學生自治,true,2026-08 sweep：課指組社團系統直連
+NTHUTFAA,親善大使團,nthu,club,綜合性,true,2026-08 sweep：課指組社團系統直連
+guitarnthu,吉他社,nthu,club,音樂性,true,2026-08 sweep：課指組社團系統直連
+https://www.facebook.com/清大烹飪社-157801604239737/,烹飪社,nthu,club,技藝性,true,2026-08 sweep：課指組社團系統直連
+NTHUGOGOGO,圍棋社,nthu,club,技藝性,true,2026-08 sweep：課指組社團系統直連
+https://www.facebook.com/pages/category/Community/清大思言社-1660795027468029/,思言社,nthu,club,學術性,true,2026-08 sweep：課指組社團系統直連
+nthumdclub,清大音樂文化發展社,nthu,club,音樂性,true,2026-08 sweep：課指組社團系統直連
+NTHUTKD,跆拳道社,nthu,club,體育性A,true,2026-08 sweep：課指組社團系統直連
+https://www.facebook.com/清華大學溜冰社-815651555123212/,溜冰社,nthu,club,體育性A,true,2026-08 sweep：課指組社團系統直連
+NTHUbilliards,撞球社,nthu,club,體育性A,true,2026-08 sweep：課指組社團系統直連
+https://www.facebook.com/清大火力班-1571693219711454/,梅竹火力班,nthu,club,綜合性,true,2026-08 sweep：課指組社團系統直連
+nthutainanclub,南友會,nthu,club,聯誼性,true,2026-08 sweep：課指組社團系統直連
+nthuHxZ,附友會,nthu,club,聯誼性,true,2026-08 sweep：課指組社團系統直連
+https://www.facebook.com/100064029420915,交大中智佛學社,nycu,club,學術性,true,2026-08 sweep：研究 nycu_0（high）
+nctupc,交大攝影社,nycu,club,學藝性,true,2026-08 sweep：研究 nycu_0（high）
+NCTUElectionalCommittee,交大交通分會選舉委員會,nycu,official,學生會,true,2026-08 sweep：研究 nycu_0（high）
+nycuocsa,交大僑生聯誼會交大分會,nycu,club,任務性,true,2026-08 sweep：研究 nycu_0（high）
+NYCUJullay,交大印度國際志工團,nycu,club,任務性,true,2026-08 sweep：研究 nycu_0（high）
+https://www.facebook.com/p/%E4%BA%A4%E5%A4%A7DJ%E7%A4%BE-100064106407667,交大唱片騎師社,nycu,club,音樂戲劇性,true,2026-08 sweep：研究 nycu_0（high）
+NYMUgoclub,陽明圍棋社,nycu,club,康樂性,true,2026-08 sweep：研究 nycu_0（high）
+nthuhsssa,人社院學士班,nthu,official,自治性,true,2026-08 sweep：研究 nthu_0（high）
+NTHU.FHL,信望愛團契,nthu,club,學術性B,true,2026-08 sweep：研究 nthu_0（high）
+FSA.NTHU,外籍生聯誼會,nthu,club,綜合性,true,2026-08 sweep：研究 nthu_0（high）
+IEMhome,交大工業工程與管理學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：研究 nycu_1（high）
+msenycu,交大材料科學與工程學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：研究 nycu_1（high）
+nctuasean,交大東南亞國際志工團,nycu,club,任務性,true,2026-08 sweep：研究 nycu_1（high）
+https://www.facebook.com/p/%E5%9C%8B%E7%AB%8B%E6%B8%85%E8%8F%AF%E5%A4%A7%E5%AD%B8%E5%AD%B8%E5%A3%AB%E5%BE%8C%E9%86%AB%E5%AD%B8%E7%B3%BB%E7%B3%BB%E5%AD%B8%E6%9C%83-100083816576702,學士後醫學系系學會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_1（high）
+nthuieem,工工系會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_1（high）
+NTHU.ESS,工科系會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_1（high）
+https://www.facebook.com/p/%E6%B8%85%E5%A4%A7%E5%BF%83%E8%AB%AE%E7%B3%BB%E5%AD%B8%E6%9C%83-100069861853321,心諮系系學會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_1（high）
+ymbirssa,陽明生物醫學影像暨放射科學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：研究 nycu_2（high）
+ymmountainclimbing,陽明登山社,nycu,club,體能性,true,2026-08 sweep：研究 nycu_2（high）
+nctu.STEAM.edu,交大科技教育研討社,nycu,club,任務性,true,2026-08 sweep：研究 nycu_2（high）
+nctuMagic,交大赤狐魔術社,nycu,club,康樂性,true,2026-08 sweep：研究 nycu_2（high）
+NCTURail,交大鐵道研究會,nycu,club,學術性,true,2026-08 sweep：研究 nycu_2（high）
+https://www.facebook.com/p/%E6%B8%85%E5%A4%A7%E6%9F%94%E9%81%93%E7%A4%BE-NTHU-JUDO-CLUB-100057413509975,柔道社,nthu,club,體育性B,true,2026-08 sweep：研究 nthu_2（high）
+FalunDafa.NCTUNTHU,法輪大法社,nthu,club,體育性B,true,2026-08 sweep：研究 nthu_2（high）
+NTHU.TSAPD,物理系會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_2（high）
+NTHUchanleader,禪學社,nthu,club,學術性B,true,2026-08 sweep：研究 nthu_2（high）
+https://www.facebook.com/yulingnthutennisprince,網球社,nthu,club,體育性B,true,2026-08 sweep：研究 nthu_2（high）
+NYCUYMGSC,陽明分會研究所代表大會,nycu,official,學生會,true,2026-08 sweep：研究 nycu_3（high）
+NYCUSAYMEC,陽明分會選務委員會,nycu,official,學生會,true,2026-08 sweep：研究 nycu_3（high）
+YoungMeanGuitar,陽明吉他社,nycu,club,學藝性,true,2026-08 sweep：研究 nycu_3（high）
+YMPhotographyClub,陽明攝影社,nycu,club,學藝性,true,2026-08 sweep：研究 nycu_3（high）
+ympopdance,陽明熱舞社,nycu,club,康樂性,true,2026-08 sweep：研究 nycu_3（high）
+YMIllusionatti,陽明魔術社,nycu,club,康樂性,true,2026-08 sweep：研究 nycu_3（high）
+NTHU.FarmingStar,耕星社,nthu,club,服務性A,true,2026-08 sweep：研究 nthu_3（high）
+ei.nthu,英教系系學會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_3（high）
+nthubluesky,藍天社,nthu,club,服務性B,true,2026-08 sweep：研究 nthu_3（high）
+QrazyFinance,計財系會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_3（high）
+yueren.cafe,閱人咖啡館社,nthu,club,學術性B,true,2026-08 sweep：研究 nthu_3（high）
+https://www.facebook.com/people/%E9%99%BD%E6%98%8E%E4%BA%A4%E9%80%9A%E5%A4%A7%E5%AD%B8%E5%8A%8D%E9%81%93%E7%A4%BE%E9%99%BD%E6%98%8E%E6%A0%A1%E5%8D%80/61551365380126,陽明劍道社,nycu,club,體能性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/people/%E9%99%BD%E6%98%8E%E7%9A%AE%E8%97%9D%E7%A4%BE/100067995153028,國立陽明交通大學皮藝社,nycu,club,學藝性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/nctubwy,交大福智青年社,nycu,club,學術性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/nctuwlef,交大青年領袖社,nycu,club,學術性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NCTUCSC,交大網路安全策進會,nycu,club,學術性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NYCU.DSA,陽明牙醫學系系學會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/people/%E9%99%BD%E6%98%8E%E4%BA%A4%E5%A4%A7%E9%A0%98%E8%A2%96%E7%A4%BE-%E9%99%BD%E6%98%8E%E6%A0%A1%E5%8D%80/100093454160722,國立陽明交通大學青年領袖社（陽明校區）,nycu,club,學術性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/nctukendo,交大劍道社(交大校區),nycu,club,體能性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NCTUME,交大機械工程學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NCTUPCCA,交大程式競賽社,nycu,club,任務性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/nycueo,交大光電工程學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/CT.Associa,交大傳播與科技學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/hsssu,交大人文社會學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NCTUIMF,交大資訊管理與財務金融學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NCTU.epstudentorganization,交大電子物理學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/nctuamunion,交大應用數學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/nycums,交大管理科學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NCTUcoffee,交大咖啡社,nycu,club,學藝性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/%E4%BA%A4%E5%A4%A7%E7%91%9C%E7%8F%88%E7%A4%BE-558704051322587,交大瑜珈社,nycu,club,體能性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/%E5%9C%8B%E7%AB%8B%E9%99%BD%E6%98%8E%E4%BA%A4%E9%80%9A%E5%A4%A7%E5%AD%B8%E7%AE%A1%E5%BC%A6%E6%A8%82%E7%A4%BE-190643944351797,交大管弦樂團,nycu,club,音樂戲劇性,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NYMUBMESA,陽明生物醫學工程學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NYMURX,陽明藥學系系學會,nycu,official,學生自治組織,true,2026-08 sweep：OSA 官方頁（high）
+https://www.facebook.com/NYMUStudentAssociation,陽明學生會（陽明交大學生會陽明分會）,nycu,official,學生會,true,2026-08 sweep：OSA 官方頁（high）

@@ -20,10 +20,31 @@ threads,mc_hackathon,梅竹黑客松,both,club,學術,true,same-as-ig-unverified
 threads,tedxnthu_,TEDxNTHU,nthu,club,講座,true,same-as-ig-unverified; IG 同 handle
 threads,nycu_ctpd,交大熱舞社,nycu,club,舞蹈,true,same-as-ig-unverified; IG 同 handle 活躍
 threads,nthuecho,清大迴聲社(熱音),nthu,club,音樂,true,same-as-ig-unverified; IG 同 handle 活躍
-threads,nthu_eesa,清大電機系學會,nthu,department,學術,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,nthu_eesa,電機系會,nthu,department,學術,true,same-as-ig-unverified; IG 同 handle 活躍
 x,NTHU_TAIWAN,國立清華大學,nthu,official,綜合,true,search result twitter.com/NTHU_TAIWAN 官方帳號
 x,NYCU_official,國立陽明交通大學,nycu,official,綜合,true,search result x.com/nycu_official 官方帳號
 x,nthu_racing,NTHU Racing 清大賽車工廠,nthu,club,賽事,true,search result twitter.com/nthu_racing 活躍發賽事/隊伍動態
 website,https://harmonica.nycu.club,交大竹韻口琴社,nycu,club,學藝性社團,true,使用者提供
 website,https://nycu.moe,交大虛擬偶像社,nycu,club,綜合性社團,true,batch5 調查：唯一公開據點
 website,https://sdc.nycu.club,NYCU 軟體開發社,nycu,club,學術,true,使用者提供 2026-08-22
+website,https://linktr.ee/nthu.ecec,救護與急救推廣社,nthu,club,服務性,true,2026-08 sweep：課指組社團系統直連
+website,https://nthussc.wixsite.com/home,科學服務社,nthu,club,服務性,true,2026-08 sweep：課指組社團系統直連
+website,https://nthu.dev,區塊鏈研究社,nthu,club,學術性,true,2026-08 sweep：課指組社團系統直連
+website,https://linktr.ee/yuehan,月涵文學獎工作會,nthu,club,綜合性,true,2026-08 sweep：課指組社團系統直連
+website,https://thenthuctc.wixsite.com/nthuctc,校園導覽小組,nthu,club,綜合性,true,2026-08 sweep：課指組社團系統直連
+website,https://linktr.ee/jullay,交大印度國際志工團,nycu,club,任務性,true,2026-08 sweep：研究 nycu_0（high）
+website,https://iemsa.nycu.site,交大工業工程與管理學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：研究 nycu_1（high）
+website,https://nctuasean.wixsite.com/home,交大東南亞國際志工團,nycu,club,任務性,true,2026-08 sweep：研究 nycu_1（high）
+website,https://delt.site.nthu.edu.tw,教科系系學會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_1（med）
+website,http://www.koinonia-hsinchu.org,柏克萊學生團契,nthu,club,學術性B,true,2026-08 sweep：研究 nthu_1（high）
+website,http://ymmc.blogspot.com,陽明登山社,nycu,club,體能性,true,2026-08 sweep：研究 nycu_2（high）
+website,https://ncturail.club,交大鐵道研究會,nycu,club,學術性,true,2026-08 sweep：研究 nycu_2（high）
+website,https://meichuhackathon.org,梅竹黑客松籌備委員會,nthu,club,學術性A,true,2026-08 sweep：研究 nthu_2（high）
+website,http://my.nthu.edu.tw/~spo9210,法輪大法社,nthu,club,體育性B,true,2026-08 sweep：研究 nthu_2（high）
+website,https://nthuclssa.wixsite.com/nthuclssa,生科系會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_2（med）
+website,https://linktr.ee/aiesecinnthu.internal,經濟商管學生會,nthu,club,學術性A,true,2026-08 sweep：研究 nthu_2（high）
+website,https://linktr.ee/NCTURI,交大鐵道研究會,nycu,club,學術性,true,2026-08 sweep：OSA 官方頁（high）
+website,https://linktr.ee/tsc.nycu,交大轉學生聯誼會,nycu,club,綜合性,true,2026-08 sweep：OSA 官方頁（high）
+website,https://nctuasean.wixsite.com/home/blog,交大東南亞國際志工團,nycu,club,任務性,true,2026-08 sweep：OSA 官方頁（high）
+website,https://nctujullay.wixsite.com/jullay,交大印度國際志工團,nycu,club,任務性,true,2026-08 sweep：OSA 官方頁（high）
+website,http://nctudmcc.weebly.com,交大數位音樂創作社,nycu,club,音樂戲劇性,true,2026-08 sweep：OSA 官方頁（high）

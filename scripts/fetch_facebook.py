@@ -37,7 +37,9 @@ def page_slug(page: str) -> str:
     if value.startswith(("http://", "https://")):
         parsed = urlparse(value)
         parts = [unquote(part) for part in parsed.path.split("/") if part]
-        if parts and parts[0].lower() in {"people", "p", "pages"} and len(parts) > 1:
+        if parts and parts[0].lower() == "groups" and len(parts) > 1:
+            value = "groups-" + parts[1]  # FB 社團：保留識別名，避免所有 group 撞在 fb_groups
+        elif parts and parts[0].lower() in {"people", "p", "pages"} and len(parts) > 1:
             value = parts[-1]
         elif parts:
             value = parts[0]
