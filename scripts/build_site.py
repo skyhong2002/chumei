@@ -499,6 +499,7 @@ def detail_page(e):
         (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">在地圖上看</a>'
          if e.get("geo") else None),
         f'<a class="btn" href="{esc(e["source"]["url"])}" rel="noopener">原始貼文</a>' if e["source"].get("url") else None,
+        f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
     ]))
     jsonld = json.dumps({
         "@context": "https://schema.org", "@type": "Event",

@@ -14,6 +14,33 @@
     });
   }
 
+  // ---- 分享按鈕（詳情頁）：行動裝置系統分享，桌機複製連結＋LINE ----
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest(".btn-share");
+    if (!b) return;
+    var url = b.dataset.url, title = b.dataset.title;
+    if (navigator.share) {
+      navigator.share({ title: title, url: url }).catch(function () {});
+      return;
+    }
+    var existing = document.querySelector(".share-pop");
+    if (existing) { existing.remove(); return; }
+    var pop = document.createElement("div");
+    pop.className = "share-pop";
+    pop.innerHTML = '<button class="share-copy">複製連結</button>' +
+      '<a href="https://social-plugins.line.me/lineit/share?url=' + encodeURIComponent(url) + '" target="_blank" rel="noopener">LINE 分享</a>';
+    b.parentNode.insertBefore(pop, b.nextSibling);
+    pop.querySelector(".share-copy").addEventListener("click", function () {
+      navigator.clipboard.writeText(url).then(function () {
+        pop.querySelector(".share-copy").textContent = "已複製 ✓";
+        setTimeout(function () { pop.remove(); }, 1200);
+      });
+    });
+    document.addEventListener("click", function close(e2) {
+      if (!pop.contains(e2.target) && e2.target !== b) { pop.remove(); document.removeEventListener("click", close); }
+    });
+  });
+
   var listEl = document.getElementById("event-list");
   var calEl = document.getElementById("cal-months");
   initStories();

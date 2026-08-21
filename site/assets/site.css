@@ -605,3 +605,13 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .src-name { color: inherit; }
 .src-name:hover { color: var(--chumei-bamboo-text); text-decoration: none; }
+.btn-share { cursor: pointer; font-family: inherit; background: var(--color-surface); }
+.share-pop {
+  display: inline-flex; gap: 8px; align-items: center; margin-left: 4px;
+  background: var(--color-surface); border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill); padding: 6px 12px;
+}
+.share-pop button, .share-pop a {
+  border: none; background: none; cursor: pointer; font-size: 0.85rem;
+  color: var(--chumei-bamboo-text); font-family: inherit; padding: 4px 6px;
+}
