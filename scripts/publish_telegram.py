@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import requests
 
@@ -156,9 +157,24 @@ def format_datetime(value, all_day=False):
 def event_location(event):
     campus = CAMPUS_LABEL.get(event.get("campus"), "")
     venue = (event.get("venue") or "").strip()
-    if campus and venue and campus not in venue:
-        return f"{campus} ・ {venue}"
-    return venue or campus or "地點請見活動頁"
+    if venue:
+        return venue
+    if event.get("campus") in (None, "", "other"):
+        return "地點請見活動頁"
+    return campus or "地點請見活動頁"
+
+
+def format_location(event):
+    location = compact(event_location(event), 180)
+    safe_location = html.escape(location)
+    if event.get("campus") == "online" or location == "地點請見活動頁":
+        return f"📍 {safe_location}"
+    campus = CAMPUS_LABEL.get(event.get("campus"), "")
+    query = location
+    if campus and event.get("campus") not in ("other", "online") and campus not in location:
+        query = f"{location} {campus}"
+    maps_url = "https://www.google.com/maps/search/?api=1&query=" + quote_plus(query)
+    return f'📍 <a href="{html.escape(maps_url, quote=True)}">{safe_location}</a>'
 
 
 def compact(text, limit):
@@ -189,12 +205,18 @@ def format_source(event):
         name = str(source.get("source_id") or "").strip()
     platform = event.get("source_platform") or source.get("platform") or ""
     platform = PLATFORM_LABEL.get(platform.lower(), platform)
+    source_url = str(source.get("url") or "").strip()
     if not name:
         return ""
     label = html.escape(compact(name, 180))
     if platform:
-        label += f" ({html.escape(compact(platform, 40))})"
-    return f"🔗 <b>來源</b>：{label}"
+        safe_platform = html.escape(compact(platform, 40))
+        if source_url:
+            safe_url = html.escape(source_url, quote=True)
+            label += f' (<a href="{safe_url}">{safe_platform}</a>)'
+        else:
+            label += f" ({safe_platform})"
+    return f"🔗 {label}"
 
 
 def split_text(text, limit=2500):
@@ -218,33 +240,29 @@ def split_text(text, limit=2500):
 def format_event_messages(event):
     detail_url = f"{BASE_URL}/event/{event['id']}/"
     title = html.escape(compact(event.get("title"), 180))
-    school = html.escape(SCHOOL_LABEL.get(event.get("school"), event.get("school") or "校園活動"))
     when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
-    location = html.escape(compact(event_location(event), 180))
-    organizer = html.escape(compact(event.get("organizer"), 120))
     summary = html.escape(compact(event.get("summary"), 420))
     safe_detail_url = html.escape(detail_url, quote=True)
-    lines = [f'📣 <a href="{safe_detail_url}"><b>{title}</b></a>', "", f"🏫 {school}", f"🗓 {when}", f"📍 {location}"]
-    if organizer:
-        lines.append(f"🎤 {organizer}")
+    lines = [f'<a href="{safe_detail_url}"><b>{title}</b></a>', ""]
     source_line = format_source(event)
     if source_line:
         lines.append(source_line)
+    lines.extend([f"🗓 {when}", format_location(event)])
     if summary:
-        lines.extend(["", "📝 <b>活動摘要</b>", summary])
+        lines.extend(["", summary])
     if (event.get("extraction") or {}).get("needs_review"):
         lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
     original_chunks = split_text(event.get("original_text"))
     if not original_chunks:
         return ["\n".join(lines)]
 
-    lines.extend(["", "📄 <b>原始內文</b>", f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"])
+    lines.extend(["", "📄 <b>原始內文</b>", html.escape(original_chunks[0])])
     messages = ["\n".join(lines)]
     total = len(original_chunks)
     for index, chunk in enumerate(original_chunks[1:], start=2):
         messages.append(
             f"📄 <b>原始內文（續 {index}/{total}）</b>\n\n"
-            f"<blockquote expandable>{html.escape(chunk)}</blockquote>"
+            f"{html.escape(chunk)}"
         )
     return messages
 

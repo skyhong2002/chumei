@@ -24,6 +24,7 @@ def event(event_id="evt_new", start="2026-08-25T14:00:00+08:00", **overrides):
         "original_text": "第一段原文。\n\n第二段有 <標籤> & 符號。",
         "source_name": "清大藝術與設計學系",
         "source_platform": "facebook",
+        "source": {"url": "https://example.com/source", "platform": "facebook"},
         "status": "published",
         "first_seen": "2026-08-21T12:00:00+08:00",
         "extraction": {"needs_review": False},
@@ -66,11 +67,25 @@ class PublisherTests(unittest.TestCase):
     def test_format_event_escapes_html_and_includes_location(self):
         text = telegram.format_event(event())
         self.assertIn("A &lt; B &amp; 活動", text)
-        self.assertIn("交大光復校區 ・ 工程館", text)
-        self.assertIn("國立清華大學藝術與設計學系 (Facebook)", text)
-        self.assertIn("<blockquote expandable>", text)
+        self.assertIn("📍 <a href=", text)
+        self.assertIn(">工程館</a>", text)
+        self.assertIn('國立清華大學藝術與設計學系 (<a href="https://example.com/source">Facebook</a>)', text)
+        self.assertNotIn("<blockquote", text)
+        self.assertNotIn("📣", text)
+        self.assertNotIn("🏫", text)
+        self.assertNotIn("🎤", text)
+        self.assertNotIn("活動摘要", text)
         self.assertIn("第二段有 &lt;標籤&gt; &amp; 符號。", text)
         self.assertNotIn("A < B", text)
+
+    def test_location_links_to_google_maps_without_other_prefix(self):
+        text = telegram.format_event(event(
+            campus="other",
+            venue="ZASSO 草也（台中市西區五權西六街72號）",
+        ))
+        self.assertIn("https://www.google.com/maps/search/?api=1&amp;query=", text)
+        self.assertIn("ZASSO 草也（台中市西區五權西六街72號）</a>", text)
+        self.assertNotIn("其他地點 ・", text)
 
     def test_review_warning(self):
         text = telegram.format_event(event(extraction={"needs_review": True}))
@@ -121,7 +136,12 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(telegram.load_original_texts(Path(directory))[("source", "post")], "新文")
 
     def test_source_context_uses_inbox_name_and_platform(self):
-        values = [event(source={"source_id": "source", "post_id": "post", "platform": "web"})]
+        values = [event(source={
+            "source_id": "source",
+            "post_id": "post",
+            "platform": "web",
+            "url": "https://example.com/source",
+        })]
         telegram.attach_source_context(values, {
             ("source", "post"): {
                 "text": "原始內容",
@@ -131,14 +151,14 @@ class PublisherTests(unittest.TestCase):
         })
         self.assertEqual(values[0]["original_text"], "原始內容")
         self.assertEqual(values[0]["source_name"], "陽明交大圖書館")
-        self.assertIn("國立陽明交通大學圖書館 (Facebook)", telegram.format_event(values[0]))
+        self.assertIn('國立陽明交通大學圖書館 (<a href="https://example.com/source">Facebook</a>)', telegram.format_event(values[0]))
 
     def test_bulletin_source_name_is_readable(self):
         value = event(
             source_name="交大公告-演講課程",
             source_platform="bulletin",
         )
-        self.assertIn("國立陽明交通大學校園公告－演講課程 (官方網站)", telegram.format_event(value))
+        self.assertIn('國立陽明交通大學校園公告－演講課程 (<a href="https://example.com/source">官方網站</a>)', telegram.format_event(value))
 
     def test_silent_hours(self):
         self.assertTrue(telegram.is_silent_hour(datetime(2026, 8, 21, 23, tzinfo=timezone.utc)))
