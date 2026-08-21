@@ -103,9 +103,14 @@ def main():
     now = datetime.now(timezone.utc)
     n_new = 0
     for story in L.get_stories(userids=userids):
-        username = story.owner_username
-        row = meta.get(username, {})
-        for item in story.get_items():
+        try:
+            username = story.owner_username
+            row = meta.get(username, {})
+            items = list(story.get_items())
+        except Exception as e:  # 單一帳號的 reel 資料異常（過期/API 不一致）不影響整輪
+            print(f"  story fetch fail (owner {getattr(story, 'owner_id', '?')}): {str(e)[:80]}", file=sys.stderr)
+            continue
+        for item in items:
             key = str(item.mediaid)
             if key in state:
                 continue
