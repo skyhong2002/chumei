@@ -776,3 +776,5 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .src-head > span:first-child, .src-th-plain, .src-th[data-sort="id"] { display: none; }
   .src-th { text-align: left; }
 }
+.chip-reg-req { background: var(--color-warning-surface); color: var(--color-warning-text); }
+.chip-reg-free { background: var(--color-success-surface); color: var(--color-success-text); }

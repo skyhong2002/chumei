@@ -195,6 +195,30 @@ def attach_geo(events, venues):
     return n
 
 
+def attach_reg_status(events):
+    """報名需求：LLM 判別值優先；舊資料用啟發式。輸出 e["reg"] ∈ required|free|None。"""
+    FREE_KW = ("免報名", "自由入場", "自由參加", "無需報名", "不須報名", "不需報名", "免費入場")
+    NEED_KW = ("報名連結", "報名表", "報名網址", "報名截止", "請報名", "須報名", "需報名", "填寫表單", "購票", "售票")
+    n = 0
+    for e in events:
+        rr = e.get("registration_required")
+        if rr is True:
+            e["reg"] = "required"
+        elif rr is False:
+            e["reg"] = "free"
+        else:
+            text = (e.get("summary") or "") + (e.get("description") or "")
+            if any(k in text for k in FREE_KW):
+                e["reg"] = "free"
+            elif e.get("registration_url") or e.get("registration_deadline") or any(k in text for k in NEED_KW):
+                e["reg"] = "required"
+            else:
+                e["reg"] = None
+        if e["reg"]:
+            n += 1
+    print(f"reg status: {n}/{len(events)} determined")
+
+
 def cache_posters(events):
     """保留原始海報；失效或缺圖時再從原始活動頁找公開主圖。"""
     from PIL import Image
@@ -477,6 +501,7 @@ def detail_page(e):
         ("地點", loc or "詳見原始貼文"),
         ("主辦", f"{e.get('organizer')}（{ORG_LABEL.get(e.get('organizer_type'), '')}）"),
         ("類型", e.get("category")),
+        ("報名", {"required": "需事先報名", "free": "自由參加，免報名"}.get(e.get("reg"))),
         ("費用", e.get("price")),
         ("報名截止", fmt_dt(e.get("registration_deadline"))),
     ]
@@ -912,6 +937,7 @@ def main():
     n_screenshots = attach_source_screenshots(events, limit=screenshot_limit)
     n_screenshot_events = sum(e.get("image_kind") == "source_screenshot" for e in events)
     print(f"source screenshots: {n_screenshots} created, {n_screenshot_events} events attached")
+    attach_reg_status(events)
     venues = load_venues()
     n_geo = attach_geo(events, venues)
     print(f"geo: {n_geo}/{sum(1 for e in events if e.get('venue'))} venue-matched ({len(venues)} registry rows)")

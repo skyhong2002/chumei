@@ -522,10 +522,10 @@
   // ---- 活動河道 ----
   function initList(bundle) {
     var labels = bundle.labels;
-    var state = { time: "7d", school: "all", campus: "all", cat: "all", org: "all", q: "" };
+    var state = { time: "7d", school: "all", campus: "all", cat: "all", org: "all", reg: "all", q: "" };
 
     var params = new URLSearchParams(location.search);
-    ["time", "school", "campus", "cat", "org", "q"].forEach(function (k) {
+    ["time", "school", "campus", "cat", "org", "reg", "q"].forEach(function (k) {
       if (params.get(k)) state[k] = params.get(k);
     });
     if (state.time === "week") state.time = "7d";
@@ -552,6 +552,7 @@
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
     buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
     buildChips("f-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
+    buildChips("f-reg", [["all", "全部"], ["required", "需報名"], ["free", "免報名"]], "reg");
 
     var search = document.getElementById("search");
     if (search) {
@@ -604,6 +605,7 @@
       if (value("campus") !== "all" && e.campus !== value("campus")) return false;
       if (value("cat") !== "all" && (e.category || "其他") !== value("cat")) return false;
       if (value("org") !== "all" && e.organizer_type !== value("org")) return false;
+      if (value("reg") !== "all" && e.reg !== value("reg")) return false;
       if (state.q) {
         var hay = (e.title + " " + (e.summary || "") + " " + (e.organizer || "") + " " + (e.venue || "")).toLowerCase();
         if (hay.indexOf(state.q.toLowerCase()) === -1) return false;
@@ -662,6 +664,7 @@
           (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "梅竹") + "</span>";
       return '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
         '<span class="evr-main"><span class="evr-when">' + esc(when) +
+        (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">免報名</span>' : "") +
         (e.extraction && e.extraction.needs_review ? '<span class="chip chip-review">待確認</span>' : "") +
         '</span><span class="evr-title">' + esc(e.title) + "</span>" +
         '<span class="evr-meta">' + esc([where, e.organizer].filter(Boolean).join("｜")) + "</span></span></a>";
@@ -690,6 +693,7 @@
         '<div class="card-body">' +
         '<p class="chips"><span class="chip chip-' + esc(e.school) + '">' + esc(labels.school[e.school] || e.school) + "</span>" +
         '<span class="chip">' + esc(e.category || "其他") + "</span>" +
+        (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">免報名</span>' : "") +
         (e.extraction && e.extraction.needs_review ? '<span class="chip chip-review">待確認</span>' : "") +
         "</p>" +
         '<h2 class="card-title">' + esc(e.title) + "</h2>" +
@@ -917,6 +921,7 @@
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
     buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
     buildChips("f-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
+    buildChips("f-reg", [["all", "全部"], ["required", "需報名"], ["free", "免報名"]], "reg");
 
     var search = document.getElementById("search");
     if (search) {
@@ -930,6 +935,7 @@
       if (value("campus") !== "all" && e.campus !== value("campus")) return false;
       if (value("cat") !== "all" && (e.category || "其他") !== value("cat")) return false;
       if (value("org") !== "all" && e.organizer_type !== value("org")) return false;
+      if (value("reg") !== "all" && e.reg !== value("reg")) return false;
       if (state.q) {
         var hay = (e.title + " " + (e.summary || "") + " " + (e.organizer || "") + " " + (e.venue || "")).toLowerCase();
         if (hay.indexOf(state.q.toLowerCase()) === -1) return false;

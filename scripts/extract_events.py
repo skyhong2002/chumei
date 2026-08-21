@@ -47,6 +47,7 @@ Event 欄位：
 - organizer: 主辦單位名稱（預設用來源帳號名稱，貼文有更精確主辦就用貼文的）
 - organizer_type: official | department | club | external
 - category: 演講|工作坊|表演|展覽|比賽|營隊|徵才|市集|運動|聚會|其他
+- registration_required: true（需事先報名/填表/購票）| false（自由入場、免報名直接參加）| null（原文未註明）
 - registration_url: 報名連結（linktr.ee、forms.gle 等；IG 貼文常寫「連結在 bio」，那樣就填 null）
 - registration_deadline: ISO8601 或 null
 - price: 費用文字（例：「免費」「200 元」）或 null
@@ -259,6 +260,7 @@ def process_item(env, item, lock, caches):
             "organizer": ev.get("organizer") or item["source_name"],
             "organizer_type": ev.get("organizer_type") or item["org_type"],
             "category": ev.get("category") or "其他",
+            "registration_required": ev.get("registration_required"),
             "registration_url": ev.get("registration_url"),
             "registration_deadline": ev.get("registration_deadline"),
             "price": ev.get("price"),
