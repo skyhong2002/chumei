@@ -338,7 +338,12 @@
         document.getElementById("src-count").textContent = "目前列出 " + list.length + " 個單位。";
         table.innerHTML = headHtml() + (list.map(row).join("") || '<p class="empty">沒有符合的單位。</p>');
         var qs = new URLSearchParams();
-        Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
+        Object.keys(state).forEach(function (k) {
+          if (!state[k] || state[k] === "all") return;
+          if (k === "sort" && state.sort === "events") return;
+          if (k === "dir" && state.dir === (SORT_DEFAULT_DIR[state.sort] || "desc")) return;
+          qs.set(k, state[k]);
+        });
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       }
       table.addEventListener("click", function (ev) {
