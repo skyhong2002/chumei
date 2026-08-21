@@ -217,7 +217,7 @@
 
     fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
       var entries = data.entries;
-      var state = { school: "all", status: "all", kind: "all", platform: "all", sort: "events", q: "" };
+      var state = { school: "all", status: "all", kind: "all", platform: "all", sort: "events", dir: "desc", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
@@ -247,7 +247,6 @@
       chips("sf-status", [["all", "全部"], ["covered", "已收錄"], ["uncovered", "尚未收錄"]], "status");
       chips("sf-kind", [["all", "全部"]].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; })), "kind");
       chips("sf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["x", "X"]], "platform");
-      chips("sf-sort", [["events", "收錄數"], ["updated", "最新更新"], ["name", "名稱"], ["id", "ID"]], "sort");
 
       var search = document.getElementById("search");
       if (search) {
@@ -311,6 +310,20 @@
         name: function (a, b) { return a.name.localeCompare(b.name, "zh-Hant"); },
         id: function (a, b) { return a.id - b.id; }
       };
+      var SORT_DEFAULT_DIR = { events: "desc", updated: "desc", name: "asc", id: "asc" };
+      var SORT_BASE_DESC = { events: true, updated: true, name: false, id: false }; // SORTS 天然方向
+
+      function headHtml() {
+        function th(key, label, extraCls) {
+          var arrow = state.sort === key ? (state.dir === "asc" ? " ↑" : " ↓") : " ↕";
+          return '<button class="src-th' + (extraCls ? " " + extraCls : "") +
+            (state.sort === key ? " src-th-on" : "") + '" data-sort="' + key + '">' + label + arrow + "</button>";
+        }
+        return '<div class="src-head">' +
+          '<span></span>' + th("id", "ID") + th("name", "名稱", "src-th-left") +
+          '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
+          th("updated", "更新") + th("events", "收錄") + "</div>";
+      }
 
       function render() {
         Object.keys(groups).forEach(function (key) {
@@ -320,14 +333,26 @@
           });
         });
         var list = entries.filter(function (e) { return matches(e); }).sort(SORTS[state.sort] || SORTS.events);
-        var sortHost = document.getElementById("sf-sort");
-        if (sortHost) sortHost.querySelectorAll(".fchip-count").forEach(function (c) { c.textContent = ""; });
+        var natural = SORT_BASE_DESC[state.sort] ? "desc" : "asc";
+        if (state.dir !== natural) list.reverse();
         document.getElementById("src-count").textContent = "目前列出 " + list.length + " 個單位。";
-        table.innerHTML = list.map(row).join("") || '<p class="empty">沒有符合的單位。</p>';
+        table.innerHTML = headHtml() + (list.map(row).join("") || '<p class="empty">沒有符合的單位。</p>');
         var qs = new URLSearchParams();
         Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       }
+      table.addEventListener("click", function (ev) {
+        var th = ev.target.closest(".src-th");
+        if (!th) return;
+        var key = th.dataset.sort;
+        if (state.sort === key) {
+          state.dir = state.dir === "asc" ? "desc" : "asc";
+        } else {
+          state.sort = key;
+          state.dir = SORT_DEFAULT_DIR[key];
+        }
+        render();
+      });
       render();
     }).catch(function () {
       table.innerHTML = '<p class="empty">名錄載入失敗。</p>';

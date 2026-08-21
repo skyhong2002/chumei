@@ -782,7 +782,6 @@ def source_page(events):
   <div class="filter-row"><span class="label">狀態</span><span id="sf-status" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">類型</span><span id="sf-kind" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">平台</span><span id="sf-platform" class="fgroup"></span></div>
-  <div class="filter-row"><span class="label">排序</span><span id="sf-sort" class="fgroup"></span></div>
 </section>
 <div id="source-table" class="src-table" aria-label="機構名錄"></div>"""
     d = SITE / "source"
