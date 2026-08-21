@@ -158,7 +158,9 @@
       function colHtml(title, list) {
         return '<section class="feed-col"><h2 class="feed-col-title">' + title +
           '<span class="result-count">' + list.length + " 則</span></h2>" +
-          (list.slice(0, shown).map(row).join("") || '<p class="empty">尚無貼文。</p>') + "</section>";
+          (list.slice(0, shown).map(row).join("") || '<p class="empty">尚無貼文。</p>') +
+          (list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + " 則）</button>" : "") +
+          "</section>";
       }
       function render(more) {
         var list = posts.filter(function (p) { return matches(p); });
@@ -171,9 +173,7 @@
           // 雙欄：清大｜陽明交大；兩校聯合同時出現在兩欄
           var nthu = list.filter(function (p) { return p.school === "nthu" || p.school === "both"; });
           var nycu = list.filter(function (p) { return p.school === "nycu" || p.school === "both"; });
-          remaining = Math.max(nthu.length, nycu.length) - shown;
-          feed.innerHTML = '<div class="feed-cols">' + colHtml("清大", nthu) + colHtml("陽明交大", nycu) + "</div>" +
-            (remaining > 0 ? '<button class="fchip feed-more">載入更多</button>' : "");
+          feed.innerHTML = '<div class="feed-cols">' + colHtml("清大", nthu) + colHtml("陽明交大", nycu) + "</div>";
         } else {
           remaining = list.length - shown;
           feed.innerHTML = list.slice(0, shown).map(row).join("") +
