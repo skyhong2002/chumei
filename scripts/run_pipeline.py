@@ -45,6 +45,7 @@ def main():
         results["nycu_life"] = run_step("NYCU LIFE", ["fetch_nycu_life.py"])
         results["infonews"] = run_step("infonews", ["fetch_infonews.py", "--max-pages", "2"])
         results["rpage"] = run_step("rpage", ["fetch_rpage.py", "--max-pages", "2"])
+        results["wp"] = run_step("wp", ["fetch_wp.py"])
 
         last_ig = state.get("last_ig_run", 0)
         due = (time.time() - last_ig) > IG_MIN_INTERVAL_H * 3600
