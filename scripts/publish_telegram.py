@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 
-from chumei_lib import ROOT, TZ_TAIPEI, load_env, now_iso
+from chumei_lib import INBOX_DIR, ROOT, TZ_TAIPEI, load_env, now_iso
 
 EVENTS_PATH = ROOT / "site" / "data" / "events.json"
 STATE_PATH = ROOT / "state" / "telegram.json"
@@ -39,6 +39,36 @@ class TelegramError(RuntimeError):
 
 def load_events(path=EVENTS_PATH):
     return json.loads(path.read_text())["events"]
+
+
+def load_original_texts(inbox_dir=INBOX_DIR):
+    """Return the newest raw inbox text keyed by (source_id, post_id)."""
+    records = {}
+    if not inbox_dir.exists():
+        return {}
+    for path in sorted(inbox_dir.glob("*.jsonl")):
+        with path.open(encoding="utf-8") as stream:
+            for line in stream:
+                line = line.strip()
+                if not line:
+                    continue
+                item = json.loads(line)
+                key = (str(item.get("source_id") or ""), str(item.get("post_id") or ""))
+                text = str(item.get("text") or "").strip()
+                if not all(key) or not text:
+                    continue
+                fetched_at = item.get("fetched_at") or ""
+                if key not in records or fetched_at >= records[key][0]:
+                    records[key] = (fetched_at, text)
+    return {key: value[1] for key, value in records.items()}
+
+
+def attach_original_texts(events, originals):
+    for event in events:
+        source = event.get("source") or {}
+        key = (str(source.get("source_id") or ""), str(source.get("post_id") or ""))
+        event["original_text"] = originals.get(key) or event.get("description") or event.get("summary") or ""
+    return events
 
 
 def load_state(path=STATE_PATH):
@@ -68,7 +98,11 @@ def eligible_events(events, today=None):
 
 def pending_events(events, state, today=None):
     sent = state.get("sent", {})
-    pending = [event for event in eligible_events(events, today) if event["id"] not in sent]
+    def complete(event_id):
+        delivery = sent.get(event_id) or {}
+        return bool(delivery.get("baselined_at") or delivery.get("sent_at") or delivery.get("status") == "sent")
+
+    pending = [event for event in eligible_events(events, today) if not complete(event["id"])]
     return sorted(pending, key=lambda event: (event.get("first_seen") or "", event["start_at"], event["id"]))
 
 
@@ -105,21 +139,70 @@ def compact(text, limit):
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def format_event(event):
+def split_text(text, limit=2500):
+    """Split a long original post without discarding any non-whitespace text."""
+    remaining = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    chunks = []
+    while len(remaining) > limit:
+        candidates = [remaining.rfind(token, 0, limit + 1) for token in ("\n\n", "\n", " ")]
+        cut = max(candidates)
+        if cut < limit // 2:
+            cut = limit
+        chunk = remaining[:cut].rstrip()
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[cut:].lstrip()
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def format_event_messages(event):
+    detail_url = f"{BASE_URL}/event/{event['id']}/"
     title = html.escape(compact(event.get("title"), 180))
     school = html.escape(SCHOOL_LABEL.get(event.get("school"), event.get("school") or "校園活動"))
     when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
-    location = html.escape(event_location(event))
+    location = html.escape(compact(event_location(event), 180))
     organizer = html.escape(compact(event.get("organizer"), 120))
-    summary = html.escape(compact(event.get("summary"), 320))
-    lines = [f"📣 <b>{title}</b>", "", f"🏫 {school}", f"🗓 {when}", f"📍 {location}"]
+    summary = html.escape(compact(event.get("summary"), 420))
+    safe_detail_url = html.escape(detail_url, quote=True)
+    lines = [f'📣 <a href="{safe_detail_url}"><b>{title}</b></a>', "", f"🏫 {school}", f"🗓 {when}", f"📍 {location}"]
     if organizer:
         lines.append(f"🎤 {organizer}")
     if summary:
-        lines.extend(["", summary])
+        lines.extend(["", "📝 <b>活動摘要</b>", summary])
     if (event.get("extraction") or {}).get("needs_review"):
         lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
-    return "\n".join(lines)
+    original_chunks = split_text(event.get("original_text"))
+    if not original_chunks:
+        return ["\n".join(lines)]
+
+    lines.extend(["", "📄 <b>原始內文</b>", f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"])
+    messages = ["\n".join(lines)]
+    total = len(original_chunks)
+    for index, chunk in enumerate(original_chunks[1:], start=2):
+        messages.append(
+            f"📄 <b>原始內文（續 {index}/{total}）</b>\n\n"
+            f"<blockquote expandable>{html.escape(chunk)}</blockquote>"
+        )
+    return messages
+
+
+def format_event(event):
+    """Backward-compatible helper for previews and short-message tests."""
+    return format_event_messages(event)[0]
+
+
+def event_buttons(event):
+    row = [{"text": "活動詳情", "url": f"{BASE_URL}/event/{event['id']}/"}]
+    source_url = (event.get("source") or {}).get("url")
+    if source_url:
+        row.append({"text": "原始來源", "url": source_url})
+    keyboard = [row]
+    registration_url = event.get("registration_url")
+    if registration_url and registration_url != source_url:
+        keyboard.append([{"text": "報名／活動頁", "url": registration_url}])
+    return {"inline_keyboard": keyboard}
 
 
 def is_silent_hour(now=None):
@@ -165,28 +248,36 @@ class TelegramClient:
             raise TelegramError("bot is not a channel administrator with can_post_messages")
         return bot, chat
 
-    def send_event(self, event, silent=False):
+    def send_event(self, event, silent=False, start_part=0, on_sent=None):
         detail_url = f"{BASE_URL}/event/{event['id']}/"
-        common = {
-            "chat_id": self.channel,
-            "parse_mode": "HTML",
-            "disable_notification": silent,
-            "reply_markup": {"inline_keyboard": [[{"text": "查看活動詳情", "url": detail_url}]]},
-        }
-        text = format_event(event)
-        poster = event.get("poster_image")
-        if poster:
-            photo = poster if poster.startswith("http") else BASE_URL + "/" + poster.lstrip("/")
-            try:
-                return self.call("sendPhoto", {**common, "photo": photo, "caption": text})
-            except TelegramError as exc:
-                if exc.error_code != 400:
-                    raise
-                print(f"telegram: photo rejected for {event['id']}; falling back to text", file=sys.stderr)
-        return self.call(
-            "sendMessage",
-            {**common, "text": text, "link_preview_options": {"is_disabled": True}},
-        )
+        messages = format_event_messages(event)
+        results = []
+        for index, text in enumerate(messages[start_part:], start=start_part):
+            link_preview = (
+                {
+                    "url": detail_url,
+                    "prefer_large_media": True,
+                    "show_above_text": True,
+                }
+                if index == 0
+                else {"is_disabled": True}
+            )
+            payload = {
+                "chat_id": self.channel,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_notification": silent,
+                "link_preview_options": link_preview,
+            }
+            if index == 0:
+                payload["reply_markup"] = event_buttons(event)
+            result = self.call("sendMessage", payload)
+            results.append(result)
+            if on_sent:
+                on_sent(result, index, len(messages))
+            if index + 1 < len(messages):
+                time.sleep(1)
+        return results
 
     def announce(self, text, silent=False):
         return self.call(
@@ -241,7 +332,7 @@ def main():
             print(f"telegram: announcement sent (message_id={message['message_id']}, silent={silent})")
             return 0
 
-        events = load_events()
+        events = attach_original_texts(load_events(), load_original_texts())
         state = load_state()
         if state is None:
             baseline = eligible_events(events)
@@ -257,17 +348,34 @@ def main():
         if args.dry_run:
             print(f"telegram dry-run: {len(pending)} pending")
             for event in pending[: args.max_messages]:
-                print(f"  {event['id']} {event.get('start_at')} {event.get('title')}")
+                parts = len(format_event_messages(event))
+                print(f"  {event['id']} {event.get('start_at')} {event.get('title')} ({parts} message part(s))")
             return 0
 
         sent_count = 0
         for event in pending[: args.max_messages]:
-            message = client.send_event(event, silent=silent)
-            state["sent"][event["id"]] = {"sent_at": now_iso(), "message_id": message["message_id"]}
+            delivery = state["sent"].setdefault(
+                event["id"], {"started_at": now_iso(), "message_ids": []}
+            )
+            delivery.setdefault("message_ids", [])
+
+            def record_part(message, _index, _total):
+                delivery["message_ids"].append(message["message_id"])
+                save_state(state)
+
+            client.send_event(
+                event,
+                silent=silent,
+                start_part=len(delivery["message_ids"]),
+                on_sent=record_part,
+            )
+            delivery["sent_at"] = now_iso()
+            delivery["status"] = "sent"
+            delivery["message_id"] = delivery["message_ids"][0]
             state["last_success_at"] = now_iso()
             save_state(state)
             sent_count += 1
-            print(f"telegram: sent {event['id']} (message_id={message['message_id']})")
+            print(f"telegram: sent {event['id']} (message_ids={delivery['message_ids']})")
             if sent_count < min(len(pending), args.max_messages):
                 time.sleep(1)
         print(f"telegram: OK ({sent_count} sent, {max(0, len(pending) - sent_count)} remaining, silent={silent})")

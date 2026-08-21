@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -20,6 +21,7 @@ def event(event_id="evt_new", start="2026-08-25T14:00:00+08:00", **overrides):
         "venue": "工程館",
         "organizer": "測試主辦",
         "summary": "公開資訊 & 注意事項",
+        "original_text": "第一段原文。\n\n第二段有 <標籤> & 符號。",
         "status": "published",
         "first_seen": "2026-08-21T12:00:00+08:00",
         "extraction": {"needs_review": False},
@@ -44,18 +46,76 @@ class PublisherTests(unittest.TestCase):
             event("evt_old", "2026-08-19T10:00:00+08:00"),
             event("evt_rejected", status="rejected"),
         ]
-        pending = telegram.pending_events(events, {"sent": {"evt_sent": {}}}, today="2026-08-21")
+        pending = telegram.pending_events(
+            events,
+            {"sent": {"evt_sent": {"sent_at": "2026-08-21T12:00:00+08:00"}}},
+            today="2026-08-21",
+        )
+        self.assertEqual([item["id"] for item in pending], ["evt_new"])
+
+    def test_pending_resumes_incomplete_multipart_delivery(self):
+        pending = telegram.pending_events(
+            [event()],
+            {"sent": {"evt_new": {"started_at": "2026-08-21T12:00:00+08:00", "message_ids": [7]}}},
+            today="2026-08-21",
+        )
         self.assertEqual([item["id"] for item in pending], ["evt_new"])
 
     def test_format_event_escapes_html_and_includes_location(self):
         text = telegram.format_event(event())
         self.assertIn("A &lt; B &amp; 活動", text)
         self.assertIn("交大光復校區 ・ 工程館", text)
+        self.assertIn("<blockquote expandable>", text)
+        self.assertIn("第二段有 &lt;標籤&gt; &amp; 符號。", text)
         self.assertNotIn("A < B", text)
 
     def test_review_warning(self):
         text = telegram.format_event(event(extraction={"needs_review": True}))
         self.assertIn("以原始公告為準", text)
+
+    def test_long_original_text_is_fully_split(self):
+        original = ("第一段 " * 800) + "最後一句"
+        messages = telegram.format_event_messages(event(original_text=original))
+        self.assertGreater(len(messages), 1)
+        rendered = "".join(messages)
+        self.assertIn("第一段", rendered)
+        self.assertIn("最後一句", rendered)
+        self.assertTrue(all(len(message) < 4096 for message in messages))
+
+    def test_source_and_detail_buttons(self):
+        buttons = telegram.event_buttons(event(source={"url": "https://example.com/source"}))
+        row = buttons["inline_keyboard"][0]
+        self.assertEqual([button["text"] for button in row], ["活動詳情", "原始來源"])
+        self.assertEqual(row[1]["url"], "https://example.com/source")
+
+    def test_send_event_uses_text_preview_and_records_each_part(self):
+        client = telegram.TelegramClient("token", "@channel")
+        calls = []
+        recorded = []
+
+        def fake_call(method, payload, attempts=2):
+            calls.append((method, payload, attempts))
+            return {"message_id": len(calls)}
+
+        client.call = fake_call
+        client.send_event(
+            event(source={"url": "https://example.com/source"}),
+            on_sent=lambda message, index, total: recorded.append((message["message_id"], index, total)),
+        )
+        self.assertEqual(calls[0][0], "sendMessage")
+        self.assertEqual(calls[0][1]["reply_markup"]["inline_keyboard"][0][1]["text"], "原始來源")
+        self.assertEqual(calls[0][1]["link_preview_options"]["url"], "https://chumei.observe.tw/event/evt_new/")
+        self.assertEqual(recorded, [(1, 0, 1)])
+
+    def test_load_original_texts_uses_newest_duplicate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "feed.jsonl"
+            rows = [
+                {"source_id": "source", "post_id": "post", "text": "舊文", "fetched_at": "2026-08-20"},
+                {"source_id": "source", "post_id": "post", "text": "新文", "fetched_at": "2026-08-21"},
+            ]
+            path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows))
+            self.assertEqual(telegram.load_original_texts(Path(directory))[("source", "post")], "新文")
 
     def test_silent_hours(self):
         self.assertTrue(telegram.is_silent_hour(datetime(2026, 8, 21, 23, tzinfo=timezone.utc)))
