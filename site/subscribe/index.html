@@ -30,6 +30,53 @@
 <li>清大活動<br><code>https://chumei.observe.tw/feeds/nthu.ics</code></li>
 <li>陽明交大活動<br><code>https://chumei.observe.tw/feeds/nycu.ics</code></li>
 </ul>
+<h2>自訂訂閱組合</h2>
+<p>挑一個學校＋一個條件，拼出你自己的訂閱網址（行事曆與 RSS 都有）：</p>
+<div class="combo-builder">
+  <div class="filter-row"><span class="label">學校</span><span id="cb-school" class="fgroup"></span></div>
+  <div class="filter-row"><span class="label">條件</span><span id="cb-dim" class="fgroup"></span></div>
+  <ul class="feed-list" id="cb-out"></ul>
+</div>
+<script>
+(function(){
+  var CAT={"演講":"talk","工作坊":"workshop","表演":"show","展覽":"expo","比賽":"contest","營隊":"camp","徵才":"recruit","市集":"market","運動":"sport","聚會":"social","其他":"other"};
+  var CAMPUS={"nthu-main":"清大校本部","nthu-nanda":"清大南大","nycu-guangfu":"交大光復","nycu-boai":"交大博愛","nycu-yangming":"陽明校區","online":"線上","other":"其他地點"};
+  var ORG={"official":"校方","dept":"系所","club":"社團","ext":"校外"};
+  var school="all", dim="";
+  var dims=[["","不限"]];
+  Object.keys(CAT).forEach(function(k){dims.push(["cat-"+CAT[k],k]);});
+  Object.keys(CAMPUS).forEach(function(k){dims.push(["campus-"+k,CAMPUS[k]]);});
+  Object.keys(ORG).forEach(function(k){dims.push(["org-"+k,ORG[k]]);});
+  function chips(id,options,get,set){
+    var host=document.getElementById(id);
+    options.forEach(function(o){
+      var b=document.createElement("button");
+      b.className="fchip";b.textContent=o[1];b.dataset.value=o[0];
+      b.setAttribute("aria-pressed",String(get()===o[0]));
+      b.addEventListener("click",function(){set(o[0]);
+        host.querySelectorAll(".fchip").forEach(function(x){x.setAttribute("aria-pressed",String(x.dataset.value===o[0]));});
+        out();});
+      host.appendChild(b);});
+  }
+  function out(){
+    var base="https://chumei.observe.tw/feeds/";
+    var ics,rss;
+    if(!dim){ var n=(school==="all"?"all":school); ics=base+n+".ics"; rss=base+n+".xml"; }
+    else { var n2=school+"-"+dim; ics=base+"c/"+n2+".ics"; rss=base+"c/"+n2+".xml"; }
+    document.getElementById("cb-out").innerHTML=
+      '<li>行事曆訂閱<br><code>'+ics+'</code> <button class="fchip cb-copy" data-t="'+ics+'">複製</button></li>'+
+      '<li>RSS<br><code>'+rss+'</code> <button class="fchip cb-copy" data-t="'+rss+'">複製</button></li>';
+  }
+  document.getElementById("cb-out").addEventListener("click",function(ev){
+    var b=ev.target.closest(".cb-copy");
+    if(!b)return;
+    navigator.clipboard.writeText(b.dataset.t).then(function(){b.textContent="已複製 ✓";setTimeout(function(){b.textContent="複製";},1200);});
+  });
+  chips("cb-school",[["all","清交都要"],["nthu","清大"],["nycu","陽明交大"]],function(){return school;},function(v){school=v;});
+  chips("cb-dim",dims,function(){return dim;},function(v){dim=v;});
+  out();
+})();
+</script>
 <h2>RSS</h2>
 <ul class="feed-list">
 <li>全部活動<br><code>https://chumei.observe.tw/feeds/all.xml</code></li>

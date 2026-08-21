@@ -822,13 +822,15 @@ def build_posts_data(events):
                 break
         image = next((e.get("cover_image") or e.get("poster_image") for e in evs
                       if e.get("cover_image") or e.get("poster_image")), None)
-        text = re.sub(r"\s+", " ", it.get("text") or "").strip()
+        # 保留段落換行；壓掉行內多餘空白與過多空行
+        text = re.sub(r"[ \t]+", " ", it.get("text") or "")
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
         posts.append({
             "source_id": sid, "post_id": pid,
             "source_name": it.get("source_name"), "platform": it.get("platform"),
             "school": it.get("school") or lead.get("school"),
             "url": it.get("url"), "posted_at": it.get("posted_at"),
-            "text": text[:400] + ("…" if len(text) > 400 else ""),
+            "text": text[:500] + ("…" if len(text) > 500 else ""),
             "image": image, "avatar": avatar,
             "events": sorted(({"id": e["id"], "title": e["title"], "start_at": e["start_at"],
                                "all_day": e.get("all_day"), "campus": e.get("campus"),
@@ -874,6 +876,33 @@ def main():
         write_rss(SITE / "feeds" / f"{sch}.xml", subset, f"竹梅活動觀測站｜{SCHOOL_LABEL[sch]}")
         write_ics(SITE / "feeds" / f"{sch}.ics", [e for e in upcoming if e.get("school") in (sch, "both")], f"竹梅 {SCHOOL_LABEL[sch]}活動")
     write_ics(SITE / "feeds" / "all.ics", upcoming, "竹梅活動觀測站")
+
+    # 自訂訂閱組合：學校 × （類型｜校區｜主辦）預產矩陣 → /feeds/c/
+    CAT_SLUG = {"演講": "talk", "工作坊": "workshop", "表演": "show", "展覽": "expo",
+                "比賽": "contest", "營隊": "camp", "徵才": "recruit", "市集": "market",
+                "運動": "sport", "聚會": "social", "其他": "other"}
+    ORG_SLUG = {"official": "official", "department": "dept", "club": "club", "external": "ext"}
+    cdir = SITE / "feeds" / "c"
+    cdir.mkdir(parents=True, exist_ok=True)
+    combo_specs = {}
+    for cat, slug in CAT_SLUG.items():
+        combo_specs[f"cat-{slug}"] = ("類型 " + cat, lambda e, c=cat: (e.get("category") or "其他") == c)
+    for campus in CAMPUS_LABEL:
+        combo_specs[f"campus-{campus}"] = (CAMPUS_LABEL[campus], lambda e, c=campus: e.get("campus") == c)
+    for org, slug in ORG_SLUG.items():
+        combo_specs[f"org-{slug}"] = (ORG_LABEL[org], lambda e, o=org: e.get("organizer_type") == o)
+    for sch in ("all", "nthu", "nycu"):
+        sch_label = "清交" if sch == "all" else SCHOOL_LABEL[sch]
+        def in_school(e, s2=sch):
+            return s2 == "all" or e.get("school") in (s2, "both")
+        for key, (label, pred) in combo_specs.items():
+            subset_all = [e for e in events if in_school(e) and pred(e)]
+            subset_up = [e for e in upcoming if in_school(e) and pred(e)]
+            name = f"{sch}-{key}"
+            title = f"竹梅｜{sch_label}・{label}"
+            write_rss(cdir / f"{name}.xml", list(reversed(subset_all)), title)
+            write_ics(cdir / f"{name}.ics", subset_up, title)
+    print(f"combo feeds: {len(combo_specs) * 3} pairs")
 
     for e in events:
         d = SITE / "event" / e["id"]

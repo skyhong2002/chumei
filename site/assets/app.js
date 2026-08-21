@@ -128,7 +128,7 @@
         var d = new Date(e.start_at);
         var when = (d.getMonth() + 1) + "/" + d.getDate() +
           (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
-        return '<a class="feed-ev" href="/event/' + e.id + '/">🗓 ' + esc(when) + "｜" + esc(e.title) + "</a>";
+        return '<a class="feed-ev" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">🗓 ' + esc(when) + "｜" + esc(e.title) + "</a>";
       }
 
       function row(p) {
@@ -170,6 +170,9 @@
       feed.addEventListener("click", function (ev) {
         if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); }
       });
+      var feedEvById = {};
+      posts.forEach(function (p) { p.events.forEach(function (e) { feedEvById[e.id] = e; }); });
+      bindEventHover(feed, ".feed-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
       render();
     }).catch(function () {
       feed.innerHTML = '<p class="empty">貼文載入失敗。</p>';
@@ -392,6 +395,52 @@
         }
       })
       .catch(function () { if (wall) wall.innerHTML = '<p class="empty">限時動態載入失敗。</p>'; });
+  }
+
+  // ---- 共用活動 hover 預覽卡（日曆格／地圖 popup／河道 chips） ----
+  var hoverPop = null;
+  function bindEventHover(root, selector, resolve, labels) {
+    if (!root || !window.matchMedia("(hover: hover)").matches) return;
+    if (!hoverPop) {
+      hoverPop = document.createElement("div");
+      hoverPop.className = "cal-pop";
+      hoverPop.hidden = true;
+      document.body.appendChild(hoverPop);
+      window.addEventListener("scroll", function () { hoverPop.hidden = true; }, { passive: true });
+    }
+    function fmtWhen(e) {
+      var d = new Date(e.start_at);
+      var wd = "日一二三四五六"[d.getDay()];
+      var base = (d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）";
+      return e.all_day ? base : base + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    }
+    root.addEventListener("mouseover", function (ev) {
+      var a = ev.target.closest(selector);
+      if (!a) return;
+      var e = resolve(a);
+      if (!e) return;
+      var cover = e.cover_image || e.poster_image;
+      var where = [e.campus ? (labels.campus || {})[e.campus] : null, e.venue].filter(Boolean).join(" ");
+      hoverPop.innerHTML =
+        (cover ? '<img src="' + esc(cover) + '" alt="">' : "") +
+        '<div class="cal-pop-body"><p class="chips">' +
+        (e.school ? '<span class="chip chip-' + esc(e.school) + '">' + esc((labels.school || {})[e.school] || "") + "</span>" : "") +
+        (e.category ? '<span class="chip">' + esc(e.category) + "</span>" : "") + "</p>" +
+        "<strong>" + esc(e.title) + "</strong>" +
+        '<span class="cal-pop-meta">' + esc(fmtWhen(e)) + (where ? "｜" + esc(where) : "") + "</span>" +
+        (e.organizer ? '<span class="cal-pop-meta">' + esc(e.organizer) + "</span>" : "") + "</div>";
+      hoverPop.hidden = false;
+      var r = a.getBoundingClientRect();
+      var pw = 280, ph = hoverPop.offsetHeight || 200;
+      var x = Math.min(Math.max(8, r.left), window.innerWidth - pw - 12);
+      var y = r.bottom + 8;
+      if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 8);
+      hoverPop.style.left = x + "px";
+      hoverPop.style.top = y + "px";
+    });
+    root.addEventListener("mouseout", function (ev) {
+      if (ev.target.closest(selector) && !(ev.relatedTarget && ev.relatedTarget.closest(selector))) hoverPop.hidden = true;
+    });
   }
 
   function esc(s) {
@@ -701,7 +750,7 @@
         pin.setAttribute("aria-label", g.geo.name + "，" + g.events.length + " 場活動");
         var items = g.events.slice(0, 6).map(function (e) {
           var d = new Date(e.start_at);
-          return '<a class="pop-ev" href="/event/' + e.id + '/">' +
+          return '<a class="pop-ev" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
             '<span class="pop-date">' + (d.getMonth() + 1) + "/" + d.getDate() + "</span>" + esc(e.title) + "</a>";
         }).join("");
         if (g.events.length > 6) items += '<p class="pop-more">…還有 ' + (g.events.length - 6) + " 場</p>";
@@ -758,6 +807,11 @@
       renderMap(list);
       syncUrl();
     }
+
+    var eventsById = {};
+    bundle.events.forEach(function (e) { eventsById[e.id] = e; });
+    bindEventHover(document.getElementById("map"), ".pop-ev",
+      function (a) { return eventsById[a.dataset.id]; }, labels);
 
     render();
   }
@@ -924,50 +978,9 @@
       }, { rootMargin: "600px" }).observe(sentinel);
     }
 
-    // hover 預覽卡（僅指標裝置）
-    if (window.matchMedia("(hover: hover)").matches) {
-      var byId = {};
-      bundle.events.forEach(function (e) { byId[e.id] = e; });
-      var pop = document.createElement("div");
-      pop.className = "cal-pop";
-      pop.hidden = true;
-      document.body.appendChild(pop);
-
-      function fmtWhen(e) {
-        var d = new Date(e.start_at);
-        var wd = "日一二三四五六"[d.getDay()];
-        var base = (d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）";
-        return e.all_day ? base : base + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-      }
-
-      calEl.addEventListener("mouseover", function (ev) {
-        var a = ev.target.closest(".cal-ev");
-        if (!a) return;
-        var e = byId[a.dataset.id];
-        if (!e) return;
-        var cover = e.cover_image || e.poster_image;
-        var where = [e.campus ? labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
-        pop.innerHTML =
-          (cover ? '<img src="' + esc(cover) + '" alt="">' : "") +
-          '<div class="cal-pop-body"><p class="chips"><span class="chip chip-' + esc(e.school) + '">' +
-          esc(labels.school[e.school] || "") + '</span><span class="chip">' + esc(e.category || "其他") + "</span></p>" +
-          "<strong>" + esc(e.title) + "</strong>" +
-          '<span class="cal-pop-meta">' + esc(fmtWhen(e)) + (where ? "｜" + esc(where) : "") + "</span>" +
-          '<span class="cal-pop-meta">' + esc(e.organizer || "") + "</span></div>";
-        pop.hidden = false;
-        var r = a.getBoundingClientRect();
-        var pw = 280, ph = pop.offsetHeight || 200;
-        var x = Math.min(Math.max(8, r.left), window.innerWidth - pw - 12);
-        var y = r.bottom + 8;
-        if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 8);
-        pop.style.left = x + "px";
-        pop.style.top = y + "px";
-      });
-      calEl.addEventListener("mouseout", function (ev) {
-        if (ev.target.closest(".cal-ev") && !(ev.relatedTarget && ev.relatedTarget.closest(".cal-ev"))) pop.hidden = true;
-      });
-      window.addEventListener("scroll", function () { pop.hidden = true; }, { passive: true });
-    }
+    var byIdCal = {};
+    bundle.events.forEach(function (e) { byIdCal[e.id] = e; });
+    bindEventHover(calEl, ".cal-ev", function (a) { return byIdCal[a.dataset.id]; }, labels);
 
     monthsAfter = 2;
     redraw();
