@@ -821,8 +821,12 @@ def build_posts_data(events):
             if sid.startswith(prefix) and (AVATAR_DIR / f"{sid}.jpg").exists():
                 avatar = f"/assets/avatars/{sid}.jpg"
                 break
-        image = next((e.get("cover_image") or e.get("poster_image") for e in evs
-                      if e.get("cover_image") or e.get("poster_image")), None)
+        # 河道只放貼文自己的圖：原始貼文有附圖才用（取已快取的本地副本）；
+        # 探索來的 og 圖、截圖、示意封面是活動卡的 fallback，不進河道。
+        has_own_image = bool(it.get("images")) or bool(it.get("image_url")) or it.get("platform") == "api"
+        image = None
+        if has_own_image:
+            image = next((e.get("poster_image") for e in evs if e.get("poster_image")), None)
         # 保留段落換行；壓掉行內多餘空白與過多空行
         text = re.sub(r"[ \t]+", " ", it.get("text") or "")
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
