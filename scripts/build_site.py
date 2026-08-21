@@ -825,11 +825,16 @@ def build_posts_data(events):
         # 保留段落換行；壓掉行內多餘空白與過多空行
         text = re.sub(r"[ \t]+", " ", it.get("text") or "")
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        # 公告的日期欄常是未來的展示起始日；貼文時間以「首次收錄」為準，不讓未來日期霸榜
+        posted = it.get("posted_at") or ""
+        now = now_iso()
+        if not posted or posted > now:
+            posted = min(lead.get("first_seen") or now, now)
         posts.append({
             "source_id": sid, "post_id": pid,
             "source_name": it.get("source_name"), "platform": it.get("platform"),
             "school": it.get("school") or lead.get("school"),
-            "url": it.get("url"), "posted_at": it.get("posted_at"),
+            "url": it.get("url"), "posted_at": posted,
             "text": text[:500] + ("…" if len(text) > 500 else ""),
             "image": image, "avatar": avatar,
             "events": sorted(({"id": e["id"], "title": e["title"], "start_at": e["start_at"],

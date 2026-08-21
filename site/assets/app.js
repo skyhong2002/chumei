@@ -116,7 +116,7 @@
       }
 
       function ago(iso) {
-        var ms = Date.now() - new Date(iso).getTime();
+        var ms = Math.max(0, Date.now() - new Date(iso).getTime());
         var h = ms / 36e5;
         if (h < 1) return Math.max(1, Math.round(h * 60)) + " 分鐘前";
         if (h < 24) return Math.round(h) + " 小時前";
