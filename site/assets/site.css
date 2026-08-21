@@ -722,6 +722,10 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 
 /* 桌機雙欄河道（Threads 式分割：兩欄各自獨立捲動） */
 .feed-main .filters { position: static; backdrop-filter: none; background: none; }
+@media (min-width: 1080px) {
+  .feed-main .hero, .feed-main .filters, .feed-main .story-strip { max-width: 1160px; }
+  .feed-main .hero p { max-width: none; }
+}
 .post-feed.feed-wide { max-width: 1160px; }
 .feed-cols {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; align-items: start;
