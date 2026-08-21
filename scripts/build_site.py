@@ -544,6 +544,8 @@ def _norm_org(s):
 def _org_sim(a, b):
     if not a or not b:
         return 0
+    if a == b:
+        return 1.1  # 完全同名優先於包含關係（口琴社 vs 竹韻口琴社是不同社）
     if len(a) >= 3 and len(b) >= 3 and (a in b or b in a):
         return 1
     A, B = _bigrams(a), _bigrams(b)
@@ -623,6 +625,14 @@ def build_sources_data(events):
         url = page if page.startswith("http") else f"https://www.facebook.com/{page}"
         attach(r["name"], r.get("school") or "other", r.get("org_type"), "facebook",
                url, "Facebook", f"fb_{page_slug(page)}")
+    for r in read_sources_csv("social_accounts.csv"):
+        if r.get("active", "true").lower() == "false" or r["platform"] != "website":
+            continue
+        url = r["username"].strip()
+        from urllib.parse import urlparse as _up
+        host = _up(url).netloc or url
+        attach(r["name"], r.get("school") or "other", r.get("org_type"), "website",
+               url, host, f"web_{host}")
     SOCIAL_URL = {"threads": "https://www.threads.com/@{u}", "x": "https://x.com/{u}"}
     for r in read_sources_csv("social_accounts.csv"):
         if r.get("active", "true").lower() == "false" or r["platform"] not in SOCIAL_URL:
@@ -686,7 +696,7 @@ def org_pages(entries, events):
         by_sid.setdefault(e["source"]["source_id"], []).append(e)
     today = date.today().isoformat()
     PLAT = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads",
-            "x": "X", "bulletin": "公告頁"}
+            "x": "X", "bulletin": "公告頁", "website": "官網"}
     for ent in entries:
         evs = [e for sid in ent.get("sids", []) for e in by_sid.get(sid, [])]
         for l in ent["links"]:

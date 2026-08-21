@@ -64,7 +64,7 @@
     var table = document.getElementById("source-table");
     if (!table) return;
     var KIND = { club: "社團", gov: "自治組織", dept: "系所", unit: "校方單位", bulletin: "公告系統", ext: "校外" };
-    var PLAT = { instagram: "IG", facebook: "FB", threads: "Threads", x: "X", bulletin: "公告" };
+    var PLAT = { instagram: "IG", facebook: "FB", threads: "Threads", x: "X", bulletin: "公告", website: "官網" };
 
     fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
       var entries = data.entries;
