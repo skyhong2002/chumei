@@ -249,25 +249,15 @@ class TelegramClient:
         return bot, chat
 
     def send_event(self, event, silent=False, start_part=0, on_sent=None):
-        detail_url = f"{BASE_URL}/event/{event['id']}/"
         messages = format_event_messages(event)
         results = []
         for index, text in enumerate(messages[start_part:], start=start_part):
-            link_preview = (
-                {
-                    "url": detail_url,
-                    "prefer_large_media": True,
-                    "show_above_text": True,
-                }
-                if index == 0
-                else {"is_disabled": True}
-            )
             payload = {
                 "chat_id": self.channel,
                 "text": text,
                 "parse_mode": "HTML",
                 "disable_notification": silent,
-                "link_preview_options": link_preview,
+                "link_preview_options": {"is_disabled": True},
             }
             if index == 0:
                 payload["reply_markup"] = event_buttons(event)

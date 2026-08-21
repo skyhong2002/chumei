@@ -88,7 +88,7 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual([button["text"] for button in row], ["活動詳情", "原始來源"])
         self.assertEqual(row[1]["url"], "https://example.com/source")
 
-    def test_send_event_uses_text_preview_and_records_each_part(self):
+    def test_send_event_disables_preview_and_records_each_part(self):
         client = telegram.TelegramClient("token", "@channel")
         calls = []
         recorded = []
@@ -104,7 +104,7 @@ class PublisherTests(unittest.TestCase):
         )
         self.assertEqual(calls[0][0], "sendMessage")
         self.assertEqual(calls[0][1]["reply_markup"]["inline_keyboard"][0][1]["text"], "原始來源")
-        self.assertEqual(calls[0][1]["link_preview_options"]["url"], "https://chumei.observe.tw/event/evt_new/")
+        self.assertEqual(calls[0][1]["link_preview_options"], {"is_disabled": True})
         self.assertEqual(recorded, [(1, 0, 1)])
 
     def test_load_original_texts_uses_newest_duplicate(self):
