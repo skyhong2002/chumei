@@ -665,3 +665,5 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   border: none; background: none; cursor: pointer; font-size: 0.85rem;
   color: var(--chumei-bamboo-text); font-family: inherit; padding: 4px 6px;
 }
+.cal-cell.cal-empty { background: none; border: none; min-height: 0; }
+:root[data-theme="dark"] .cal-cell.cal-empty { background: none; border: none; }

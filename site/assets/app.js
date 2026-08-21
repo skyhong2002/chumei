@@ -725,26 +725,29 @@
     }
 
     function monthHtml(m) {
-      var startDow = (m.getDay() + 6) % 7; // 週一起始
+      var startDow = m.getDay(); // 週日起始
       var first = new Date(m);
       first.setDate(1 - startDow);
+      var daysInMonth = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+      var totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7; // 只畫需要的列
       var t = todayStr();
-      var cells = ["一", "二", "三", "四", "五", "六", "日"].map(function (d) { return '<div class="cal-dow">' + d + "</div>"; }).join("");
+      var cells = ["日", "一", "二", "三", "四", "五", "六"].map(function (d) { return '<div class="cal-dow">' + d + "</div>"; }).join("");
       var monthTotal = 0;
-      for (var i = 0; i < 42; i++) {
+      for (var i = 0; i < totalCells; i++) {
         var d = new Date(first);
         d.setDate(first.getDate() + i);
-        var key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
         var inMonth = d.getMonth() === m.getMonth();
-        var cls = "cal-cell" + (inMonth ? "" : " other-month") + (key === t ? " today" : "");
-        var evs = "";
-        if (inMonth) {
-          var dayEvents = byDay[key] || [];
-          monthTotal += dayEvents.length;
-          evs = dayEvents.map(function (e) {
-            return '<a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' + esc(e.title) + "</a>";
-          }).join("");
+        if (!inMonth) {
+          cells += '<div class="cal-cell cal-empty" aria-hidden="true"></div>';
+          continue;
         }
+        var key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+        var cls = "cal-cell" + (key === t ? " today" : "");
+        var dayEvents = byDay[key] || [];
+        monthTotal += dayEvents.length;
+        var evs = dayEvents.map(function (e) {
+          return '<a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' + esc(e.title) + "</a>";
+        }).join("");
         cells += '<div class="' + cls + '"><span class="cal-day">' + d.getDate() + "</span>" + evs + "</div>";
       }
       return '<section class="cal-month" id="cal-' + m.getFullYear() + "-" + (m.getMonth() + 1) + '">' +
