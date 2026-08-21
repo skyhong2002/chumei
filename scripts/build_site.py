@@ -637,11 +637,11 @@ def source_page(events):
 還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
 <span id="src-count" aria-live="polite"></span></p></section>
 <section class="filters" aria-label="名錄篩選">
-  <div class="filter-row"><span class="label">學校</span><span id="sf-school"></span>
+  <div class="filter-row"><span class="label">學校</span><span id="sf-school" class="fgroup"></span>
     <span class="search-hit"><input id="search" type="search" placeholder="搜尋社團、單位…" aria-label="搜尋名錄"></span></div>
-  <div class="filter-row"><span class="label">狀態</span><span id="sf-status"></span></div>
-  <div class="filter-row"><span class="label">類型</span><span id="sf-kind"></span></div>
-  <div class="filter-row"><span class="label">平台</span><span id="sf-platform"></span></div>
+  <div class="filter-row"><span class="label">狀態</span><span id="sf-status" class="fgroup"></span></div>
+  <div class="filter-row"><span class="label">類型</span><span id="sf-kind" class="fgroup"></span></div>
+  <div class="filter-row"><span class="label">平台</span><span id="sf-platform" class="fgroup"></span></div>
 </section>
 <div id="source-table" class="src-table" aria-label="機構名錄"></div>"""
     d = SITE / "source"
