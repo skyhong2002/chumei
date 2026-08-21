@@ -706,3 +706,4 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .feed-post { padding: 12px; }
   .feed-img { width: 72px; height: 72px; }
 }
+.chip-campus { background: var(--color-category-orange-surface); color: var(--color-category-orange-text); }

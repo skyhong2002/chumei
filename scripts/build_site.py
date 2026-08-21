@@ -542,6 +542,16 @@ def _norm_org(s):
     return re.sub(r"[\\W_]+", "", s.lower())
 
 
+def _org_campus(text):
+    """從名稱/備註推斷 NYCU 校區：yangming / guangfu / None。"""
+    t = text or ""
+    if "陽明" in t and "陽明交通" not in t.replace("陽明交大", ""):
+        return "yangming"
+    if any(k in t for k in ("交大", "交通", "光復")) or "nctu" in t.lower():
+        return "guangfu"
+    return None
+
+
 def _org_sim(a, b):
     if not a or not b:
         return 0
@@ -581,26 +591,36 @@ def build_sources_data(events):
         for r in read_sources_csv(fname):
             cat = r["category"]
             kind = "gov" if ("自治" in cat or "學生會" in cat) else "club"
+            notes = r.get("notes") or ""
+            campus = None
+            if school == "nycu":
+                campus = "yangming" if "陽明" in notes else "guangfu" if "光復" in notes else _org_campus(r["club_name"])
             entries.append({
                 "name": r["club_name"], "school": school, "kind": kind,
-                "category": re.sub(r"社團$", "", cat), "campus": r.get("notes") or None,
+                "category": re.sub(r"社團$", "", cat), "campus": campus,
                 "links": [], "events": 0, "roster": True,
             })
     norms = [_norm_org(e["name"]) for e in entries]
 
     def attach(name, school, org_type, platform, url, label, sid, note=None):
         n = _norm_org(name)
+        src_campus = _org_campus(name) if school == "nycu" else None
         best_i, best = -1, 0.55
         for i, e in enumerate(entries):
             if e["school"] != school:
                 continue
+            # 陽明與交通的社團是兩套系統：兩邊校區皆已知且不同 → 不配對
+            if school == "nycu" and src_campus and e.get("campus") and e["campus"] != src_campus:
+                continue
             v = _org_sim(n, norms[i])
+            if v and src_campus and e.get("campus") == src_campus:
+                v += 0.05  # 校區吻合優先
             if v > best:
                 best_i, best = i, v
         if best_i == -1:
             kind = {"official": "unit", "department": "dept", "club": "club", "external": "ext"}.get(org_type, "club")
             entries.append({"name": name, "school": school, "kind": kind, "category": None,
-                            "campus": None, "links": [], "events": 0, "roster": False})
+                            "campus": src_campus, "links": [], "events": 0, "roster": False})
             norms.append(_norm_org(name))
             best_i = len(entries) - 1
         e = entries[best_i]
@@ -717,7 +737,11 @@ def org_pages(entries, events):
                        + esc((ent["name"] or "？")[len(ent["name"]) > 2 and ent["name"][:2] in ("清大", "交大", "陽明") and 2 or 0]) + "</span>")
         links = "".join(f'<a class="btn" href="{esc(l["url"])}" rel="noopener">{PLAT.get(l["platform"], l["platform"])}</a>'
                         for l in ent["links"])
+        campus_chip = ""
+        if ent.get("campus") in ("yangming", "guangfu"):
+            campus_chip = f'<span class="chip chip-campus">{"陽明" if ent["campus"] == "yangming" else "交大"}校區</span>'
         chips = (f'<span class="chip chip-{esc(ent["school"])}">{SCHOOL_LABEL.get(ent["school"], "其他")}</span>'
+                 + campus_chip +
                  f'<span class="chip">{KIND_LABEL.get(ent["kind"], "")}</span>'
                  + (f'<span class="chip">{esc(ent["category"])}</span>' if ent.get("category") else ""))
         body = [f'<article class="org-page"><div class="org-head">{avatar}<div>'

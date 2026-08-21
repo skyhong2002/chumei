@@ -211,7 +211,7 @@
           host.appendChild(b);
         });
       }
-      chips("sf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"]], "school");
+      chips("sf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["nycu-guangfu", "交大校區"], ["nycu-yangming", "陽明校區"]], "school");
       chips("sf-status", [["all", "全部"], ["covered", "已收錄"], ["uncovered", "尚未收錄"]], "status");
       chips("sf-kind", [["all", "全部"]].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; })), "kind");
       chips("sf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["x", "X"]], "platform");
@@ -224,7 +224,10 @@
 
       function matches(e, ok, ov) {
         function v(k) { return ok === k ? ov : state[k]; }
-        if (v("school") !== "all" && e.school !== v("school")) return false;
+        var sch = v("school");
+        if (sch === "nycu-guangfu") { if (e.school !== "nycu" || e.campus === "yangming") return false; }
+        else if (sch === "nycu-yangming") { if (e.school !== "nycu" || e.campus !== "yangming") return false; }
+        else if (sch !== "all" && e.school !== sch) return false;
         if (v("status") === "covered" && !e.links.length) return false;
         if (v("status") === "uncovered" && e.links.length) return false;
         if (v("kind") !== "all" && e.kind !== v("kind")) return false;
@@ -259,6 +262,7 @@
           '<span class="src-id" aria-label="名錄 ID ' + e.id + '">#' + e.id + "</span>" +
           '<span class="chips">' +
           '<span class="chip chip-school chip-' + esc(e.school) + '">' + esc(e.school === "nthu" ? "清大" : e.school === "nycu" ? "陽明交大" : "其他") + "</span>" +
+          (e.campus ? '<span class="chip chip-campus">' + (e.campus === "yangming" ? "陽明" : "交大") + "</span>" : "") +
           '<span class="chip chip-extra">' + esc(KIND[e.kind] || "") + "</span>" +
           (e.category ? '<span class="chip chip-extra">' + esc(e.category) + "</span>" : "") +
           '</span><strong><a class="src-name" href="/org/' + e.id + '/">' + esc(e.name) + "</a></strong></div>" +
