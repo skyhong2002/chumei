@@ -131,6 +131,95 @@
         "</div></a></div>";
     }
 
+    // ---- 地圖檢視 ----
+    var mapState = { view: params.get("view") === "map" ? "map" : "list", map: null, layer: null };
+    var mapSection = document.getElementById("map-view");
+    var btnList = document.getElementById("view-list");
+    var btnMap = document.getElementById("view-map");
+
+    function setView(v) {
+      mapState.view = v;
+      if (btnList) btnList.setAttribute("aria-pressed", String(v === "list"));
+      if (btnMap) btnMap.setAttribute("aria-pressed", String(v === "map"));
+      if (mapSection) mapSection.hidden = v !== "map";
+      listEl.style.display = v === "map" ? "none" : "";
+      if (v === "map") renderMap(bundle.events.filter(matches));
+      syncUrl();
+    }
+    if (btnList) btnList.addEventListener("click", function () { setView("list"); });
+    if (btnMap) btnMap.addEventListener("click", function () { setView("map"); });
+
+    function schoolColor(s) {
+      return s === "nthu" ? "#8E24AA" : s === "nycu" ? "#0045F2" : "#0F766E";
+    }
+
+    function initMap() {
+      if (mapState.map || typeof L === "undefined") return mapState.map;
+      var m = L.map("map", { scrollWheelZoom: true });
+      L.tileLayer("https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}", {
+        maxZoom: 19, attribution: "&copy; <a href='https://maps.nlsc.gov.tw/'>國土測繪中心</a>",
+      }).addTo(m);
+      // 聚焦光復校區＋緊鄰的清大校本部（活動集中的區塊）
+      m.setView([24.7915, 120.9928], 16);
+      mapState.map = m;
+      return m;
+    }
+
+    function renderMap(list) {
+      var m = initMap();
+      if (!m) return;
+      if (mapState.layer) mapState.layer.remove();
+      var groups = {};
+      var located = 0;
+      list.forEach(function (e) {
+        if (!e.geo) return;
+        located++;
+        var key = e.geo.lat.toFixed(5) + "," + e.geo.lng.toFixed(5);
+        (groups[key] = groups[key] || { geo: e.geo, events: [] }).events.push(e);
+      });
+      var layer = L.layerGroup();
+      var pts = [];
+      Object.keys(groups).forEach(function (k) {
+        var g = groups[k];
+        var schools = {};
+        g.events.forEach(function (e) { schools[e.school] = 1; });
+        var color = Object.keys(schools).length === 1 ? schoolColor(g.events[0].school) : "#0F766E";
+        var icon = L.divIcon({
+          className: "ev-marker",
+          html: '<span class="ev-pin" style="background:' + color + '">' + (g.events.length > 1 ? g.events.length : "") + "</span>",
+          iconSize: [30, 30], iconAnchor: [15, 15],
+        });
+        var items = g.events.slice(0, 6).map(function (e) {
+          var d = new Date(e.start_at);
+          return '<a class="pop-ev" href="/event/' + e.id + '/">' +
+            '<span class="pop-date">' + (d.getMonth() + 1) + "/" + d.getDate() + "</span>" + esc(e.title) + "</a>";
+        }).join("");
+        if (g.events.length > 6) items += '<p class="pop-more">…還有 ' + (g.events.length - 6) + " 場</p>";
+        var html = '<div class="pop"><p class="pop-venue">' + esc(g.geo.name) + "</p>" + items + "</div>";
+        L.marker([g.geo.lat, g.geo.lng], { icon: icon }).bindPopup(html, { maxWidth: 280 }).addTo(layer);
+        pts.push([g.geo.lat, g.geo.lng]);
+      });
+      layer.addTo(m);
+      mapState.layer = layer;
+      // 預設視角固定在光復＋清大本部核心區，不隨標記自動縮放（南大/陽明的活動自行拖曳查看）
+      var note = document.getElementById("map-note");
+      if (note) {
+        var unlocated = list.length - located;
+        note.textContent = "地圖顯示 " + located + " 場可定位的活動" +
+          (unlocated > 0 ? "；另有 " + unlocated + " 場為線上活動或地點未定，見卡片檢視。" : "。");
+      }
+      setTimeout(function () { m.invalidateSize(); }, 60);
+    }
+
+    function syncUrl() {
+      var qs = new URLSearchParams();
+      Object.keys(state).forEach(function (k) {
+        if (state[k] && state[k] !== "all" && !(k === "time" && state[k] === "upcoming")) qs.set(k, state[k]);
+      });
+      if (mapState.view === "map") qs.set("view", "map");
+      history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+    }
+
     function render() {
       var list = bundle.events.filter(matches);
       if (state.time === "all") list = list.slice().reverse();
@@ -138,14 +227,12 @@
       listEl.innerHTML = list.length
         ? list.map(card).join("")
         : '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>';
-      var qs = new URLSearchParams();
-      Object.keys(state).forEach(function (k) {
-        if (state[k] && state[k] !== "all" && !(k === "time" && state[k] === "upcoming")) qs.set(k, state[k]);
-      });
-      history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+      if (mapState.view === "map") renderMap(list);
+      syncUrl();
     }
 
     render();
+    if (mapState.view === "map") setView("map");
   }
 
   // ---- 日曆 ----

@@ -112,6 +112,48 @@ def dedupe(events):
     return out
 
 
+def load_venues():
+    rows = read_sources_csv("venues.csv")
+    for r in rows:
+        r["aliases"] = [a.strip() for a in (r.get("aliases") or "").replace("；", ";").split(";") if a.strip()]
+    return rows
+
+
+def attach_geo(events, venues):
+    """venue 字串 → 建築座標。先用 campus 過濾，找不到再全域唯一比對。"""
+    def match(venue, cands):
+        hits = []
+        for v in cands:
+            for key in [v["name"], *v["aliases"]]:
+                if len(key) >= 2 and key in venue:
+                    hits.append((len(key), v))
+                    break
+        if not hits:
+            return None
+        top = max(h[0] for h in hits)
+        best = [v for l, v in hits if l == top]
+        # 不同校區同名建築（體育館、活動中心⋯）無法裁決時放棄，寧缺勿錯
+        if len({v["campus"] for v in best}) > 1:
+            return None
+        return best[0]
+
+    n = 0
+    for e in events:
+        venue = (e.get("venue") or "").strip()
+        if not venue:
+            continue
+        if e.get("campus") in ("online",):
+            continue
+        if e.get("campus"):
+            hit = match(venue, [v for v in venues if v["campus"] == e["campus"]])
+        else:
+            hit = match(venue, venues)
+        if hit:
+            e["geo"] = {"lat": float(hit["lat"]), "lng": float(hit["lng"]), "name": hit["name"]}
+            n += 1
+    return n
+
+
 def cache_posters(events):
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
     for e in events:
@@ -238,7 +280,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <meta property="og:description" content="{esc(desc)}">
 <meta property="og:image" content="{og_img}">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="竹梅｜清交校園活動">
+<meta property="og:site_name" content="竹梅活動觀測站">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/site.css">
@@ -247,7 +289,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 </head>
 <body>
 <header class="site-header">
-  <a class="brand" href="/"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">清大×交大 校園活動</span></a>
+  <a class="brand" href="/"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a>
   <nav class="site-nav">
     <a href="/">活動</a>
     <a href="/calendar/">日曆</a>
@@ -260,8 +302,8 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 {content}
 </main>
 <footer class="site-footer">
-  <p>竹梅彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
-  <p><a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/about/">資料來源與回報</a></p>
+  <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
+  <p><a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p>
 </footer>
 <script src="/assets/app.js"></script>
 </body>
@@ -309,6 +351,8 @@ def detail_page(e):
     actions = "".join(filter(None, [
         f'<a class="btn btn-primary" href="{esc(e["registration_url"])}" rel="noopener">報名／活動頁</a>' if e.get("registration_url") else None,
         f'<a class="btn" href="{gcal}" rel="noopener">加入 Google 日曆</a>' if gcal else None,
+        (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">在地圖上看</a>'
+         if e.get("geo") else None),
         f'<a class="btn" href="{esc(e["source"]["url"])}" rel="noopener">原始貼文</a>' if e["source"].get("url") else None,
     ]))
     jsonld = json.dumps({
@@ -339,10 +383,66 @@ def detail_page(e):
 <script type="application/ld+json">{jsonld}</script>
 </article>"""
     return page_shell(
-        f"{e['title']}｜竹梅", e.get("summary") or e["title"], content,
+        f"{e['title']}｜竹梅活動觀測站", e.get("summary") or e["title"], content,
         og_image=(BASE_URL + e["poster_image"]) if e.get("poster_image") else None,
         canonical=f"{BASE_URL}/event/{e['id']}/",
     )
+
+
+def source_page(events):
+    """公開來源索引 /source/ — 列出每一個資料來源與收錄活動數。"""
+    counts = {}
+    for e in events:
+        sid = e["source"]["source_id"]
+        counts[sid] = counts.get(sid, 0) + 1
+
+    def row_html(name, url, sid, tags):
+        n = counts.get(sid, 0)
+        chips = "".join(f'<span class="chip {c}">{esc(t)}</span>' for t, c in tags if t)
+        cnt = f'<span class="src-count">{n} 場</span>' if n else '<span class="src-count src-zero">尚無收錄</span>'
+        return (f'<li class="src-item"><a href="{esc(url)}" rel="noopener">{esc(name)}</a>'
+                f'<span class="src-meta">{chips}{cnt}</span></li>')
+
+    def school_chip(s):
+        return (SCHOOL_LABEL.get(s, s), f"chip-{s}")
+
+    sections = []
+    bulletin_rows = []
+    for r in read_sources_csv("bulletin_sources.csv"):
+        bulletin_rows.append(row_html(r["name"], r["url"], r["source_id"], [school_chip(r["school"])]))
+    sections.append(("校方公告與官方 API", "兩校公告系統與 NYCU LIFE 的結構化活動資料。", bulletin_rows))
+
+    ig_rows = []
+    for r in sorted(read_sources_csv("ig_accounts.csv"), key=lambda r: -counts.get(f"ig_{r['username']}", 0)):
+        if r.get("active", "true").lower() == "false":
+            continue
+        u = r["username"].strip().lstrip("@")
+        ig_rows.append(row_html(f"{r['name']}（@{u}）", f"https://www.instagram.com/{u}/",
+                                f"ig_{u}", [school_chip(r["school"]), (r.get("category_hint"), "")]))
+    sections.append(("Instagram 帳號", "學生社團與校內單位的公開貼文，活動欄位由 AI 從貼文與海報擷取。", ig_rows))
+
+    fb_rows = []
+    for r in sorted(read_sources_csv("fb_pages.csv"), key=lambda r: r["name"]):
+        if r.get("active", "true").lower() == "false":
+            continue
+        page = r["page"].strip()
+        url = page if page.startswith("http") else f"https://www.facebook.com/{page}"
+        from fetch_facebook import page_slug
+        fb_rows.append(row_html(r["name"], url, f"fb_{page_slug(page)}", [school_chip(r["school"]), (r.get("category_hint"), "")]))
+    sections.append(("Facebook 專頁", "校方單位、系學會與老牌社團的公開專頁，經 Apify 取得公開貼文。", fb_rows))
+
+    body = ['<div class="prose"><h1>資料來源</h1>',
+            f'<p>竹梅活動觀測站目前監測 {sum(len(s[2]) for s in sections)} 個公開來源。所有內容皆為公開資訊，'
+            '活動頁都附原始連結；來源單位若希望調整或移除內容，請見<a href="/about/">關於頁</a>的回報管道。</p></div>']
+    for title, desc, rows in sections:
+        body.append(f'<section class="src-section"><h2>{title}<span class="src-n">{len(rows)}</span></h2>'
+                    f'<p class="src-desc">{desc}</p><ul class="source-list">{"".join(rows)}</ul></section>')
+    d = SITE / "source"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "index.html").write_text(page_shell(
+        "資料來源｜竹梅活動觀測站",
+        "竹梅活動觀測站監測的所有公開資料來源：兩校公告系統、NYCU LIFE、學生社團 Instagram 與 Facebook。",
+        "\n".join(body), canonical=f"{BASE_URL}/source/"))
 
 
 def main():
@@ -350,6 +450,9 @@ def main():
     events = [e for e in events if e.get("start_at")]
     events.sort(key=lambda e: e["start_at"])
     cache_posters(events)
+    venues = load_venues()
+    n_geo = attach_geo(events, venues)
+    print(f"geo: {n_geo}/{sum(1 for e in events if e.get('venue'))} venue-matched ({len(venues)} registry rows)")
 
     today = date.today().isoformat()
     upcoming = [e for e in events if e["start_at"][:10] >= today]
@@ -362,19 +465,21 @@ def main():
     (SITE / "data" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False))
     (SITE / "api" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False, indent=1))
 
-    write_rss(SITE / "feeds" / "all.xml", list(reversed(events)), "竹梅｜清交校園活動")
+    write_rss(SITE / "feeds" / "all.xml", list(reversed(events)), "竹梅活動觀測站")
     for sch in ("nthu", "nycu"):
         subset = [e for e in reversed(events) if e.get("school") in (sch, "both")]
-        write_rss(SITE / "feeds" / f"{sch}.xml", subset, f"竹梅｜{SCHOOL_LABEL[sch]}活動")
+        write_rss(SITE / "feeds" / f"{sch}.xml", subset, f"竹梅活動觀測站｜{SCHOOL_LABEL[sch]}")
         write_ics(SITE / "feeds" / f"{sch}.ics", [e for e in upcoming if e.get("school") in (sch, "both")], f"竹梅 {SCHOOL_LABEL[sch]}活動")
-    write_ics(SITE / "feeds" / "all.ics", upcoming, "竹梅 清交校園活動")
+    write_ics(SITE / "feeds" / "all.ics", upcoming, "竹梅活動觀測站")
 
     for e in events:
         d = SITE / "event" / e["id"]
         d.mkdir(parents=True, exist_ok=True)
         (d / "index.html").write_text(detail_page(e))
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/"] + \
+    source_page(events)
+
+    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events]
     (SITE / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
