@@ -32,14 +32,14 @@
 </ul>
 <h2>自訂訂閱組合</h2>
 <p>挑一個學校＋一個條件，拼出你自己的訂閱網址（行事曆與 RSS 都有）：</p>
-<div class="combo-builder">
+<section class="filters combo-builder" aria-label="訂閱組合">
   <div class="filter-row"><span class="label">學校</span><span id="cb-school" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">範圍</span><span id="cb-any" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">類型</span><span id="cb-cat" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">校區</span><span id="cb-campus" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">主辦</span><span id="cb-org" class="fgroup"></span></div>
-  <ul class="feed-list" id="cb-out"></ul>
-</div>
+</section>
+<ul class="feed-list" id="cb-out"></ul>
 <script>
 (function(){
   var CAT={"演講":"talk","工作坊":"workshop","表演":"show","展覽":"expo","比賽":"contest","營隊":"camp","徵才":"recruit","市集":"market","運動":"sport","聚會":"social","其他":"other"};
@@ -47,6 +47,7 @@
   var ORG={"official":"校方","dept":"系所","club":"社團","ext":"校外"};
   var school="all", dim="";
   var dimHosts=["cb-any","cb-cat","cb-campus","cb-org"];
+  function esc(t){var d=document.createElement("span");d.textContent=t;return d.innerHTML;}
   function syncDim(){
     dimHosts.forEach(function(id){
       document.getElementById(id).querySelectorAll(".fchip").forEach(function(b){
@@ -58,7 +59,9 @@
     var host=document.getElementById(id);
     options.forEach(function(o){
       var b=document.createElement("button");
-      b.className="fchip"; b.textContent=o[1]; b.dataset.value=o[0];
+      b.className="fchip"; b.dataset.value=o[0];
+      b.innerHTML='<span class="fchip-label">'+esc(o[1])+"</span>";
+      b.setAttribute("aria-pressed","false");
       b.addEventListener("click", function(){ onpick(o[0]); });
       host.appendChild(b);
     });
@@ -69,8 +72,8 @@
     if(!dim){ var n=(school==="all"?"all":school); ics=base+n+".ics"; rss=base+n+".xml"; }
     else { var n2=school+"-"+dim; ics=base+"c/"+n2+".ics"; rss=base+"c/"+n2+".xml"; }
     document.getElementById("cb-out").innerHTML=
-      '<li>行事曆訂閱<br><code>'+ics+'</code> <button class="fchip cb-copy" data-t="'+ics+'">複製</button></li>'+
-      '<li>RSS<br><code>'+rss+'</code> <button class="fchip cb-copy" data-t="'+rss+'">複製</button></li>';
+      '<li>行事曆訂閱<br><code>'+ics+'</code> <button class="fchip cb-copy" data-t="'+ics+'"><span class="fchip-label">複製</span></button></li>'+
+      '<li>RSS<br><code>'+rss+'</code> <button class="fchip cb-copy" data-t="'+rss+'"><span class="fchip-label">複製</span></button></li>';
   }
   mkChips("cb-school", [["all","清交都要"],["nthu","清大"],["nycu","陽明交大"]], function(v){
     school=v;
@@ -88,7 +91,7 @@
   document.getElementById("cb-out").addEventListener("click", function(ev){
     var b=ev.target.closest(".cb-copy");
     if(!b) return;
-    navigator.clipboard.writeText(b.dataset.t).then(function(){ b.textContent="已複製 ✓"; setTimeout(function(){ b.textContent="複製"; },1200); });
+    navigator.clipboard.writeText(b.dataset.t).then(function(){ b.querySelector(".fchip-label").textContent="已複製 ✓"; setTimeout(function(){ b.querySelector(".fchip-label").textContent="複製"; },1200); });
   });
 })();
 </script>
