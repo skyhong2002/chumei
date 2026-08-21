@@ -103,7 +103,15 @@ def dedupe(events):
             best["alt_sources"] = [g["source"]["url"] for g in grp[1:]]
         stage1.append(best)
 
-    # 第二階段：同一天、標題相似（同活動多貼文/轉發）
+    # 第二階段：同一天、標題相似（同活動多貼文/轉發）。
+    # 跨平台轉發常見「社名＋活動名」vs「活動名」——剝掉主辦名後核心相同也視為同活動。
+    def title_core(e):
+        t = norm_title(e["title"])
+        for cand in {norm_title(e.get("organizer") or ""), _norm_org(e.get("organizer") or "")}:
+            if cand and len(cand) >= 3 and cand in t and len(t) - len(cand) >= 3:
+                t = t.replace(cand, "")
+        return t
+
     by_day = {}
     for e in stage1:
         by_day.setdefault((e.get("start_at") or "")[:10], []).append(e)
@@ -111,7 +119,8 @@ def dedupe(events):
     for grp in by_day.values():
         kept = []
         for e in sorted(grp, key=score, reverse=True):
-            dup = next((k for k in kept if _similar(norm_title(k["title"]), norm_title(e["title"]))), None)
+            dup = next((k for k in kept if _similar(norm_title(k["title"]), norm_title(e["title"]))
+                        or (title_core(k) and title_core(k) == title_core(e))), None)
             if dup:
                 dup.setdefault("alt_sources", []).append(e["source"]["url"])
                 if e.get("school") != dup.get("school"):
