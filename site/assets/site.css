@@ -781,3 +781,5 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .chip-reg-free { background: var(--color-success-surface); color: var(--color-success-text); }
 .chip-fee-free { background: var(--color-info-surface); color: var(--color-info-text); }
 .chip-fee-paid { background: var(--color-category-orange-surface); color: var(--color-category-orange-text); }
+.org-more { margin-top: 32px; border-top: 1px solid var(--color-border-subtle); padding-top: 16px; }
+.org-more h2 { font-size: 1.05rem; margin: 0 0 8px; }

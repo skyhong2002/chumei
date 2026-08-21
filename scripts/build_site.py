@@ -495,7 +495,7 @@ def join_loc(e, sep=" ・ "):
     return sep.join(parts)
 
 
-def detail_page(e):
+def detail_page(e, org=None, siblings=()):
     st, en = e.get("start_at"), e.get("end_at")
     loc = join_loc(e)
     gcal = ""
@@ -515,13 +515,16 @@ def detail_page(e):
     rows = [
         ("時間", fmt_dt(st, e.get("all_day")) + (f" – {fmt_dt(en, e.get('all_day'))}" if en else "")),
         ("地點", loc or "詳見原始貼文"),
-        ("主辦", f"{e.get('organizer')}（{ORG_LABEL.get(e.get('organizer_type'), '')}）"),
+        ("主辦", (f'<a href="/org/{org[0]}/">{esc(e.get("organizer"))}</a>（{ORG_LABEL.get(e.get("organizer_type"), "")}）'
+                 if org else f"{esc(e.get('organizer'))}（{ORG_LABEL.get(e.get('organizer_type'), '')}）")),
         ("類型", e.get("category")),
         ("報名", {"required": "需事先報名", "free": "自由入場，免報名"}.get(e.get("reg"))),
         ("費用", e.get("price") or {"free": "免費", "paid": "需付費（金額見原文）"}.get(e.get("fee"))),
         ("報名截止", fmt_dt(e.get("registration_deadline"))),
     ]
-    meta_html = "".join(f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>" for k, v in rows if v)
+    meta_html = "".join(
+        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k == '主辦' else esc(v)}</dd></div>"
+        for k, v in rows if v)
     review = ('<p class="review-note">⚠️ 此活動由 AI 從公開貼文擷取，欄位尚待確認，請以原始貼文為準。</p>'
               if e["extraction"].get("needs_review") else "")
     if e.get("poster_image"):
@@ -575,6 +578,9 @@ def detail_page(e):
     <dl class="meta">{meta_html}</dl>
     <div class="actions">{actions}</div>
     <div class="desc">{''.join(f'<p>{esc(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
+    {(f'<section class="org-more"><h2>來自 <a href="/org/{org[0]}/">{esc(org[1])}</a> 的更多活動</h2><ul class="org-evs">'
+      + "".join(f'<li class="org-ev"><a href="/event/{s2["id"]}/"><span class="org-ev-date">{fmt_dt(s2["start_at"], s2.get("all_day"))}</span>{esc(s2["title"])}</a></li>' for s2 in siblings)
+      + f'</ul><p class="src-desc"><a href="/org/{org[0]}/">查看 {esc(org[1])} 的完整頁面 →</a></p></section>') if org and siblings else ''}
   </div>
 </div>
 <script type="application/ld+json">{jsonld}</script>
@@ -856,9 +862,8 @@ def org_pages(entries, events):
     return [ent["id"] for ent in entries]
 
 
-def source_page(events):
+def source_page(events, entries):
     """/source/ 靜態殼：資料由 app.js 讀 sources.json 渲染（表格＋篩選）。"""
-    entries = build_sources_data(events)
     content = """<section class="hero"><h1>資料來源與機構名錄</h1>
 <p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告系統與社群帳號。
 還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
@@ -1003,12 +1008,31 @@ def main():
             write_ics(cdir / f"{name}.ics", subset_up, title)
     print(f"combo feeds: {len(combo_specs) * 3} pairs")
 
+    entries = build_sources_data(events)
+    sid_to_entry = {}
+    for ent in entries:
+        for sid in ent.get("sids", []):
+            sid_to_entry[sid] = ent
+    today_s = date.today().isoformat()
+    ent_events = {}
     for e in events:
+        ent = sid_to_entry.get(e["source"]["source_id"])
+        if ent is not None:
+            ent_events.setdefault(ent["id"], []).append(e)
+    for e in events:
+        ent = sid_to_entry.get(e["source"]["source_id"])
+        org = (ent["id"], ent["name"]) if ent else None
+        siblings = []
+        if ent:
+            sibs = [x for x in ent_events.get(ent["id"], []) if x["id"] != e["id"]]
+            up = sorted([x for x in sibs if x["start_at"][:10] >= today_s], key=lambda x: x["start_at"])
+            past = sorted([x for x in sibs if x["start_at"][:10] < today_s], key=lambda x: x["start_at"], reverse=True)
+            siblings = (up + past)[:4]
         d = SITE / "event" / e["id"]
         d.mkdir(parents=True, exist_ok=True)
-        (d / "index.html").write_text(detail_page(e))
+        (d / "index.html").write_text(detail_page(e, org=org, siblings=siblings))
 
-    org_ids = source_page(events)
+    org_ids = source_page(events, entries)
     build_posts_data(events)
 
     urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
