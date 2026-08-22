@@ -56,7 +56,8 @@ a:hover { text-decoration: underline; }
 }
 .brand-chu { background-image: linear-gradient(180deg, #5A78FF, #2462FF); }
 .brand-mei { background-image: linear-gradient(180deg, #C069DD, #8E24AA); }
-.brand-sub { margin-left: 8px; font-family: "ChumeiBrand", "Noto Sans TC", sans-serif; font-size: 1.6rem; line-height: 1; color: var(--color-text-muted); font-weight: 700; }
+/* 副標刻意用細字（300）對比品牌字的 700；ChumeiBrand 子集只有 700，須退回一般字族才吃得到細字 */
+.brand-sub { margin-left: 8px; font-family: inherit; font-size: 1.6rem; line-height: 1; color: var(--color-text-muted); font-weight: 300; }
 .site-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; }
 .nav-item {
   display: flex; align-items: center; gap: 14px;
