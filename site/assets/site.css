@@ -126,11 +126,16 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 @media (max-width: 699px) {
   body { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
   .site-header {
-    /* 不用 backdrop-filter：會變成 fixed 底欄的 containing block，把底欄拉到頂部 */
     position: sticky; inset: auto; top: 0; width: auto; z-index: 40;
     flex-direction: row; justify-content: center; align-items: center;
     height: 54px; padding: 0 12px;
-    background: var(--color-canvas);
+    background: none;
+  }
+  /* 毛玻璃放偽元素：backdrop-filter 直接放 header 會變成 fixed 底欄的 containing block，把底欄拉到頂部 */
+  .site-header::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background: color-mix(in srgb, var(--color-canvas) 72%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   .brand { padding: 0; }
   .brand-chu, .brand-mei { font-size: 1.45rem; }
