@@ -1219,7 +1219,7 @@
         var unlocated = list.length - located;
         note.textContent = "地圖顯示 " + located + " 場可定位的活動" +
           (approximate > 0 ? "（其中 " + approximate + " 場為校區約略位置）" : "") +
-          (unlocated > 0 ? "；另有 " + unlocated + " 場為線上活動或地點未定，請見下方活動卡片。" : "。");
+          (unlocated > 0 ? "；另有 " + unlocated + " 場為線上、地點未定或查無座標的校外店家，請見下方活動卡片。" : "。");
       }
       var mapCount = document.getElementById("map-count");
       if (mapCount) mapCount.textContent = located + " 場可定位";

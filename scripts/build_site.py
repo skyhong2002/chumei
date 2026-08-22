@@ -293,7 +293,7 @@ def _geo_queries(venue):
     if m:
         addr = m.group(0)
         qs.append(addr)
-        street = re.sub(r"\d+[-之\d]*號.*$", "", addr).strip()  # 台灣門牌 Nominatim 常查無，退回路段
+        street = re.sub(r"[\d\s]+[-之\d\s]*號.*$", "", addr).strip()  # 台灣門牌 Nominatim 常查無，退回路段（含「302 號」空格寫法）
         if street != addr and len(street) >= 6:
             qs.append(street)
     name = re.sub(r"[（(].*?[）)]", "", venue).strip()
