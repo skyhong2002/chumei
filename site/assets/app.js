@@ -2,17 +2,87 @@
 (function () {
   "use strict";
 
-  // ---- 主題切換 ----
-  var toggle = document.getElementById("theme-toggle");
-  if (toggle) {
-    toggle.addEventListener("click", function () {
+  // ---- 外觀（Appearance，Threads 式子面板）：主題＋字標順序 ----
+  (function () {
+    function applyTheme(v) {
       var root = document.documentElement;
-      var next = root.dataset.theme === "dark" ? "light" : "dark";
-      root.dataset.theme = next;
-      try { localStorage.setItem("theme", next); } catch (e) {}
+      try {
+        if (v === "auto") { localStorage.removeItem("theme"); }
+        else { localStorage.setItem("theme", v); }
+      } catch (e) {}
+      root.dataset.theme = v === "auto"
+        ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : v;
       window.dispatchEvent(new CustomEvent("chumei-theme"));
+    }
+    function applyOrder(o) {
+      try {
+        if (o === "meichu") localStorage.setItem("brand-order", o);
+        else localStorage.removeItem("brand-order");
+      } catch (e) {}
+      document.querySelectorAll(".brand").forEach(function (b) {
+        var chu = b.querySelector(".brand-chu"), mei = b.querySelector(".brand-mei");
+        if (!chu || !mei) return;
+        if (o === "meichu") b.insertBefore(mei, chu); else b.insertBefore(chu, mei);
+      });
+    }
+    function stored(k, dflt) { try { return localStorage.getItem(k) || dflt; } catch (e) { return dflt; } }
+    applyOrder(stored("brand-order", "chumei"));
+    // 自動模式下跟隨系統深淺色即時切換
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function (e) {
+      if (stored("theme", "") === "") {
+        document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+        window.dispatchEvent(new CustomEvent("chumei-theme"));
+      }
     });
-  }
+
+    var toggle = document.getElementById("theme-toggle");
+    if (!toggle) return;
+    var menu = toggle.closest(".nav-more-menu");
+    if (!menu) return;
+    var CHEV = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6l-6 6"/></svg>';
+    var BACK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0"/><path d="M5 12l6 6"/><path d="M5 12l6 -6"/></svg>';
+
+    var main = document.createElement("div");
+    while (menu.firstChild) main.appendChild(menu.firstChild);
+    var open = document.createElement("button");
+    open.className = "appear-open";
+    open.innerHTML = "<span>外觀</span>" + CHEV;
+    main.replaceChild(open, main.querySelector("#theme-toggle"));
+
+    function seg(key, opts, cur) {
+      return '<div class="appear-seg" data-key="' + key + '">' + opts.map(function (o) {
+        return '<button data-v="' + o[0] + '" aria-pressed="' + (o[0] === cur) + '">' + o[1] + "</button>";
+      }).join("") + "</div>";
+    }
+    var appear = document.createElement("div");
+    appear.hidden = true;
+    appear.innerHTML =
+      '<div class="appear-head"><button class="appear-back" aria-label="返回">' + BACK + "</button><strong>外觀</strong></div>" +
+      '<div class="appear-label">主題</div>' +
+      seg("theme", [["light", "淺色"], ["dark", "深色"], ["auto", "自動"]], stored("theme", "auto")) +
+      '<div class="appear-label">字標順序</div>' +
+      seg("order", [["chumei", "竹梅"], ["meichu", "梅竹"]], stored("brand-order", "chumei"));
+    menu.appendChild(main); menu.appendChild(appear);
+
+    menu.addEventListener("click", function (ev) {
+      if (ev.target.closest(".appear-open")) { main.hidden = true; appear.hidden = false; return; }
+      if (ev.target.closest(".appear-back")) { appear.hidden = true; main.hidden = false; return; }
+      var b = ev.target.closest(".appear-seg button");
+      if (!b) return;
+      var host = b.closest(".appear-seg");
+      host.querySelectorAll("button").forEach(function (x) {
+        x.setAttribute("aria-pressed", String(x === b));
+      });
+      if (host.dataset.key === "theme") applyTheme(b.dataset.v);
+      else applyOrder(b.dataset.v);
+    });
+    // 收合更多選單時回到主選單視圖
+    var more = menu.closest("details.nav-more");
+    if (more) more.addEventListener("toggle", function () {
+      if (!more.open) { appear.hidden = true; main.hidden = false; }
+    });
+  })();
 
   // ---- 分享按鈕（詳情頁）：行動裝置系統分享，桌機複製連結＋LINE ----
   document.addEventListener("click", function (ev) {

@@ -91,6 +91,37 @@ a:hover { text-decoration: underline; }
   font-family: inherit; font-size: 0.92rem; font-weight: 600;
 }
 .nav-more-menu a:hover, .nav-more-menu button:hover { background: var(--color-surface-soft); text-decoration: none; }
+.nav-more-menu > div { display: flex; flex-direction: column; gap: 2px; }
+.nav-more-menu > div[hidden] { display: none; }
+
+/* 外觀子面板（Threads 式） */
+.appear-open { justify-content: space-between; }
+.appear-open svg { width: 18px; height: 18px; color: var(--color-text-muted); flex: 0 0 auto; }
+.appear-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px 6px; }
+.appear-head strong { font-size: 0.95rem; }
+.appear-back {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; min-height: 0; padding: 0;
+  border: none; background: none; cursor: pointer; border-radius: 50%;
+  color: var(--color-text-secondary);
+}
+.appear-back svg { width: 20px; height: 20px; }
+.appear-back:hover { background: var(--color-surface-soft); }
+.appear-label { padding: 8px 14px 2px; font-size: 0.78rem; font-weight: 700; color: var(--color-text-muted); }
+.appear-seg {
+  display: flex; gap: 2px; margin: 4px 6px; padding: 3px;
+  background: var(--color-surface-soft); border-radius: var(--radius-pill);
+}
+.appear-seg button {
+  flex: 1; min-height: 36px; padding: 6px 10px; justify-content: center; text-align: center;
+  border: none; background: none; cursor: pointer; border-radius: var(--radius-pill);
+  font-family: inherit; font-size: 0.88rem; font-weight: 600; color: var(--color-text-muted);
+}
+.appear-seg button:hover { background: color-mix(in srgb, var(--color-canvas) 40%, transparent); color: var(--color-text-secondary); }
+.appear-seg button[aria-pressed="true"] {
+  background: var(--color-canvas); color: var(--color-text-primary);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 20%);
+}
 
 .fab {
   position: fixed; right: 24px; bottom: 24px; z-index: 30;
