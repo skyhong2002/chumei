@@ -975,11 +975,11 @@ def org_pages(entries, events):
 
 
 def source_page(events, entries):
-    """/source/ 靜態殼：資料由 app.js 讀 sources.json 渲染（表格＋篩選）。"""
-    content = """<section class="hero"><h1>資料來源與機構名錄</h1>
+    """/source/：表格於 build 時整份預渲染（SSR）；app.js 讀 sources.json 後原地重繪加上篩選排序。"""
+    content = f"""<section class="hero"><h1>資料來源與機構名錄</h1>
 <p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告系統與社群帳號。
 還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
-<span id="src-count" aria-live="polite"></span></p></section>
+<span id="src-count" aria-live="polite">目前列出 {len(entries)} 個單位。</span></p></section>
 <section class="filters" aria-label="名錄篩選">
   <div class="filter-row"><span class="label">學校</span><span id="sf-school" class="fgroup"></span>
     <span class="search-hit"><input id="search" type="search" placeholder="搜尋社團、單位…" aria-label="搜尋名錄"></span></div>
@@ -987,7 +987,7 @@ def source_page(events, entries):
   <div class="filter-row"><span class="label">類型</span><span id="sf-kind" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">平台</span><span id="sf-platform" class="fgroup"></span></div>
 </section>
-<div id="source-table" class="src-table" aria-label="機構名錄"></div>"""
+<div id="source-table" class="src-table" aria-label="機構名錄">{source_table_html(entries)}</div>"""
     d = SITE / "source"
     d.mkdir(parents=True, exist_ok=True)
     (d / "index.html").write_text(page_shell(
@@ -1059,6 +1059,302 @@ def build_posts_data(events, sid_to_entry=None):
         {"generated_at": now_iso(), "posts": posts,
          "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL}}, ensure_ascii=False))
     print(f"posts: {len(posts)} event-posts in feed")
+    return posts
+
+
+# ---- 首頁河道 SSR ----
+# markup 須與 site/assets/app.js 的 row()/evChip() 逐字一致：app.js 載入 posts.json 後
+# 會整段重繪，兩邊一致才不會閃動；改其中一邊記得同步另一邊。
+FEED_SVG_OPEN = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+                 'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">')
+FEED_ICON = {
+    "dots": ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+             '<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>'),
+    "cal": FEED_SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
+    "send": FEED_SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
+    "ext": FEED_SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
+}
+FEED_PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "api": "官方"}
+
+
+def _iso_dt(s):
+    try:
+        dt = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=TZ_TAIPEI)
+
+
+def _feed_ago(iso, now):
+    dt = _iso_dt(iso)
+    if dt is None:
+        return ""
+    h = max(0.0, (now - dt).total_seconds()) / 3600
+    if h < 1:
+        return f"{max(1, round(h * 60))} 分鐘前"
+    if h < 24:
+        return f"{round(h)} 小時前"
+    d = dt.astimezone(TZ_TAIPEI)
+    return f"{d.month}/{d.day}"
+
+
+def _feed_ev_chip(e):
+    esc = html.escape
+    d = _iso_dt(e["start_at"]).astimezone(TZ_TAIPEI)
+    when = f"{d.month}/{d.day}" + ("" if e.get("all_day") else f" {d.hour:02d}:{d.minute:02d}")
+    return (f'<a class="feed-ev" data-id="{esc(e["id"])}" href="/event/{e["id"]}/">'
+            f'<span class="feed-ev-date">{esc(when)}</span><span class="feed-ev-title">{esc(e["title"])}</span></a>')
+
+
+def _feed_row(p, now):
+    esc = html.escape
+    if p.get("avatar"):
+        avatar = f'<img class="feed-avatar" src="{esc(p["avatar"])}" alt="">'
+    else:
+        initial = re.sub(r"^(清大|交大|陽明|國立)", "", p.get("source_name") or "？")[:1]
+        avatar = f'<span class="feed-avatar src-avatar-fallback av-{esc(p.get("school") or "")}">{esc(initial)}</span>'
+    org_href = f'/org/{p["org_id"]}/' if p.get("org_id") else None
+    avatar_el = (f'<a class="feed-org-link" href="{org_href}" aria-label="{esc(p.get("source_name") or "")} 的單位頁">{avatar}</a>'
+                 if org_href else avatar)
+    school_label = SCHOOL_LABEL.get(p.get("school") or "", "")
+    plat = FEED_PLAT.get(p.get("platform"), p.get("platform"))
+    menu_items = ((f'<a href="{esc(p["url"])}" target="_blank" rel="noopener">查看原文（{esc(plat)}）↗</a>' if p.get("url") else "") +
+                  (f'<a href="{org_href}">單位頁面</a>' if org_href else ""))
+    menu = (f'<details class="post-menu"><summary aria-label="更多選項">{FEED_ICON["dots"]}</summary>'
+            f'<div class="post-menu-panel">{menu_items}</div></details>') if menu_items else ""
+    name = (f'<a class="feed-org-link" href="{org_href}">{esc(p.get("source_name") or "")}</a>'
+            if org_href else esc(p.get("source_name") or ""))
+    head = ('<div class="feed-head">'
+            f'<strong class="feed-name">{name}</strong>' +
+            (f'<span class="feed-topic"><span class="sep">›</span>{esc(school_label)}</span>' if school_label else "") +
+            f'<span class="feed-time">{esc(_feed_ago(p.get("posted_at"), now))}</span>{menu}</div>')
+    body = ((f'<p class="feed-text">{esc(p["text"])}</p>' if p.get("text") else "") +
+            (f'<img class="feed-img" src="{esc(p["image"])}" alt="" loading="lazy">' if p.get("image") else ""))
+    evs = ('<div class="feed-evs">' + "".join(_feed_ev_chip(e) for e in p["events"]) + "</div>") if p["events"] else ""
+    ev0 = p["events"][0] if p["events"] else None
+    share_url = f'{BASE_URL}/event/{ev0["id"]}/' if ev0 else (p.get("url") or BASE_URL)
+    share_title = ev0["title"] if ev0 else (p.get("source_name") or "竹梅活動觀測站")
+    actions = ('<div class="feed-actions">' +
+               (f'<a class="feed-action" href="/event/{ev0["id"]}/" title="活動詳情">{FEED_ICON["cal"]}' +
+                (f'<span>{len(p["events"])}</span>' if len(p["events"]) > 1 else "") + "</a>" if ev0 else "") +
+               f'<button class="feed-action btn-share" data-url="{esc(share_url)}" data-title="{esc(share_title)}" title="分享">{FEED_ICON["send"]}</button>' +
+               (f'<a class="feed-action" href="{esc(p["url"])}" target="_blank" rel="noopener" title="開啟原文">{FEED_ICON["ext"]}</a>' if p.get("url") else "") +
+               "</div>")
+    return f'<article class="feed-post">{avatar_el}<div class="feed-content">{head}{body}{evs}{actions}</div></article>'
+
+
+def _inject_ssr(path, marker, body):
+    start, end = f"<!-- {marker} -->", f"<!-- /{marker} -->"
+    src = path.read_text()
+    if start not in src or end not in src:
+        print(f"prerender: {path} 缺 {marker} 標記，略過")
+        return
+    head, _, rest = src.partition(start)
+    _, _, tail = rest.partition(end)
+    path.write_text(head + start + body + end + tail)
+
+
+def prerender_feed(posts, shown=30):
+    """把河道前 shown 則靜態渲染進 site/index.html 的 ssr-feed 標記之間，
+    讓爬蟲與初載畫面直接拿到內容；app.js 抓到 posts.json 後原地重繪接手。"""
+    now = datetime.now(TZ_TAIPEI)
+    body = "".join(_feed_row(p, now) for p in posts[:shown]) or '<p class="empty">尚無貼文。</p>'
+    if len(posts) > shown:
+        body += f'<button class="fchip feed-more">載入更多（還有 {len(posts) - shown} 則）</button>'
+    _inject_ssr(SITE / "index.html", "ssr-feed", body)
+    print(f"prerender: {min(shown, len(posts))} posts into index.html")
+
+
+def _ev_when(e, with_weekday=True):
+    d = _iso_dt(e["start_at"]).astimezone(TZ_TAIPEI)
+    wd = f"（{'日一二三四五六'[(d.weekday() + 1) % 7]}）" if with_weekday else ""
+    return f"{d.month}/{d.day}{wd}" + ("" if e.get("all_day") else f" {d.hour:02d}:{d.minute:02d}")
+
+
+def _ev_list_row(e):
+    """app.js initList 的 listRow()：/events/ 列表列。"""
+    esc = html.escape
+    where = " ".join(x for x in (CAMPUS_LABEL.get(e.get("campus") or ""), e.get("venue")) if x)
+    sch = e.get("school")
+    if e.get("poster_image"):
+        thumb = f'<img class="evr-thumb" src="{esc(e["poster_image"])}" alt="" loading="lazy">'
+    else:
+        np = sch if sch in ("nthu", "nycu") else "other"
+        thumb = (f'<span class="evr-thumb evr-thumb-txt np-{np}">'
+                 + ("梅" if sch == "nthu" else "竹" if sch == "nycu" else "梅竹") + "</span>")
+    reg, fee = e.get("reg"), e.get("fee")
+    chips = (('<span class="chip chip-reg-req">需報名</span>' if reg == "required" else
+              '<span class="chip chip-reg-free">自由入場</span>' if reg == "free" else "") +
+             ('<span class="chip chip-fee-free">免費</span>' if fee == "free" else
+              '<span class="chip chip-fee-paid">$</span>' if fee == "paid" else "") +
+             ('<span class="chip chip-review">待確認</span>' if (e.get("extraction") or {}).get("needs_review") else ""))
+    meta = "｜".join(x for x in (where, e.get("organizer")) if x)
+    return (f'<a class="ev-row ev-row-{esc(sch or "")}" href="/event/{e["id"]}/">{thumb}'
+            f'<span class="evr-main"><span class="evr-when">{esc(_ev_when(e))}{chips}</span>'
+            f'<span class="evr-title">{esc(e["title"])}</span>'
+            f'<span class="evr-meta">{esc(meta)}</span></span></a>')
+
+
+def prerender_events(events):
+    """/events/ SSR：預設篩選（未來 7 天）的列表列。JS 載入 events.json 後依裝置重繪。"""
+    now = datetime.now(TZ_TAIPEI)
+    today = now.strftime("%Y-%m-%d")
+    range_end = now + timedelta(days=7)
+
+    def in_default_range(e):
+        t = _iso_dt(e["start_at"])
+        if t is None:
+            return False
+        if e.get("all_day"):
+            return e["start_at"][:10] >= today and t <= range_end
+        end = _iso_dt(e.get("end_at")) or t
+        return end >= now and t <= range_end
+
+    rows = [e for e in events if in_default_range(e)]
+    body = "".join(_ev_list_row(e) for e in rows) or \
+        '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>'
+    _inject_ssr(SITE / "events" / "index.html", "ssr-events", body)
+    print(f"prerender: {len(rows)} events (7d) into events/index.html")
+
+
+def prerender_calendar(events, months_ahead=2):
+    """/calendar/ SSR：本月起三個月的議程列表（app.js agendaMonthHtml 的手機版 markup）。
+    桌機 JS 載入後會換成月曆格；無 JS／爬蟲拿到的是可讀的逐日清單。"""
+    esc = html.escape
+    now = datetime.now(TZ_TAIPEI)
+    today = now.strftime("%Y-%m-%d")
+    by_day = {}
+    for e in events:
+        by_day.setdefault((e.get("start_at") or "")[:10], []).append(e)
+
+    out = []
+    for off in range(0, months_ahead + 1):
+        y = now.year + (now.month - 1 + off) // 12
+        mo = (now.month - 1 + off) % 12 + 1
+        days_in_month = ((date(y, mo, 1).replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)).day
+        start_day = now.day if off == 0 else 1
+        month_total, body = 0, ""
+        for day in range(start_day, days_in_month + 1):
+            key = f"{y}-{mo:02d}-{day:02d}"
+            day_events = by_day.get(key) or []
+            if not day_events:
+                continue
+            month_total += len(day_events)
+            wd = "日一二三四五六"[(date(y, mo, day).weekday() + 1) % 7]
+            items = ""
+            for e in day_events:
+                d = _iso_dt(e["start_at"]).astimezone(TZ_TAIPEI)
+                when = "全天" if e.get("all_day") else f"{d.hour:02d}:{d.minute:02d}"
+                where = " ".join(x for x in (CAMPUS_LABEL.get(e.get("campus") or ""), e.get("venue")) if x)
+                items += (f'<a class="agd-ev ev-{esc(e.get("school") or "")}" href="/event/{e["id"]}/">'
+                          f'<span class="agd-when">{esc(when)}</span>'
+                          f'<span class="agd-main"><span class="agd-title">{esc(e["title"])}</span>'
+                          + (f'<span class="agd-meta">{esc(where)}</span>' if where else "") + "</span></a>")
+            body += (f'<div class="agd-day{" today" if key == today else ""}">'
+                     f'<span class="agd-date">{mo}/{day}（{wd}）</span>{items}</div>')
+        out.append(f'<section class="cal-month" id="cal-{y}-{mo}">'
+                   f'<h2 class="cal-month-title">{y} 年 {mo} 月<span class="cal-month-n">{month_total} 場</span></h2>'
+                   + (body or '<p class="agd-empty">這個月（在目前篩選下）沒有活動。</p>') + "</section>")
+    _inject_ssr(SITE / "calendar" / "index.html", "ssr-cal", "".join(out))
+    print(f"prerender: {months_ahead + 1} months into calendar/index.html")
+
+
+def prerender_stories():
+    """/stories/ SSR：動態牆卡片（app.js initStories 的 wall markup）。"""
+    esc = html.escape
+    path = SITE / "data" / "stories.json"
+    stories = json.loads(path.read_text()).get("stories") if path.exists() else []
+    stories = stories or []
+    now = datetime.now(TZ_TAIPEI)
+
+    def ago(iso):
+        dt = _iso_dt(iso)
+        h = max(0.0, (now - dt).total_seconds() / 3600) if dt else 0
+        return f"{round(h * 60)} 分鐘前" if h < 1 else f"{round(h)} 小時前"
+
+    # 與 JS 相同：依帳號分組、組序取該帳號首次出現的順序
+    groups, order = {}, []
+    for s in stories:
+        if s["username"] not in groups:
+            groups[s["username"]] = []
+            order.append(s["username"])
+        groups[s["username"]].append(s)
+    flat = [s for u in order for s in groups[u]]
+
+    if not flat:
+        body = '<p class="empty">現在沒有進行中的限時動態 — 限動 24 小時後就會消失，晚點再來看看。</p>'
+    else:
+        body = "".join(
+            f'<button class="story-card" data-i="{i}">'
+            f'<img src="{esc(s["media"])}" alt="{esc(s["name"])} 的限時動態" loading="lazy">'
+            + ('<span class="sc-video">▶</span>' if s.get("is_video") else "") +
+            '<span class="sc-meta">'
+            + (f'<img class="sc-avatar" src="{esc(s["avatar"])}" alt="">' if s.get("avatar") else "") +
+            f'<span class="sc-who"><strong>{esc(s["name"])}</strong>{ago(s["taken_at"])}</span></span></button>'
+            for i, s in enumerate(flat))
+    _inject_ssr(SITE / "stories" / "index.html", "ssr-stories", body)
+    print(f"prerender: {len(flat)} stories into stories/index.html")
+
+
+def source_table_html(entries):
+    """/source/ SSR：完整名錄表（app.js initSources 的 headHtml()+row()，預設排序 events desc）。"""
+    esc = html.escape
+    now = datetime.now(TZ_TAIPEI)
+    PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "website": "官網"}
+
+    def fmt_updated(iso):
+        dt = _iso_dt(iso)
+        if dt is None:
+            return "—"
+        days = (now - dt).total_seconds() / 86400
+        if days < 1:
+            return "今天"
+        if days < 30:
+            return f"{round(days)} 天前"
+        d = dt.astimezone(TZ_TAIPEI)
+        return f"{d.year}/{d.month}/{d.day}"
+
+    def row(e):
+        links = "".join(
+            f'<a class="src-link" href="{esc(l["url"])}" rel="noopener" target="_blank">'
+            + esc(PLAT.get(l["platform"], l["platform"]))
+            + (" " + esc(l["label"]) if l.get("label") and l["label"] not in ("Facebook", "公告頁") else "")
+            + "</a>" for l in e["links"])
+        links_html = links or '<span class="src-none">尚未找到公開帳號</span>'
+        if e.get("avatar"):
+            avatar = f'<img class="src-avatar src-c-ava" src="{esc(e["avatar"])}" alt="" loading="lazy">'
+        else:
+            initial = re.sub(r"^(清大|交大|陽明|國立)", "", e["name"])[:1] or "？"
+            avatar = f'<span class="src-avatar src-c-ava src-avatar-fallback av-{esc(e["school"])}">{esc(initial)}</span>'
+        m_label = ("清大" if e["school"] == "nthu"
+                   else ("陽明" if e.get("campus") == "yangming" else "交大" if e.get("campus") == "guangfu" else "陽明交大")
+                   if e["school"] == "nycu" else "其他")
+        school_label = "清大" if e["school"] == "nthu" else "陽明交大" if e["school"] == "nycu" else "其他"
+        return ('<div class="src-row' + ("" if e["links"] else " src-uncovered") + '">'
+                f'<span class="src-id src-c-id" aria-label="名錄 ID {e["id"]}">#{e["id"]}</span>'
+                f'<span class="src-c-name">{avatar}'
+                f'<a class="src-name" href="/org/{e["id"]}/">{esc(e["name"])}</a>'
+                f'<span class="chip chip-m chip-{esc(e["school"])}">{m_label}</span></span>'
+                '<span class="chips src-c-chips">'
+                f'<span class="chip chip-school chip-{esc(e["school"])}">{esc(school_label)}</span>'
+                + (f'<span class="chip chip-campus">{"陽明" if e["campus"] == "yangming" else "交大"}</span>' if e.get("campus") else "")
+                + f'<span class="chip chip-extra">{esc(KIND_LABEL.get(e["kind"], ""))}</span>'
+                + (f'<span class="chip chip-extra">{esc(e["category"])}</span>' if e.get("category") else "")
+                + "</span>"
+                f'<div class="src-links">{links_html}</div>'
+                f'<div class="src-upd" title="{esc(e.get("updated") or "")}">{fmt_updated(e.get("updated"))}</div>'
+                f'<div class="src-ev">{str(e["events"]) + " 場" if e["events"] else "—"}</div></div>')
+
+    def th(key, label, extra_cls="", on=False, arrow=" ↕"):
+        cls = "src-th" + (f" {extra_cls}" if extra_cls else "") + (" src-th-on" if on else "")
+        return f'<button class="{cls}" data-sort="{key}">{label}{arrow}</button>'
+
+    head = ('<div class="src-head">' + th("id", "ID") + th("name", "名稱", "src-th-left") +
+            '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
+            th("updated", "更新") + th("events", "收錄", on=True, arrow=" ↓") + "</div>")
+    # 預設排序同 JS SORTS.events（名稱平手時 JS 用 zh-Hant localeCompare，這裡以碼位近似）
+    ordered = sorted(entries, key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
+    return head + "".join(row(e) for e in ordered)
 
 
 def main():
@@ -1157,7 +1453,10 @@ def main():
         (d / "index.html").write_text(detail_page(e, org=org, siblings=siblings))
 
     org_ids = source_page(events, entries)
-    build_posts_data(events, sid_to_entry)
+    prerender_feed(build_posts_data(events, sid_to_entry))
+    prerender_events(events)
+    prerender_calendar(events)
+    prerender_stories()
 
     urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
