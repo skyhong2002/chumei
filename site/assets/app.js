@@ -99,7 +99,8 @@
     .catch(function (err) {
       console.error("chumei init failed:", err);
       var el = listEl || calEl;
-      el.innerHTML = '<p class="empty">活動資料載入失敗，請稍後再試。</p>';
+      // SSR 已預渲染預設檢視；抓不到 events.json 就留著靜態內容
+      if (!el.firstElementChild) el.innerHTML = '<p class="empty">活動資料載入失敗，請稍後再試。</p>';
     });
 
   // ---- 首頁貼文河道 ----
@@ -280,7 +281,8 @@
       bindEventHover(feed, ".feed-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
       render();
     }).catch(function () {
-      feed.innerHTML = '<p class="empty">貼文載入失敗。</p>';
+      // SSR 已預先渲染第一頁；抓不到 posts.json 就留著靜態內容
+      if (!feed.firstElementChild) feed.innerHTML = '<p class="empty">貼文載入失敗。</p>';
     });
   }
 
@@ -441,7 +443,7 @@
       });
       render();
     }).catch(function () {
-      table.innerHTML = '<p class="empty">名錄載入失敗。</p>';
+      if (!table.firstElementChild) table.innerHTML = '<p class="empty">名錄載入失敗。</p>';
     });
   }
 
@@ -547,7 +549,7 @@
             (s.is_video ? '<p class="slb-video-note">影片限動 — <a href="' + esc(s.ig_url) + '" rel="noopener" target="_blank">到 IG 觀看</a></p>' : "");
         }
       })
-      .catch(function () { if (wall) wall.innerHTML = '<p class="empty">限時動態載入失敗。</p>'; });
+      .catch(function () { if (wall && !wall.firstElementChild) wall.innerHTML = '<p class="empty">限時動態載入失敗。</p>'; });
   }
 
   // ---- 共用活動 hover 預覽卡（日曆格／地圖 popup／河道 chips） ----
@@ -562,6 +564,8 @@
       window.addEventListener("scroll", function () { hoverPop.hidden = true; }, { passive: true });
     }
     function fmtWhen(e) {
+      var ong = ongoingLabel(e);
+      if (ong) return ong;
       var d = new Date(e.start_at);
       var wd = "日一二三四五六"[d.getDay()];
       var base = (d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）";
@@ -600,6 +604,13 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
+  }
+  function ongoingLabel(e) {
+    // 跨日進行中的活動（展覽、申請期間）：顯示「進行中」而非幾個月前的開始日
+    if (!e || !e.end_at) return null;
+    var s = new Date(e.start_at), en = new Date(e.end_at), now = new Date();
+    if (isNaN(s.getTime()) || isNaN(en.getTime()) || s > now || en < now) return null;
+    return "進行中・至 " + (en.getMonth() + 1) + "/" + en.getDate() + "（" + "日一二三四五六"[en.getDay()] + "）";
   }
 
   function todayStr() {
@@ -745,8 +756,8 @@
     function listRow(e) {
       var d = new Date(e.start_at);
       var wd = "日一二三四五六"[d.getDay()];
-      var when = (d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）" +
-        (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
+      var when = ongoingLabel(e) || ((d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）" +
+        (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")));
       var where = [e.campus ? labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
       var thumb = e.poster_image
         ? '<img class="evr-thumb" src="' + esc(e.poster_image) + '" alt="" loading="lazy">'
@@ -776,11 +787,14 @@
           '<img class="event-cover-bg" src="' + esc(cover) + '" alt="" loading="lazy">' +
           '<div class="event-cover-content"><span class="event-cover-kicker">竹梅活動</span>' +
           '<strong>' + esc(e.category || "其他") + '</strong><span class="event-cover-note">示意封面</span></div></div>';
-      var when = (d.getMonth() + 1) + "/" + d.getDate() + (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
+      var ongoing = ongoingLabel(e);
+      var when = ongoing || ((d.getMonth() + 1) + "/" + d.getDate() + (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")));
+      var bd = ongoing ? new Date(e.end_at) : d;
+      var badge = '<div class="date-badge"><span class="m">' + (ongoing ? "至" : "") + (bd.getMonth() + 1) + '月</span><span class="d">' + bd.getDate() + "</span></div>";
       var where = [e.campus ? bundle.labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
       return '<div class="card"><a class="card-link" href="/event/' + e.id + '/">' +
         '<div class="card-media">' + media +
-        '<div class="date-badge"><span class="m">' + (d.getMonth() + 1) + '月</span><span class="d">' + d.getDate() + "</span></div></div>" +
+        badge + "</div>" +
         '<div class="card-body">' +
         '<p class="chips"><span class="chip chip-' + esc(e.school) + '">' + esc(labels.school[e.school] || e.school) + "</span>" +
         '<span class="chip">' + esc(e.category || "其他") + "</span>" +
@@ -802,33 +816,17 @@
     }
 
     function initMap() {
-      if (mapState.map || typeof maplibregl === "undefined") return mapState.map;
+      if (mapState.map || typeof maplibregl === "undefined" || mapState.failed) return mapState.map;
       var dark = document.documentElement.dataset.theme === "dark";
-      var m = new maplibregl.Map({
-        container: "map",
-        center: [120.9928, 24.7915],
-        zoom: 15.2,
-        pitch: 38,
-        bearing: -12,
-        maxZoom: 19,
-        cooperativeGestures: true,
-        antialias: true,
-        style: {
-          version: 8,
-          sources: {
-            nlsc: {
-              type: "raster",
-              tiles: ["https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}"],
-              tileSize: 256,
-              attribution: "&copy; <a href='https://maps.nlsc.gov.tw/'>國土測繪中心</a>"
-            }
-          },
-          layers: [{
-            id: "base-map", type: "raster", source: "nlsc",
-            paint: { "raster-brightness-max": dark ? 0.62 : 1, "raster-saturation": dark ? -0.35 : 0 }
-          }]
-        }
-      });
+      var m;
+      try {
+        m = buildMap(dark);
+      } catch (e) {
+        // 無 WebGL 等環境地圖起不來；列表與篩選照常
+        mapState.failed = true;
+        console.error("map init failed:", e);
+        return null;
+      }
       m.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
       m.on("load", function () {
         mapState.ready = true;
@@ -875,6 +873,34 @@
       });
       mapState.map = m;
       return m;
+    }
+
+    function buildMap(dark) {
+      return new maplibregl.Map({
+        container: "map",
+        center: [120.9928, 24.7915],
+        zoom: 15.2,
+        pitch: 38,
+        bearing: -12,
+        maxZoom: 19,
+        cooperativeGestures: true,
+        antialias: true,
+        style: {
+          version: 8,
+          sources: {
+            nlsc: {
+              type: "raster",
+              tiles: ["https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}"],
+              tileSize: 256,
+              attribution: "&copy; <a href='https://maps.nlsc.gov.tw/'>國土測繪中心</a>"
+            }
+          },
+          layers: [{
+            id: "base-map", type: "raster", source: "nlsc",
+            paint: { "raster-brightness-max": dark ? 0.62 : 1, "raster-saturation": dark ? -0.35 : 0 }
+          }]
+        }
+      });
     }
 
     function renderMap(list) {
