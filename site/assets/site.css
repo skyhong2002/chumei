@@ -131,11 +131,14 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
     height: 54px; padding: 0 12px;
     background: none;
   }
-  /* 毛玻璃放偽元素：backdrop-filter 直接放 header 會變成 fixed 底欄的 containing block，把底欄拉到頂部 */
+  /* 毛玻璃放偽元素：backdrop-filter 直接放 header 會變成 fixed 底欄的 containing block，把底欄拉到頂部。
+     往下延伸＋mask 漸層讓模糊淡出，避免硬邊界。 */
   .site-header::before {
-    content: ""; position: absolute; inset: 0; z-index: -1;
-    background: color-mix(in srgb, var(--color-canvas) 72%, transparent);
+    content: ""; position: absolute; inset: 0 0 -28px; z-index: -1; pointer-events: none;
+    background: color-mix(in srgb, var(--color-canvas) 78%, transparent);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    mask-image: linear-gradient(to bottom, #000 54px, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 54px, transparent);
   }
   .brand { padding: 0; }
   .brand-chu, .brand-mei { font-size: 1.45rem; }
