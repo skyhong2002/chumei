@@ -936,12 +936,14 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   body.feed-locked .feed-main {
     display: flex; flex-direction: column;
     height: 100dvh; padding-bottom: 10px;
+    /* Threads 式欄板：不限整體寬度，欄位均分整個視窗 */
+    max-width: none;
   }
-  body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; padding-right: 108px; }
+  body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; max-width: none; padding-right: 108px; }
   body.feed-locked .post-feed.feed-wide { flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; }
   body.feed-locked .feed-cols {
-    height: 100%; align-items: stretch; justify-content: center;
-    grid-template-columns: repeat(var(--ncols, 2), minmax(300px, 620px));
+    height: 100%; align-items: stretch;
+    grid-template-columns: repeat(var(--ncols, 2), minmax(320px, 1fr));
     overflow-x: auto;
   }
   body.feed-locked .feed-cols .feed-col { position: static; height: auto; }
