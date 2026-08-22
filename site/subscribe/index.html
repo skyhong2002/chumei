@@ -118,6 +118,17 @@
 <li>清大<br><code>https://chumei.observe.tw/feeds/nthu.xml</code></li>
 <li>陽明交大<br><code>https://chumei.observe.tw/feeds/nycu.xml</code></li>
 </ul>
+<h2>MCP Server</h2>
+<p>把竹梅接進你的 AI 助理——Claude、ChatGPT 或任何支援 <a href="https://modelcontextprotocol.io" rel="noopener">Model Context Protocol</a> 的工具，就能直接問「這週末清大有什麼活動」「幫我找熱舞社的迎新」，助理會自己查活動、翻名錄、給你訂閱連結。</p>
+<ul class="feed-list">
+<li>MCP 端點（Streamable HTTP，免金鑰）<br><code>https://chumei.observe.tw/mcp</code></li>
+</ul>
+<p><strong>Claude Code</strong>：終端機執行</p>
+<pre><code>claude mcp add --transport http chumei https://chumei.observe.tw/mcp</code></pre>
+<p><strong>Claude（claude.ai／桌面版）</strong>：設定 → 連接器 → 新增自訂連接器，貼上端點網址。</p>
+<p><strong>其他 MCP 客戶端</strong>（ChatGPT 開發者模式、OpenCode…）：</p>
+<pre><code>{ "mcpServers": { "chumei": { "type": "http", "url": "https://chumei.observe.tw/mcp" } } }</code></pre>
+<p>提供的工具：<code>search_events</code>（搜活動）、<code>get_event</code>（活動細節）、<code>search_orgs</code>／<code>get_org</code>（機構名錄與單位活動）、<code>get_subscribe_urls</code>（組訂閱網址）、<code>get_site_info</code>（站台總覽）。</p>
 <h2>JSON API</h2>
 <p>開發者可直接取用 <code>https://chumei.observe.tw/api/events.json</code>（結構見 <a href="https://github.com/skyhong2002/chumei">GitHub</a>）。</p>
 </main><footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer><a class="fab" href="/subscribe/" aria-label="訂閱通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>

@@ -17,6 +17,7 @@
 - **貼文河道**（首頁）＋**活動總覽**（地圖／列表／日曆檢視，地圖含校園建築定位）
 - **機構名錄** [/source/](https://chumei.observe.tw/source/)：470+ 單位，每單位有專頁（活動、收錄貼文、例行時段）
 - [Telegram 頻道](https://t.me/chumei_events)、RSS、ICS 行事曆訂閱（學校 × 類型／校區／主辦的組合訂閱）、JSON API
+- **MCP server**（`https://chumei.observe.tw/mcp`，Streamable HTTP）：讓 Claude／ChatGPT 等 AI 助理直接搜活動、查名錄、組訂閱網址（接入方式見[訂閱頁](https://chumei.observe.tw/subscribe/)）
 
 ## 架構
 
@@ -27,6 +28,7 @@ scripts/fetch_*.py          來源 adapters → 正規化 inbox JSONL（見 docs
 scripts/extract_events.py   LLM 活動判別＋欄位抽取（vision，含快取；例行社課須明寫時間地點才收）
 scripts/build_site.py       合併、跨來源去重、名錄歸戶、venue→座標 → 靜態站 + feeds + API
 scripts/publish_telegram.py 新活動以「貼文」為單位推送（同貼文多活動合一則訊息）
+scripts/mcp_server.py      MCP server（唯讀，資料源為 site/ 產物；launchd 常駐，Caddy 反代 /mcp）
 scripts/run_pipeline.py     orchestrator（launchd 每 3 小時執行）
 site/                       靜態輸出（Caddy file_server）
 ```
