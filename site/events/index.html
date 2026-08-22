@@ -44,16 +44,18 @@
   <section class="filters" aria-label="活動篩選">
     <div class="filter-row"><span class="label">時間</span><span id="f-time" class="fgroup"></span>
       <label class="search-hit"><input id="search" type="search" placeholder="搜尋活動、社團、地點…" aria-label="搜尋活動"></label>
+      <details class="feed-filters" id="more-filters">
+        <summary aria-label="更多篩選"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M4 6l6 0"/><path d="M16 6l4 0"/><path d="M8 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M4 12l2 0"/><path d="M10 12l10 0"/><path d="M17 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M4 18l11 0"/><path d="M19 18l1 0"/></svg><span class="ff-label">更多篩選</span></summary>
+        <div class="feed-filters-panel">
+          <div class="filter-row"><span class="label">學校</span><span id="f-school" class="fgroup"></span></div>
+          <div class="filter-row"><span class="label">校區</span><span id="f-campus" class="fgroup"></span></div>
+          <div class="filter-row"><span class="label">類型</span><span id="f-cat" class="fgroup"></span></div>
+          <div class="filter-row"><span class="label">主辦</span><span id="f-org" class="fgroup"></span></div>
+          <div class="filter-row"><span class="label">報名</span><span id="f-reg" class="fgroup"></span></div>
+          <div class="filter-row"><span class="label">費用</span><span id="f-fee" class="fgroup"></span></div>
+        </div>
+      </details>
     </div>
-    <details id="more-filters">
-      <summary>更多篩選</summary>
-      <div class="filter-row"><span class="label">學校</span><span id="f-school" class="fgroup"></span></div>
-      <div class="filter-row"><span class="label">校區</span><span id="f-campus" class="fgroup"></span></div>
-      <div class="filter-row"><span class="label">類型</span><span id="f-cat" class="fgroup"></span></div>
-      <div class="filter-row"><span class="label">主辦</span><span id="f-org" class="fgroup"></span></div>
-      <div class="filter-row"><span class="label">報名</span><span id="f-reg" class="fgroup"></span></div>
-      <div class="filter-row"><span class="label">費用</span><span id="f-fee" class="fgroup"></span></div>
-    </details>
   </section>
   <section id="map-view" class="results-section" aria-labelledby="map-heading">
     <div class="section-head">

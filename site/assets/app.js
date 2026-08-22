@@ -50,15 +50,17 @@
     });
     document.addEventListener("click", function (e) {
       document.querySelectorAll("details.post-menu[open], details.feed-filters[open], details.nav-more[open]").forEach(function (d) {
+        // 手機上 .filters 內的篩選是行內展開（非 popover），不做點外收合
+        if (window.innerWidth <= 700 && d.classList.contains("feed-filters") && d.closest(".filters")) return;
         if (!d.contains(e.target)) d.open = false;
       });
     });
   })();
 
-  // 更多篩選（手機摺疊）：桌機自動展開 — 全站通用
+  // 更多篩選：舊式行內摺疊才在桌機自動展開；.feed-filters popover 一律預設收合
   (function () {
     var mf = document.getElementById("more-filters");
-    if (!mf) return;
+    if (!mf || mf.classList.contains("feed-filters")) return;
     if (window.innerWidth > 700) mf.open = true;
     window.addEventListener("resize", function () {
       if (window.innerWidth > 700) mf.open = true;
@@ -601,12 +603,12 @@
     if (state.time === "week") state.time = "7d";
 
     var moreFilters = document.getElementById("more-filters");
-    if (moreFilters && (window.innerWidth > 700 || state.school !== "all" || state.campus !== "all" || state.cat !== "all" || state.org !== "all")) {
-      moreFilters.open = true;
+    function moreActive() {
+      return state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
+        state.org !== "all" || state.reg !== "all" || state.fee !== "all";
     }
-    window.addEventListener("resize", function () {
-      if (moreFilters && window.innerWidth > 700) moreFilters.open = true;
-    });
+    // 手機帶著篩選條件進來時直接展開；桌機 popover 用亮點提示
+    if (moreFilters && window.innerWidth <= 700 && moreActive()) moreFilters.open = true;
 
     var cats = {};
     bundle.events.forEach(function (e) { cats[e.category || "其他"] = 1; });
@@ -947,6 +949,7 @@
         ? list.map(displayMode === "list" ? listRow : card).join("")
         : '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>';
       updateChipCounts();
+      if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
       renderMap(list);
       syncUrl();
     }
@@ -1003,6 +1006,13 @@
       search.value = state.q;
       search.addEventListener("input", function () { state.q = search.value.trim(); redraw(); });
     }
+
+    var moreFilters = document.getElementById("more-filters");
+    function moreActive() {
+      return state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
+        state.org !== "all" || state.reg !== "all" || state.fee !== "all";
+    }
+    if (moreFilters && window.innerWidth <= 700 && moreActive()) moreFilters.open = true;
 
     function matches(e, overrideKey, overrideValue) {
       function value(k) { return overrideKey === k ? overrideValue : state[k]; }
@@ -1128,6 +1138,7 @@
     function redraw() {
       indexEvents();
       updateChipCounts();
+      if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
       var html = "";
       for (var i = -monthsBefore; i <= monthsAfter; i++) html += monthHtml(monthAt(i));
       calEl.innerHTML = html;

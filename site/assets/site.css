@@ -236,32 +236,24 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .slb-nav { background: rgba(0,0,0,.4); }
 }
 
-/* ---------- filters ---------- */
+/* ---------- filters（全站統一：.filter-row 容器 + .fchip 元件；收合統一走 .feed-filters popover） ---------- */
 .filters {
   position: sticky; top: 0; z-index: 10;
   background: color-mix(in srgb, var(--color-canvas) 88%, transparent);
   backdrop-filter: blur(8px);
-  padding: 16px 0; margin: 12px 0 4px;
-  display: flex; flex-direction: column; gap: var(--space-3, 12px);
+  padding: 10px 0; margin: 8px 0 4px;
+  display: flex; flex-direction: column; gap: var(--space-2, 8px);
 }
-#more-filters { display: flex; flex-direction: column; gap: var(--space-3, 12px); }
-#more-filters summary {
-  cursor: pointer; color: var(--color-text-secondary); font-size: 0.9rem;
-  padding: 0; line-height: 1.6; list-style: none; width: fit-content;
-}
-#more-filters summary::before { content: "▸ "; }
-#more-filters[open] summary::before { content: "▾ "; }
-#more-filters summary::-webkit-details-marker { display: none; }
-@media (min-width: 701px) { #more-filters summary { display: none; } }
 @media (max-width: 700px) {
   .filters { position: static; backdrop-filter: none; background: none; }
 }
 .filter-row {
   display: flex; column-gap: var(--space-2, 8px); row-gap: var(--space-2, 8px);
-  flex-wrap: wrap; align-items: center; min-height: var(--layout-tap-target, 44px);
+  flex-wrap: wrap; align-items: flex-start;
 }
 .filter-row .label {
-  min-width: 3.5rem; height: 32px; align-self: center;
+  /* 高度＝chip 高度：多行換行時仍對齊第一行 */
+  min-width: 3.5rem; height: 32px; align-self: flex-start;
   display: inline-flex; align-items: center;
   color: var(--color-text-muted); font-size: var(--text-small, 0.875rem); line-height: 1;
 }
@@ -300,8 +292,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   color: var(--color-action-on-primary);
 }
 .search-hit {
-  flex: 1 1 220px; min-width: 180px; max-width: 280px;
-  min-height: var(--layout-tap-target, 44px);
+  flex: 1 1 220px; min-width: 180px; max-width: 280px; min-height: 32px;
   display: flex; align-items: center; cursor: text;
 }
 #search {
@@ -789,28 +780,46 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .feed-tab:hover { color: var(--color-text-secondary); }
 .feed-tab[aria-pressed="true"] { color: var(--color-text-primary); border-bottom-color: currentColor; }
 
+/* 收合篩選元件：桌機 popover、（.filters 內的）手機行內展開 */
 .feed-filters { position: relative; display: flex; }
 .feed-filters summary {
   list-style: none; cursor: pointer; position: relative;
-  display: flex; align-items: center; justify-content: center;
-  width: 46px; border-bottom: 1.5px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 44px; min-height: 32px; padding: 0 10px;
+  border-radius: var(--radius-pill); color: var(--color-text-muted);
+  font-size: 0.85rem; font-weight: 600;
 }
+.feed-filters summary::before { content: ""; position: absolute; inset: -6px 0; }
 .feed-filters summary::-webkit-details-marker { display: none; }
-.feed-filters summary:hover, .feed-filters[open] summary { color: var(--color-text-primary); }
+.feed-filters summary:hover, .feed-filters[open] summary { color: var(--color-text-primary); background: var(--color-surface-soft); }
 .feed-filters summary svg { width: 22px; height: 22px; }
+.ff-label { display: none; }
+.feed-tabs-row .feed-filters summary {
+  width: 46px; min-height: 0; padding: 0; border-radius: 0; background: none;
+  border-bottom: 1.5px solid var(--color-border-subtle);
+}
 .feed-filters.fon summary::after {
-  content: ""; position: absolute; top: 8px; right: 7px; width: 7px; height: 7px;
+  content: ""; position: absolute; top: 1px; right: 4px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--color-action-primary);
 }
+.feed-tabs-row .feed-filters.fon summary::after { top: 8px; right: 7px; }
 .feed-filters-panel {
   position: absolute; right: 0; top: calc(100% + 8px); z-index: 30;
   width: min(480px, calc(100vw - 28px));
   background: var(--color-surface-raised); border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
-  padding: 16px; display: flex; flex-direction: column; gap: var(--space-3, 12px);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: var(--space-2, 8px);
 }
 .feed-filters-panel #search { width: 100%; height: 36px; }
+@media (max-width: 700px) {
+  .filters .feed-filters { width: 100%; flex-direction: column; align-items: stretch; }
+  .filters .feed-filters summary { justify-content: flex-start; width: fit-content; padding: 0 12px 0 6px; }
+  .filters .ff-label { display: inline; }
+  .filters .feed-filters-panel {
+    position: static; width: auto; padding: 8px 0 0;
+    background: none; border: none; box-shadow: none; border-radius: 0;
+  }
+}
 
 .post-feed { display: flex; flex-direction: column; margin-top: 4px; }
 .feed-post {
