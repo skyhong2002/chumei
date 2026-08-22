@@ -591,6 +591,11 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 :root[data-theme="dark"] .cal-ev.ev-nthu { background: #4A2159; color: #E9C6F7; }
 .cal-ev.ev-both { background: var(--chumei-both-surface); color: var(--chumei-both-text); }
 :root[data-theme="dark"] .cal-ev.ev-both { background: #123B36; color: #9FE5DA; }
+.cal-ev-t { font-weight: 700; opacity: 0.72; margin-right: 4px; font-variant-numeric: tabular-nums; }
+@media (max-width: 1079px) { .cal-ev-t { display: none; } }
+
+/* 日曆頁在寬螢幕上放寬版面，讓 7 欄格子有空間 */
+main.main-wide { max-width: min(1680px, 100%); }
 
 .cal-pop {
   position: fixed; z-index: 60; width: 280px;

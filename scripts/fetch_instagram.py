@@ -67,7 +67,7 @@ def main():
 
     env = load_env()
     base = env.get("CHUMEI_RSSHUB_BASE", "http://127.0.0.1:1200")
-    rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() != "false"]
+    rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() not in ("false", "link")]
     if args.accounts:
         wanted = set(args.accounts.split(","))
         rows = [r for r in rows if r["username"] in wanted]

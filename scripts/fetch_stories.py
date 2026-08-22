@@ -90,7 +90,7 @@ def main():
     if args.check:
         return 0
 
-    rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() != "false"]
+    rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() not in ("false", "link")]
     meta = {r["username"].strip().lstrip("@"): r for r in rows}
     cache = resolve_userids(L, rows, args.resolve_limit)
     uid_to_name = {v: k for k, v in cache.items() if v}

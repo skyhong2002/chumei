@@ -76,7 +76,7 @@ def main():
     env = load_env()
     base = env.get("CHUMEI_RSSHUB_BASE", "http://127.0.0.1:1200")
     rows = [r for r in read_sources_csv("social_accounts.csv")
-            if r.get("active", "true").lower() != "false" and r["platform"] in ROUTES]
+            if r.get("active", "true").lower() not in ("false", "link") and r["platform"] in ROUTES]
     if args.platform:
         rows = [r for r in rows if r["platform"] == args.platform]
     if args.accounts:

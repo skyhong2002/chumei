@@ -218,7 +218,7 @@ def main() -> int:
     if args.limit < 1:
         parser.error("--limit must be at least 1")
 
-    sources = [row for row in read_sources_csv("fb_pages.csv") if row.get("active", "true").strip().lower() != "false"]
+    sources = [row for row in read_sources_csv("fb_pages.csv") if row.get("active", "true").strip().lower() not in ("false", "link")]  # link=僅展示連結
     if args.pages:
         wanted = {page_slug(value) for value in args.pages.split(",") if value.strip()}
         sources = [row for row in sources if page_slug(row.get("page", "")) in wanted]

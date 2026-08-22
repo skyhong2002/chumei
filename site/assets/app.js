@@ -729,12 +729,18 @@
       window.addEventListener("scroll", function () { hoverPop.hidden = true; }, { passive: true });
     }
     function fmtWhen(e) {
-      var ong = ongoingLabel(e);
-      if (ong) return ong;
       var d = new Date(e.start_at);
-      var wd = "日一二三四五六"[d.getDay()];
-      var base = (d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）";
-      return e.all_day ? base : base + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      var base = (d.getMonth() + 1) + "/" + d.getDate() + "（" + "日一二三四五六"[d.getDay()] + "）";
+      var t = "";
+      if (!e.all_day) {
+        t = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+        var en = e.end_at ? new Date(e.end_at) : null;
+        if (en && !isNaN(en.getTime()) && en > d && en.toDateString() === d.toDateString())
+          t += "–" + String(en.getHours()).padStart(2, "0") + ":" + String(en.getMinutes()).padStart(2, "0");
+      }
+      var ong = ongoingLabel(e);
+      if (ong) return base + (t ? " " + t : "") + "・" + ong;
+      return t ? base + " " + t : base + "・全天";
     }
     root.addEventListener("mouseover", function (ev) {
       var a = ev.target.closest(selector);
@@ -1329,7 +1335,10 @@
         var dayEvents = byDay[key] || [];
         monthTotal += dayEvents.length;
         var evs = dayEvents.map(function (e) {
-          return '<a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' + esc(e.title) + "</a>";
+          var ed = new Date(e.start_at);
+          var tt = e.all_day ? "" : String(ed.getHours()).padStart(2, "0") + ":" + String(ed.getMinutes()).padStart(2, "0");
+          return '<a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
+            (tt ? '<span class="cal-ev-t">' + tt + "</span>" : "") + esc(e.title) + "</a>";
         }).join("");
         cells += '<div class="' + cls + '"><span class="cal-day">' + d.getDate() + "</span>" + evs + "</div>";
       }
