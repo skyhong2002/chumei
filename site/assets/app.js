@@ -1095,6 +1095,7 @@
     var now = new Date();
     var firstMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     var monthsAfter = 0, monthsBefore = 0;
+    var fullCurrentMonth = false; // 手機議程：當月是否已展開到 1 號
     var MAX_AHEAD = 12, MAX_BACK = 6;
 
     var byDay = {};
@@ -1112,9 +1113,9 @@
       var t = todayStr();
       var monthTotal = 0;
       var body = "";
-      // 當月從今天開始列，過去的日子不佔版面（往前翻月仍可看完整月份）
+      // 當月從今天開始列，過去的日子不佔版面；按「更早」會先展開當月完整月份
       var startDay = 1;
-      if (m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth()) startDay = now.getDate();
+      if (!fullCurrentMonth && m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth()) startDay = now.getDate();
       for (var day = startDay; day <= daysInMonth; day++) {
         var key = m.getFullYear() + "-" + String(m.getMonth() + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
         var dayEvents = byDay[key] || [];
@@ -1194,6 +1195,12 @@
 
     var earlier = document.getElementById("cal-earlier");
     if (earlier) earlier.addEventListener("click", function () {
+      // 手機議程模式下當月只列到今天：第一按先回到當月 1 號，再按才載入上個月
+      if (window.innerWidth <= 700 && !fullCurrentMonth && now.getDate() > 1) {
+        fullCurrentMonth = true;
+        redraw();
+        return;
+      }
       if (monthsBefore < MAX_BACK) { monthsBefore++; redraw(); }
       if (monthsBefore >= MAX_BACK) earlier.disabled = true;
     });
