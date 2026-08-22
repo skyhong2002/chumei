@@ -941,10 +941,12 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   }
   body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; max-width: none; padding-right: 108px; }
   body.feed-locked .post-feed.feed-wide { flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; }
+  /* Threads deck：欄寬預設上限 620 置中；欄數多到裝不下時整個欄板橫向捲動 */
   body.feed-locked .feed-cols {
-    height: 100%; align-items: stretch;
-    grid-template-columns: repeat(var(--ncols, 2), minmax(320px, 1fr));
-    overflow-x: auto;
+    /* safe center：裝得下時置中；溢出時靠左起算，確保第一欄捲得到 */
+    height: 100%; align-items: stretch; justify-content: safe center;
+    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 620px));
+    overflow-x: auto; overscroll-behavior-x: contain;
   }
   body.feed-locked .feed-cols .feed-col { position: static; height: auto; }
   /* 學校 tabs 併入每欄的河道選單：整列縮成右上角浮動工具組（篩選＋新增欄位） */
@@ -958,6 +960,11 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
     width: 40px; min-height: 40px; border-bottom: none; border-radius: var(--radius-pill);
   }
   body.feed-locked .feed-tabs-row .feed-filters.fon summary::after { top: 4px; right: 4px; }
+}
+@media (min-width: 1280px) {
+  body.feed-locked .feed-cols {
+    grid-template-columns: repeat(var(--ncols, 2), minmax(480px, 620px));
+  }
 }
 .post-feed.feed-wide { max-width: 1160px; }
 .feed-cols {
