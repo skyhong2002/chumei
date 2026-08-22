@@ -275,6 +275,95 @@ def attach_geo(events, venues):
     return n
 
 
+GEOCODE_CACHE = ROOT / "data" / "sources" / "geocode.json"
+_GEO_UNKNOWN = re.compile(r"未公布|未定|待定|線上|另行通知|TBA", re.I)
+_GEO_ADDR = re.compile(
+    r"(?:[台臺]北市|新北市|桃園市|[台臺]中市|[台臺]南市|高雄市|基隆市|新竹[市縣]|嘉義[市縣]|"
+    r"苗栗縣|彰化縣|南投縣|雲林縣|屏東縣|宜蘭縣|花蓮縣|[台臺]東縣)[^，,；;（）()]*?[路街][^，,；;（）()]*")
+
+
+# 店名式查詢的門檻：泛稱（社辦、重訓室、體育館…）丟給 Nominatim 會亂配到全台同名地點
+_GEO_PLACEY = re.compile(r"[市縣]|[台臺][北中南]|高雄|桃園|新竹|基隆|店|館|空間|餐酒|餐廳|咖啡|cafe|廣場|園區", re.I)
+
+
+def _geo_queries(venue):
+    """依序嘗試的查詢：完整地址 → 去門牌號的路段 → 店名（需含場所詞）。"""
+    qs = []
+    m = _GEO_ADDR.search(venue)
+    if m:
+        addr = m.group(0)
+        qs.append(addr)
+        street = re.sub(r"\d+[-之\d]*號.*$", "", addr).strip()  # 台灣門牌 Nominatim 常查無，退回路段
+        if street != addr and len(street) >= 6:
+            qs.append(street)
+    name = re.sub(r"[（(].*?[）)]", "", venue).strip()
+    name = re.split(r"[｜|，,；;]", name)[0].strip()
+    if len(name) >= 4 and _GEO_PLACEY.search(name):
+        qs.append(name)
+    return qs
+
+
+def geocode_external(events):
+    """校外場地（campus=other/未知）用 Nominatim 補座標；結果快取避免重打。
+
+    新生茶會季常見台北/台中/台南店家，很多 venue 直接附地址——
+    這些不該被歸為「無法定位」。命中寫 external 標記；查無結果的
+    七天後才會重試一次。
+    """
+    import time as _time
+
+    try:
+        cache = json.loads(GEOCODE_CACHE.read_text())
+    except Exception:
+        cache = {}
+    changed = False
+    n = 0
+    for e in events:
+        if e.get("geo"):
+            continue
+        venue = (e.get("venue") or "").strip()
+        if not venue or e.get("campus") not in (None, "", "other"):
+            continue
+        if _GEO_UNKNOWN.search(venue):
+            continue
+        ent = cache.get(venue)
+        stale_miss = ent and ent.get("lat") is None and _time.time() - ent.get("t", 0) > 7 * 86400
+        if ent is None or stale_miss:
+            hit = None
+            used_q = None
+            failed = False
+            for q in _geo_queries(venue):
+                try:
+                    r = requests.get(
+                        "https://nominatim.openstreetmap.org/search",
+                        params={"format": "json", "limit": 1, "countrycodes": "tw", "q": q},
+                        headers={"User-Agent": "chumei.observe.tw geocoder"},
+                        timeout=10,
+                    )
+                    r.raise_for_status()
+                    res = r.json()
+                    _time.sleep(1.1)  # Nominatim 禮貌頻率
+                    if res:
+                        hit = (float(res[0]["lat"]), float(res[0]["lon"]))
+                        used_q = q
+                        break
+                except Exception:
+                    failed = True
+                    break
+            if failed:
+                continue  # 網路失敗不寫快取，下輪 build 再試
+            cache[venue] = {"lat": hit and hit[0], "lng": hit and hit[1], "q": used_q, "t": int(_time.time())}
+            changed = True
+            ent = cache[venue]
+        if ent and ent.get("lat"):
+            name = re.sub(r"[（(].*?[）)]", "", venue).strip() or venue
+            e["geo"] = {"lat": ent["lat"], "lng": ent["lng"], "name": name, "external": True}
+            n += 1
+    if changed:
+        GEOCODE_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=1))
+    return n
+
+
 def attach_reg_status(events):
     """參加方式雙軸：
     e["reg"] ∈ required（需事先報名）| free（自由入場）| None（未註明）
@@ -1421,6 +1510,8 @@ def main():
     venues = load_venues()
     n_geo = attach_geo(events, venues)
     print(f"geo: {n_geo}/{sum(1 for e in events if e.get('venue'))} venue-matched ({len(venues)} registry rows)")
+    n_ext = geocode_external(events)
+    print(f"geo-external: {n_ext} 校外場地 geocoded")
 
     today = date.today().isoformat()
     upcoming = [e for e in events if e["start_at"][:10] >= today]
