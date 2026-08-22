@@ -49,7 +49,7 @@
       if (h === "/" ? path === "/" : path.indexOf(h) === 0) a.setAttribute("aria-current", "page");
     });
     document.addEventListener("click", function (e) {
-      document.querySelectorAll("details.post-menu[open], details.feed-filters[open], details.nav-more[open]").forEach(function (d) {
+      document.querySelectorAll("details.post-menu[open], details.feed-filters[open], details.nav-more[open], details.col-picker[open]").forEach(function (d) {
         // 手機上 .filters 內的篩選是行內展開（非 popover），不做點外收合
         if (window.innerWidth <= 700 && d.classList.contains("feed-filters") && d.closest(".filters")) return;
         if (!d.contains(e.target)) d.open = false;
@@ -226,40 +226,75 @@
       }
 
       var shown = 30;
-      function colHtml(key, title, list) {
-        return '<section class="feed-col"><header class="feed-col-head">' +
-          '<span class="feed-col-dot dot-' + key + '"></span><h2>' + title + "</h2>" +
+      // 桌機欄位自選（Threads 式）：每欄自己選河道，取代學校 tabs
+      var FEEDS = { all: "全部", nthu: "清大", nycu: "陽明交大", both: "兩校聯合" };
+      var cols = (function () {
+        try {
+          var s = JSON.parse(localStorage.getItem("chumei-cols") || "null");
+          if (Array.isArray(s)) {
+            s = s.filter(function (k) { return FEEDS[k]; }).slice(0, 4);
+            if (s.length) return s;
+          }
+        } catch (e) {}
+        return ["nthu", "nycu"];
+      })();
+      function saveCols() { try { localStorage.setItem("chumei-cols", JSON.stringify(cols)); } catch (e) {} }
+
+      var CARET = SVG_OPEN + '<path d="M6 9l6 6l6 -6"/></svg>';
+      function colHtml(i, key, list) {
+        var picker = '<details class="col-picker"><summary aria-label="選擇這一欄顯示的河道">' +
+          '<span class="feed-col-dot dot-' + key + '"></span><h2>' + FEEDS[key] + '</h2><span class="caret">' + CARET + "</span></summary>" +
+          '<div class="col-picker-menu">' +
+          Object.keys(FEEDS).map(function (k) {
+            return '<button data-feed="' + k + '" aria-pressed="' + (k === key) + '">' +
+              '<span class="feed-col-dot dot-' + k + '"></span>' + FEEDS[k] + "</button>";
+          }).join("") +
+          (cols.length > 1 ? '<button class="col-remove">移除這一欄</button>' : "") +
+          "</div></details>";
+        return '<section class="feed-col" data-idx="' + i + '"><header class="feed-col-head">' + picker +
           '<span class="result-count">' + list.length + " 則</span></header>" +
           (list.slice(0, shown).map(row).join("") || '<p class="empty">尚無貼文。</p>') +
           (list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + " 則）</button>" : "") +
           "</section>";
       }
       function render(more) {
-        var list = posts.filter(function (p) { return matches(p); });
         if (!more) shown = 30;
         var fc = document.getElementById("feed-count");
-        if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
-        var wide = window.innerWidth >= 1080 && state.school === "all";
+        var wide = window.innerWidth >= 1080;
         feed.classList.toggle("feed-wide", wide);
-        // 雙欄模式：鎖住外層捲動，只捲欄內（Threads 式）
+        // 欄位模式：鎖住外層捲動，只捲欄內（Threads 式）
         document.body.classList.toggle("feed-locked", wide);
-        var remaining;
+        var remaining, list;
         if (wide) {
-          // 雙欄：清大｜陽明交大；兩校聯合同時出現在兩欄
-          // 兩校聯合只出現一次：輪流分到左右欄（topic 標籤仍標「清大×交大」，全覽走「兩校聯合」tab）
-          var nthu = [], nycu = [], flip = false;
+          // 欄位模式不套用學校 tabs 的篩選（河道由每欄自己選）
+          list = posts.filter(function (p) { return matches(p, "school", "all"); });
+          if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
+          var buckets = cols.map(function () { return []; });
+          var schoolCols = [];
+          cols.forEach(function (k, i) { if (k === "nthu" || k === "nycu") schoolCols.push(i); });
+          var rr = 0;
           list.forEach(function (p) {
-            if (p.school === "nthu") nthu.push(p);
-            else if (p.school === "nycu") nycu.push(p);
-            else { (flip ? nycu : nthu).push(p); flip = !flip; }
+            cols.forEach(function (k, i) {
+              if (k === "all" || (k === "both" && p.school === "both") || p.school === k) buckets[i].push(p);
+            });
+            // 兩校聯合在校別欄只出現一次：輪流分配
+            if (p.school === "both" && schoolCols.length) {
+              buckets[schoolCols[rr % schoolCols.length]].push(p);
+              rr++;
+            }
           });
-          feed.innerHTML = '<div class="feed-cols">' + colHtml("nthu", "清大", nthu) + colHtml("nycu", "陽明交大", nycu) + "</div>";
+          feed.innerHTML = '<div class="feed-cols" style="--ncols:' + cols.length + '">' +
+            cols.map(function (k, i) { return colHtml(i, k, buckets[i]); }).join("") + "</div>";
         } else {
+          list = posts.filter(function (p) { return matches(p); });
+          if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
           remaining = list.length - shown;
           feed.innerHTML = list.slice(0, shown).map(row).join("") +
             (remaining > 0 ? '<button class="fchip feed-more">載入更多（還有 ' + remaining + " 則）</button>" : "") ||
             '<p class="empty">沒有符合的貼文。</p>';
         }
+        var ab = document.querySelector(".feed-addcol");
+        if (ab) ab.hidden = !wide || cols.length >= 4;
         Object.keys(groups).forEach(function (key) {
           groups[key].options.forEach(function (opt) {
             var b = groups[key].buttons[opt[0]];
@@ -276,8 +311,25 @@
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       }
       feed.addEventListener("click", function (ev) {
-        if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); }
+        if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); return; }
+        var pb = ev.target.closest(".col-picker-menu button");
+        if (pb) {
+          var idx = +pb.closest(".feed-col").dataset.idx;
+          if (pb.dataset.feed) cols[idx] = pb.dataset.feed;
+          else if (pb.classList.contains("col-remove")) cols.splice(idx, 1);
+          saveCols(); render(true);
+        }
       });
+      var tabsRow = document.querySelector(".feed-tabs-row");
+      if (tabsRow) {
+        var addBtn = document.createElement("button");
+        addBtn.className = "feed-addcol"; addBtn.title = "新增一欄"; addBtn.setAttribute("aria-label", "新增一欄");
+        addBtn.innerHTML = SVG_OPEN + '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>';
+        addBtn.addEventListener("click", function () {
+          if (cols.length < 4) { cols.push("all"); saveCols(); render(true); }
+        });
+        tabsRow.appendChild(addBtn);
+      }
       var resizeT;
       window.addEventListener("resize", function () {
         clearTimeout(resizeT);
