@@ -850,6 +850,7 @@ main.main-wide { max-width: min(1680px, 100%); }
 
 /* 收合篩選元件：桌機 popover、（.filters 內的）手機行內展開 */
 .feed-filters { position: relative; display: flex; }
+.feed-filters[hidden] { display: none; }
 .feed-filters summary {
   list-style: none; cursor: pointer; position: relative;
   display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -975,7 +976,7 @@ main.main-wide { max-width: min(1680px, 100%); }
     /* Threads 式欄板：不限整體寬度，欄位均分整個視窗 */
     max-width: none;
   }
-  body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; max-width: none; padding-right: 108px; }
+  body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; max-width: none; }
   body.feed-locked .post-feed.feed-wide { flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; }
   /* Threads deck：欄寬預設上限 620 置中；欄數多到裝不下時整個欄板橫向捲動 */
   body.feed-locked .feed-cols {
@@ -989,17 +990,8 @@ main.main-wide { max-width: min(1680px, 100%); }
     grid-template-columns: repeat(var(--ncols), 420px);
   }
   body.feed-locked .feed-cols .feed-col { position: static; height: auto; }
-  /* 學校 tabs 併入每欄的河道選單：整列縮成右上角浮動工具組（篩選＋新增欄位） */
-  body.feed-locked .feed-tabs-row {
-    position: fixed; top: 12px; right: 16px; z-index: 25;
-    width: auto; max-width: none; margin: 0; display: flex; gap: 2px;
-    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
-  }
-  body.feed-locked .feed-tabs { display: none; }
-  body.feed-locked .feed-tabs-row .feed-filters summary {
-    width: 40px; min-height: 40px; border-bottom: none; border-radius: var(--radius-pill);
-  }
-  body.feed-locked .feed-tabs-row .feed-filters.fon summary::after { top: 4px; right: 4px; }
+  /* 桌機欄位模式：篩選在各欄選單內，整列 tabs（含 ⚙）不需要 */
+  body.feed-locked .feed-tabs-row { display: none; }
 }
 @media (min-width: 1280px) {
   body.feed-locked .feed-cols {
@@ -1062,6 +1054,24 @@ main.main-wide { max-width: min(1680px, 100%); }
 .col-picker-menu button:hover { background: var(--color-surface-soft); }
 .col-picker-menu button[aria-pressed="true"] { color: var(--chumei-bamboo-text); }
 .col-picker-menu .col-remove { color: var(--color-danger-text); margin-top: 4px; border-top: 1px solid var(--color-border-subtle); border-radius: 0 0 var(--radius-md) var(--radius-md); }
+
+/* 欄選單＝該欄的篩選面板（貼文欄自帶學校/平台/類型/主辦/搜尋） */
+.col-menu-filters { width: min(400px, calc(100vw - 48px)); gap: var(--space-2, 8px); padding: 12px 14px; }
+.col-menu-filters .cf-q {
+  width: 100%; height: 34px; margin-bottom: 2px;
+  border: 1px solid var(--color-border-subtle); background: var(--color-surface);
+  color: var(--color-text-primary); border-radius: var(--radius-sm, 8px);
+  padding: 0 var(--space-3, 12px); font-size: 0.8rem; font-family: inherit;
+}
+.col-menu-filters .cf-q::placeholder { color: var(--color-text-muted); }
+.col-menu-filters .filter-row .label { min-width: 2.6rem; }
+.col-menu-filters .fchip { min-height: 0; }
+/* 欄有非預設篩選時，欄頭 caret 旁亮點提示 */
+.col-picker.fon > summary::after {
+  content: ""; position: absolute; top: 2px; right: -2px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--color-action-primary);
+}
+.col-picker > summary { position: relative; }
 
 /* Threads 式加欄 FAB：右下角圓角方形 ＋，選單往上彈 */
 .addcol { display: none; position: fixed; right: 24px; bottom: 24px; z-index: 35; }

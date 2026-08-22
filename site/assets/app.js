@@ -181,7 +181,8 @@
 
     fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
       var posts = data.posts;
-      var state = { school: "all", platform: "all", cat: "all", org: "all", q: "" };
+      // 手機單欄的全域篩選＋檢視切換；桌機欄位各自帶篩選（見 cols）
+      var state = { view: "posts", school: "all", platform: "all", cat: "all", org: "all", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
@@ -208,12 +209,18 @@
           host.appendChild(b);
         });
       }
-      chips("pf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school", "feed-tab");
-      chips("pf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["bulletin", "公告"]], "platform");
+      var SCHOOL_OPTS = [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]];
+      var PLAT_OPTS = [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["bulletin", "公告"]];
+      var ORG_OPTS = [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]];
       var feedCats = {};
       posts.forEach(function (p) { p.events.forEach(function (e) { feedCats[e.category || "其他"] = 1; }); });
-      chips("pf-cat", [["all", "全部類型"]].concat(Object.keys(feedCats).sort().map(function (k) { return [k, k]; })), "cat");
-      chips("pf-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
+      var CAT_OPTS = [["all", "全部類型"]].concat(Object.keys(feedCats).sort().map(function (k) { return [k, k]; }));
+
+      chips("pf-view", [["posts", "貼文"], ["events", "即將"]], "view", "feed-tab");
+      chips("pf-school", SCHOOL_OPTS, "school");
+      chips("pf-platform", PLAT_OPTS, "platform");
+      chips("pf-cat", CAT_OPTS, "cat");
+      chips("pf-org", ORG_OPTS, "org");
 
       var search = document.getElementById("search");
       if (search) {
@@ -221,16 +228,15 @@
         search.addEventListener("input", function () { state.q = search.value.trim(); render(); });
       }
 
-      function matches(p, ok, ov) {
-        function v(k) { return ok === k ? ov : state[k]; }
-        if (v("school") !== "all" && p.school !== v("school") && !(v("school") !== "both" && p.school === "both")) return false;
-        if (v("platform") !== "all" && p.platform !== v("platform")) return false;
-        if (v("cat") !== "all" && !p.events.some(function (e) { return (e.category || "其他") === v("cat"); })) return false;
-        if (v("org") !== "all" && p.org_type !== v("org")) return false;
-        if (state.q) {
+      function matches(p, f) {
+        if (f.school && f.school !== "all" && p.school !== f.school && !(f.school !== "both" && p.school === "both")) return false;
+        if (f.platform && f.platform !== "all" && p.platform !== f.platform) return false;
+        if (f.cat && f.cat !== "all" && !p.events.some(function (e) { return (e.category || "其他") === f.cat; })) return false;
+        if (f.org && f.org !== "all" && p.org_type !== f.org) return false;
+        if (f.q) {
           var hay = ((p.source_name || "") + " " + (p.text || "") + " " +
             p.events.map(function (e) { return e.title; }).join(" ")).toLowerCase();
-          if (hay.indexOf(state.q.toLowerCase()) === -1) return false;
+          if (hay.indexOf(f.q.toLowerCase()) === -1) return false;
         }
         return true;
       }
@@ -296,19 +302,27 @@
       }
 
       var shown = 30;
-      // 桌機欄位自選（Threads 式）：每欄自己選河道，取代學校 tabs
-      var FEEDS = { all: "全部", nthu: "清大", nycu: "陽明交大", both: "兩校聯合" };
-      // 欄位型態＝河道＋特殊欄（Threads 的欄位也不只 feed：搜尋/動態/洞察報告…）
-      var COLS = { all: "全部", nthu: "清大", nycu: "陽明交大", both: "兩校聯合", events: "即將活動" };
+      // 欄位模型：欄就是「貼文」（篩選自帶：學校/平台/類型/主辦/搜尋）或「即將活動」
+      var SCHOOL_L = { all: "全部", nthu: "清大", nycu: "陽明交大", both: "兩校聯合" };
+      function feedCol(school) { return { t: "feed", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
       var cols = (function () {
         try {
           var s = JSON.parse(localStorage.getItem("chumei-cols") || "null");
-          if (Array.isArray(s)) {
-            s = s.filter(function (k) { return COLS[k]; }).slice(0, 6);
-            if (s.length) return s;
+          if (Array.isArray(s) && s.length) {
+            var out = s.map(function (c) {
+              if (typeof c === "string") return c === "events" ? { t: "events" } : (SCHOOL_L[c] ? feedCol(c) : null); // 舊格式遷移
+              if (c && c.t === "events") return { t: "events" };
+              if (c && c.t === "feed") return {
+                t: "feed", school: SCHOOL_L[c.school] ? c.school : "all",
+                platform: c.platform || "all", cat: c.cat || "all",
+                org: c.org || "all", q: typeof c.q === "string" ? c.q : ""
+              };
+              return null;
+            }).filter(Boolean).slice(0, 6);
+            if (out.length) return out;
           }
         } catch (e) {}
-        return ["nthu", "nycu"];
+        return [feedCol("nthu"), feedCol("nycu"), { t: "events" }];
       })();
       function saveCols() { try { localStorage.setItem("chumei-cols", JSON.stringify(cols)); } catch (e) {} }
 
@@ -324,31 +338,92 @@
           return !isNaN(t) && t >= today.getTime();
         }).sort(function (a, b) { return new Date(a.start_at) - new Date(b.start_at); });
       }
-      function colHtml(i, key, list) {
-        var isEv = key === "events";
-        var picker = '<details class="col-picker"><summary aria-label="選擇這一欄顯示的內容">' +
-          '<span class="feed-col-dot dot-' + key + '"></span><h2>' + COLS[key] + '</h2><span class="caret">' + CARET + "</span></summary>" +
-          '<div class="col-picker-menu">' +
-          Object.keys(COLS).map(function (k) {
-            return '<button data-feed="' + k + '" aria-pressed="' + (k === key) + '">' +
-              '<span class="feed-col-dot dot-' + k + '"></span>' + COLS[k] + "</button>";
-          }).join("") +
-          (cols.length > 1 ? '<button class="col-remove">移除這一欄</button>' : "") +
-          "</div></details>";
-        var body, count;
-        if (isEv) {
-          count = list.length + " 場";
-          body = (list.length
+      function colTitle(c) {
+        if (c.t === "events") return { label: "即將活動", dot: "events" };
+        return { label: c.school === "all" ? "貼文" : SCHOOL_L[c.school], dot: c.school === "all" ? "all" : c.school };
+      }
+      function colFilterActive(c) {
+        return c.t === "feed" && (c.platform !== "all" || c.cat !== "all" || c.org !== "all" || !!c.q);
+      }
+      function menuRow(label, key, opts, cur) {
+        return '<div class="filter-row"><span class="label">' + label + '</span><span class="fgroup">' +
+          opts.map(function (o) {
+            return '<button class="fchip" data-ck="' + key + '" data-cv="' + o[0] + '" aria-pressed="' + (o[0] === cur) + '">' +
+              '<span class="fchip-label">' + esc(o[1]) + "</span></button>";
+          }).join("") + "</span></div>";
+      }
+      function colMenu(c) {
+        var inner = c.t === "events" ? "" :
+          '<input class="cf-q" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋這一欄" value="' + esc(c.q) + '">' +
+          menuRow("學校", "school", SCHOOL_OPTS, c.school) +
+          menuRow("平台", "platform", PLAT_OPTS, c.platform) +
+          menuRow("類型", "cat", CAT_OPTS, c.cat) +
+          menuRow("主辦", "org", ORG_OPTS, c.org);
+        return '<div class="col-picker-menu col-menu-filters">' + inner +
+          (cols.length > 1 ? '<button class="col-remove">移除這一欄</button>' : "") + "</div>";
+      }
+      function computeBuckets() {
+        // 兩校聯合貼文在「校別」貼文欄只出現一次（輪流分配）；其餘欄各自照篩選
+        var buckets = cols.map(function () { return []; });
+        var evs = null, schoolIdx = [];
+        cols.forEach(function (c, i) {
+          if (c.t === "feed" && (c.school === "nthu" || c.school === "nycu")) schoolIdx.push(i);
+          if (c.t === "events" && !evs) evs = upcomingEvents();
+        });
+        var rr = 0;
+        posts.forEach(function (p) {
+          cols.forEach(function (c, i) {
+            if (c.t !== "feed") return;
+            if (c.school === "nthu" || c.school === "nycu") {
+              if (p.school === c.school && matches(p, c)) buckets[i].push(p);
+            } else if (matches(p, c)) buckets[i].push(p);
+          });
+          if (p.school === "both" && schoolIdx.length) {
+            for (var t = 0; t < schoolIdx.length; t++) {
+              var i2 = schoolIdx[(rr + t) % schoolIdx.length];
+              if (matches(p, Object.assign({}, cols[i2], { school: "all" }))) {
+                buckets[i2].push(p); rr++; break;
+              }
+            }
+          }
+        });
+        cols.forEach(function (c, i) { if (c.t === "events") buckets[i] = evs || []; });
+        return buckets;
+      }
+      function moreBtn(list, unit) {
+        return list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + unit + "）</button>" : "";
+      }
+      function colBody(c, list) {
+        if (c.t === "events") {
+          return (list.length
             ? '<div class="feed-evs col-evs">' + list.slice(0, shown).map(evChip).join("") + "</div>"
-            : '<p class="empty">近期沒有活動。</p>');
-        } else {
-          count = list.length + " 則";
-          body = list.slice(0, shown).map(row).join("") || '<p class="empty">尚無貼文。</p>';
+            : '<p class="empty">近期沒有活動。</p>') + moreBtn(list, " 場");
         }
+        return (list.slice(0, shown).map(row).join("") || '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list, " 則");
+      }
+      function colHtml(i, c, list) {
+        var tt = colTitle(c);
+        var picker = '<details class="col-picker' + (colFilterActive(c) ? " fon" : "") + '"><summary aria-label="這一欄的內容與篩選">' +
+          '<span class="feed-col-dot dot-' + tt.dot + '"></span><h2>' + tt.label + '</h2><span class="caret">' + CARET + "</span></summary>" +
+          colMenu(c) + "</details>";
         return '<section class="feed-col" data-idx="' + i + '"><header class="feed-col-head">' + picker +
-          '<span class="result-count">' + count + "</span></header>" + body +
-          (list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + (isEv ? " 場" : " 則") + "）</button>" : "") +
-          "</section>";
+          '<span class="result-count">' + list.length + (c.t === "events" ? " 場" : " 則") + "</span></header>" +
+          '<div class="col-body">' + colBody(c, list) + "</div></section>";
+      }
+      // 調整欄內篩選時只更新內容，不重建選單（維持選單開啟）
+      function updateBodies() {
+        var buckets = computeBuckets();
+        cols.forEach(function (c, i) {
+          var el = feed.querySelector('.feed-col[data-idx="' + i + '"]');
+          if (!el) return;
+          el.querySelector(".col-body").innerHTML = colBody(c, buckets[i]);
+          el.querySelector(".result-count").textContent = buckets[i].length + (c.t === "events" ? " 場" : " 則");
+          var tt = colTitle(c);
+          var sm = el.querySelector(".col-picker > summary");
+          sm.querySelector(".feed-col-dot").className = "feed-col-dot dot-" + tt.dot;
+          sm.querySelector("h2").textContent = tt.label;
+          el.querySelector(".col-picker").classList.toggle("fon", colFilterActive(c));
+        });
       }
       function render(more) {
         if (!more) shown = 30;
@@ -357,81 +432,89 @@
         feed.classList.toggle("feed-wide", wide);
         // 欄位模式：鎖住外層捲動，只捲欄內（Threads 式）
         document.body.classList.toggle("feed-locked", wide);
-        var remaining, list;
         if (wide) {
-          // 欄位模式不套用學校 tabs 的篩選（河道由每欄自己選）
-          list = posts.filter(function (p) { return matches(p, "school", "all"); });
-          if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
-          var buckets = cols.map(function () { return []; });
-          var schoolCols = [];
-          cols.forEach(function (k, i) { if (k === "nthu" || k === "nycu") schoolCols.push(i); });
-          var rr = 0;
-          list.forEach(function (p) {
-            cols.forEach(function (k, i) {
-              if (k === "all" || (k === "both" && p.school === "both") || p.school === k) buckets[i].push(p);
-            });
-            // 兩校聯合在校別欄只出現一次：輪流分配
-            if (p.school === "both" && schoolCols.length) {
-              buckets[schoolCols[rr % schoolCols.length]].push(p);
-              rr++;
-            }
-          });
-          var upEvs = cols.indexOf("events") !== -1 ? upcomingEvents() : null;
-          cols.forEach(function (k, i) { if (k === "events") buckets[i] = upEvs; });
+          var buckets = computeBuckets();
+          if (fc) fc.textContent = "";
           // Threads deck：第 4 欄起欄寬降一階（實測 Threads 為 420px）
           feed.innerHTML = '<div class="feed-cols' + (cols.length > 3 ? " cols-many" : "") +
             '" style="--ncols:' + cols.length + '">' +
-            cols.map(function (k, i) { return colHtml(i, k, buckets[i]); }).join("") + "</div>";
+            cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") + "</div>";
+        } else if (state.view === "events") {
+          var evs = upcomingEvents();
+          if (fc) fc.textContent = "共 " + evs.length + " 場即將活動。";
+          feed.innerHTML = (evs.length
+            ? '<div class="feed-evs col-evs">' + evs.slice(0, shown).map(evChip).join("") + "</div>"
+            : '<p class="empty">近期沒有活動。</p>') + moreBtn(evs, " 場");
         } else {
-          list = posts.filter(function (p) { return matches(p); });
+          var list = posts.filter(function (p) { return matches(p, state); });
           if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
-          remaining = list.length - shown;
-          feed.innerHTML = list.slice(0, shown).map(row).join("") +
-            (remaining > 0 ? '<button class="fchip feed-more">載入更多（還有 ' + remaining + " 則）</button>" : "") ||
-            '<p class="empty">沒有符合的貼文。</p>';
+          feed.innerHTML = (list.slice(0, shown).map(row).join("") ||
+            '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list, " 則");
         }
         var af = document.querySelector(".addcol");
         if (af) af.hidden = !wide || cols.length >= 6;
+        var ff = document.querySelector(".feed-filters");
+        if (ff) {
+          // 桌機：篩選在各欄選單；手機「即將」檢視沒有貼文篩選
+          ff.hidden = wide || state.view === "events";
+          ff.classList.toggle("fon",
+            state.school !== "all" || state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
+        }
         Object.keys(groups).forEach(function (key) {
           groups[key].options.forEach(function (opt) {
             var b = groups[key].buttons[opt[0]];
             var c = b && b.querySelector(".fchip-count");
-            if (c) c.textContent =
-              String(posts.filter(function (p) { return matches(p, key, opt[0]); }).length);
+            if (!c) return;
+            var f = Object.assign({}, state); f[key] = opt[0];
+            c.textContent = String(posts.filter(function (p) { return matches(p, f); }).length);
           });
         });
-        var ff = document.querySelector(".feed-filters");
-        if (ff) ff.classList.toggle("fon",
-          state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
         var qs = new URLSearchParams();
-        Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
+        Object.keys(state).forEach(function (k) {
+          if (state[k] && state[k] !== "all" && !(k === "view" && state[k] === "posts")) qs.set(k, state[k]);
+        });
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       }
       feed.addEventListener("click", function (ev) {
         if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); return; }
-        var pb = ev.target.closest(".col-picker-menu button");
-        if (pb) {
-          var idx = +pb.closest(".feed-col").dataset.idx;
-          if (pb.dataset.feed) cols[idx] = pb.dataset.feed;
-          else if (pb.classList.contains("col-remove")) cols.splice(idx, 1);
+        var chip = ev.target.closest(".col-picker-menu .fchip[data-ck]");
+        if (chip) {
+          var idx = +chip.closest(".feed-col").dataset.idx;
+          cols[idx][chip.dataset.ck] = chip.dataset.cv;
+          chip.closest(".fgroup").querySelectorAll(".fchip").forEach(function (x) {
+            x.setAttribute("aria-pressed", String(x === chip));
+          });
+          saveCols(); updateBodies();
+          return;
+        }
+        var rm = ev.target.closest(".col-picker-menu .col-remove");
+        if (rm) {
+          cols.splice(+rm.closest(".feed-col").dataset.idx, 1);
           saveCols(); render(true);
         }
+      });
+      // 欄內搜尋：即時過濾該欄，不重建選單
+      var cfT;
+      feed.addEventListener("input", function (ev) {
+        var q = ev.target.closest(".cf-q");
+        if (!q) return;
+        var idx = +q.closest(".feed-col").dataset.idx;
+        cols[idx].q = q.value.trim();
+        clearTimeout(cfT);
+        cfT = setTimeout(function () { saveCols(); updateBodies(); }, 200);
       });
       // Threads 式加欄：右下角圓角方形 ＋，往上彈出欄位型態選單
       var addFab = document.createElement("details");
       addFab.className = "addcol";
       addFab.innerHTML = '<summary aria-label="新增欄位">' + SVG_OPEN + '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg></summary>' +
         '<div class="addcol-menu"><div class="addcol-title">新增欄位</div>' +
-        Object.keys(FEEDS).map(function (k) {
-          return '<button data-add="' + k + '"><span class="feed-col-dot dot-' + k + '"></span>' + FEEDS[k] + "</button>";
-        }).join("") +
-        '<div class="addcol-sep"></div>' +
+        '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>' +
         '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button></div>';
       document.body.appendChild(addFab);
       addFab.addEventListener("click", function (ev) {
         var b = ev.target.closest("button[data-add]");
         if (!b || cols.length >= 6) return;
-        cols.push(b.dataset.add);
+        cols.push(b.dataset.add === "events" ? { t: "events" } : feedCol("all"));
         saveCols(); addFab.open = false; render(true);
         var deck = feed.querySelector(".feed-cols");
         if (deck) deck.scrollTo({ left: deck.scrollWidth, behavior: "smooth" });
