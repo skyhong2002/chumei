@@ -948,6 +948,10 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
     grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 620px));
     overflow-x: auto; overscroll-behavior-x: contain;
   }
+  body.feed-locked .feed-cols.cols-many {
+    /* 第 4 欄起降一階：Threads 實測每欄 420px 固定寬 */
+    grid-template-columns: repeat(var(--ncols), 420px);
+  }
   body.feed-locked .feed-cols .feed-col { position: static; height: auto; }
   /* 學校 tabs 併入每欄的河道選單：整列縮成右上角浮動工具組（篩選＋新增欄位） */
   body.feed-locked .feed-tabs-row {
@@ -968,7 +972,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .post-feed.feed-wide { max-width: 1160px; }
 .feed-cols {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; align-items: start;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; align-items: start;
 }
 .feed-cols .feed-col {
   min-width: 0;
@@ -1023,16 +1027,43 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .col-picker-menu button[aria-pressed="true"] { color: var(--chumei-bamboo-text); }
 .col-picker-menu .col-remove { color: var(--color-danger-text); margin-top: 4px; border-top: 1px solid var(--color-border-subtle); border-radius: 0 0 var(--radius-md) var(--radius-md); }
 
-.feed-addcol {
-  display: none; align-items: center; justify-content: center;
-  width: 40px; min-height: 40px; border: none; background: none; cursor: pointer;
-  border-radius: var(--radius-pill); color: var(--color-text-muted);
-  transition: background var(--motion-fast, 140ms), color var(--motion-fast, 140ms);
+/* Threads 式加欄 FAB：右下角圓角方形 ＋，選單往上彈 */
+.addcol { display: none; position: fixed; right: 24px; bottom: 24px; z-index: 35; }
+body.feed-locked .addcol { display: block; }
+body.feed-locked .addcol[hidden] { display: none; }
+body.feed-locked .fab { bottom: 96px; }
+.addcol summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  width: 64px; height: 56px; border-radius: var(--radius-lg);
+  background: var(--color-surface-raised); border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary); box-shadow: var(--shadow-raised);
+  transition: transform var(--motion-fast, 140ms) var(--motion-ease);
 }
-body.feed-locked .feed-addcol { display: flex; }
-body.feed-locked .feed-addcol[hidden] { display: none; }
-.feed-addcol:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
-.feed-addcol svg { width: 22px; height: 22px; }
+.addcol summary::-webkit-details-marker { display: none; }
+.addcol summary:hover { transform: scale(1.06); }
+.addcol[open] summary { transform: none; }
+.addcol summary svg { width: 26px; height: 26px; }
+.addcol-menu {
+  position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 50;
+  min-width: 200px; padding: 8px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--color-surface-raised); border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
+}
+.addcol-title {
+  padding: 6px 12px 8px; font-size: 0.8rem; font-weight: 700;
+  color: var(--color-text-muted);
+}
+.addcol-menu button {
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 12px;
+  border: none; background: none; cursor: pointer; text-align: left;
+  border-radius: var(--radius-md); color: var(--color-text-primary);
+  font-family: inherit; font-size: 0.9rem; font-weight: 600; white-space: nowrap;
+}
+.addcol-menu button:hover { background: var(--color-surface-soft); }
+.addcol-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
+.dot-events { background: var(--color-category-orange-text); }
+.feed-col .col-evs { margin-top: 4px; }
 .combo-builder { position: static; backdrop-filter: none; background: none; }
 
 /* 名錄表頭（點擊排序） */
