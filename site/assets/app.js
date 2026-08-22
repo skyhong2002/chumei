@@ -55,6 +55,22 @@
         if (!d.contains(e.target)) d.open = false;
       });
     });
+    // 篩選 popover 打開時夾回可視範圍：錨點靠左時右對齊的面板會伸進固定左欄／視窗外
+    document.addEventListener("toggle", function (e) {
+      var d = e.target;
+      if (!d || !d.classList || !d.classList.contains("feed-filters") || !d.open) return;
+      var panel = d.querySelector(".feed-filters-panel");
+      if (!panel || getComputedStyle(panel).position !== "absolute") return;
+      panel.style.transform = "";
+      var r = panel.getBoundingClientRect();
+      var minLeft = 14, maxRight = window.innerWidth - 14;
+      var header = document.querySelector(".site-header");
+      if (window.innerWidth > 699 && header) minLeft = header.getBoundingClientRect().right + 14;
+      var shift = 0;
+      if (r.left < minLeft) shift = minLeft - r.left;
+      else if (r.right > maxRight) shift = maxRight - r.right;
+      if (shift) panel.style.transform = "translateX(" + shift + "px)";
+    }, true);
   })();
 
   // 更多篩選：舊式行內摺疊才在桌機自動展開；.feed-filters popover 一律預設收合

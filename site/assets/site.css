@@ -809,7 +809,8 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .feed-tabs-row .feed-filters.fon summary::after { top: 8px; right: 7px; }
 .feed-filters-panel {
-  position: absolute; right: 0; top: calc(100% + 8px); z-index: 30;
+  /* z-index 需高於固定左欄（40），否則 panel 左伸進欄區會被蓋住 */
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 45;
   width: min(480px, calc(100vw - 28px));
   background: var(--color-surface-raised); border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
