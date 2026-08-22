@@ -153,6 +153,9 @@
     });
   })();
 
+  // 限動資料/燈箱的共享介面：首頁「限時動態」欄也要用（須在提前 return 前賦值）
+  var storyShare = { data: null, open: null, hooks: [] };
+
   var listEl = document.getElementById("event-list");
   var calEl = document.getElementById("cal-months");
   initStories();
@@ -311,7 +314,7 @@
           if (Array.isArray(s) && s.length) {
             var out = s.map(function (c) {
               if (typeof c === "string") return c === "events" ? { t: "events" } : (SCHOOL_L[c] ? feedCol(c) : null); // 舊格式遷移
-              if (c && c.t === "events") return { t: "events" };
+              if (c && (c.t === "events" || c.t === "stories")) return { t: c.t };
               if (c && c.t === "feed") return {
                 t: "feed", school: SCHOOL_L[c.school] ? c.school : "all",
                 platform: c.platform || "all", cat: c.cat || "all",
@@ -340,6 +343,7 @@
       }
       function colTitle(c) {
         if (c.t === "events") return { label: "即將活動", dot: "events" };
+        if (c.t === "stories") return { label: "限時動態", dot: "stories" };
         return { label: c.school === "all" ? "貼文" : SCHOOL_L[c.school], dot: c.school === "all" ? "all" : c.school };
       }
       function colFilterActive(c) {
@@ -353,7 +357,7 @@
           }).join("") + "</span></div>";
       }
       function colMenu(c) {
-        var inner = c.t === "events" ? "" :
+        var inner = c.t !== "feed" ? "" :
           '<input class="cf-q" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋這一欄" value="' + esc(c.q) + '">' +
           menuRow("學校", "school", SCHOOL_OPTS, c.school) +
           menuRow("平台", "platform", PLAT_OPTS, c.platform) +
@@ -387,18 +391,59 @@
             }
           }
         });
-        cols.forEach(function (c, i) { if (c.t === "events") buckets[i] = evs || []; });
+        cols.forEach(function (c, i) {
+          if (c.t === "events") buckets[i] = evs || [];
+          if (c.t === "stories") buckets[i] = storyShare.data ? storyShare.data.flat : [];
+        });
         return buckets;
       }
       function moreBtn(list, unit) {
         return list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + unit + "）</button>" : "";
       }
+      // 即將活動：日期分組的議程卡（時間｜標題｜校區・地點・類型），重用日曆頁樣式
+      function evAgenda(list) {
+        var labels = data.labels || {};
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var out = "", lastDay = "";
+        list.slice(0, shown).forEach(function (e) {
+          var d = new Date(e.start_at);
+          var day = (d.getMonth() + 1) + "/" + d.getDate();
+          if (day !== lastDay) {
+            lastDay = day;
+            var d0 = new Date(d); d0.setHours(0, 0, 0, 0);
+            var diff = Math.round((d0 - today) / 864e5);
+            var tag = diff === 0 ? " ・ 今天" : diff === 1 ? " ・ 明天" : "";
+            out += '<span class="agd-date">' + day + "（" + "日一二三四五六"[d.getDay()] + "）" + tag + "</span>";
+          }
+          var school = /nthu/.test(e.campus || "") ? "nthu" : /nycu|yangming/.test(e.campus || "") ? "nycu" : "";
+          var when = e.all_day ? "全天" : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+          var meta = [(labels.campus || {})[e.campus] || "", e.venue || "", e.category || ""].filter(Boolean).join(" ・ ");
+          out += '<a class="agd-ev' + (school ? " ev-" + school : "") + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
+            '<span class="agd-when">' + esc(when) + '</span><span class="agd-main">' +
+            '<span class="agd-title">' + esc(e.title) + "</span>" +
+            (meta ? '<span class="agd-meta">' + esc(meta) + "</span>" : "") + "</span></a>";
+        });
+        return '<div class="col-agd">' + out + "</div>";
+      }
+      function storyCards(list) {
+        if (!storyShare.data) return '<p class="empty">限時動態載入中…</p>';
+        if (!list.length) return '<p class="empty">現在沒有進行中的限時動態。</p>';
+        var ago = storyShare.data.ago;
+        return '<div class="story-wall col-stories">' + list.slice(0, shown).map(function (s) {
+          var i = storyShare.data.flat.indexOf(s);
+          return '<button class="story-card" data-story="' + i + '">' +
+            '<img src="' + esc(s.media) + '" alt="' + esc(s.name) + ' 的限時動態" loading="lazy">' +
+            (s.is_video ? '<span class="sc-video">▶</span>' : "") +
+            '<span class="sc-meta">' +
+            (s.avatar ? '<img class="sc-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
+            '<span class="sc-who"><strong>' + esc(s.name) + "</strong>" + ago(s.taken_at) + "</span></span></button>";
+        }).join("") + "</div>";
+      }
       function colBody(c, list) {
         if (c.t === "events") {
-          return (list.length
-            ? '<div class="feed-evs col-evs">' + list.slice(0, shown).map(evChip).join("") + "</div>"
-            : '<p class="empty">近期沒有活動。</p>') + moreBtn(list, " 場");
+          return (list.length ? evAgenda(list) : '<p class="empty">近期沒有活動。</p>') + moreBtn(list, " 場");
         }
+        if (c.t === "stories") return storyCards(list) + moreBtn(list, " 則");
         return (list.slice(0, shown).map(row).join("") || '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list, " 則");
       }
       function colHtml(i, c, list) {
@@ -442,9 +487,7 @@
         } else if (state.view === "events") {
           var evs = upcomingEvents();
           if (fc) fc.textContent = "共 " + evs.length + " 場即將活動。";
-          feed.innerHTML = (evs.length
-            ? '<div class="feed-evs col-evs">' + evs.slice(0, shown).map(evChip).join("") + "</div>"
-            : '<p class="empty">近期沒有活動。</p>') + moreBtn(evs, " 場");
+          feed.innerHTML = (evs.length ? evAgenda(evs) : '<p class="empty">近期沒有活動。</p>') + moreBtn(evs, " 場");
         } else {
           var list = posts.filter(function (p) { return matches(p, state); });
           if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
@@ -477,6 +520,8 @@
       }
       feed.addEventListener("click", function (ev) {
         if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); return; }
+        var sc = ev.target.closest(".story-card[data-story]");
+        if (sc && storyShare.open) { storyShare.open(parseInt(sc.dataset.story, 10)); return; }
         var chip = ev.target.closest(".col-picker-menu .fchip[data-ck]");
         if (chip) {
           var idx = +chip.closest(".feed-col").dataset.idx;
@@ -509,12 +554,13 @@
       addFab.innerHTML = '<summary aria-label="新增欄位">' + SVG_OPEN + '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg></summary>' +
         '<div class="addcol-menu"><div class="addcol-title">新增欄位</div>' +
         '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>' +
-        '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button></div>';
+        '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button>' +
+        '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div>';
       document.body.appendChild(addFab);
       addFab.addEventListener("click", function (ev) {
         var b = ev.target.closest("button[data-add]");
         if (!b || cols.length >= 6) return;
-        cols.push(b.dataset.add === "events" ? { t: "events" } : feedCol("all"));
+        cols.push(b.dataset.add === "feed" ? feedCol("all") : { t: b.dataset.add });
         saveCols(); addFab.open = false; render(true);
         var deck = feed.querySelector(".feed-cols");
         if (deck) deck.scrollTo({ left: deck.scrollWidth, behavior: "smooth" });
@@ -527,8 +573,12 @@
       var feedEvById = {};
       posts.forEach(function (p) { p.events.forEach(function (e) { feedEvById[e.id] = e; }); });
       bindEventHover(feed, ".feed-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
+      bindEventHover(feed, ".agd-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
+      // 限動資料晚到時補繪限時動態欄
+      if (!storyShare.data) storyShare.hooks.push(function () { updateBodies(); });
       render();
-    }).catch(function () {
+    }).catch(function (err) {
+      console.error("chumei feed init failed:", err);
       // SSR 已預先渲染第一頁；抓不到 posts.json 就留著靜態內容
       if (!feed.firstElementChild) feed.innerHTML = '<p class="empty">貼文載入失敗。</p>';
     });
@@ -796,6 +846,11 @@
             '<img src="' + esc(s.media) + '" alt="">' +
             (s.is_video ? '<p class="slb-video-note">影片限動 — <a href="' + esc(s.ig_url) + '" rel="noopener" target="_blank">到 IG 觀看</a></p>' : "");
         }
+
+        storyShare.data = { flat: flat, ago: ago };
+        storyShare.open = openLightbox;
+        storyShare.hooks.forEach(function (f) { f(); });
+        storyShare.hooks = [];
       })
       .catch(function () { if (wall && !wall.firstElementChild) wall.innerHTML = '<p class="empty">限時動態載入失敗。</p>'; });
   }

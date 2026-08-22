@@ -1109,7 +1109,15 @@ body.feed-locked .fab { bottom: 96px; }
 .addcol-menu button:hover { background: var(--color-surface-soft); }
 .addcol-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
 .dot-events { background: var(--color-category-orange-text); }
+.dot-stories { background: linear-gradient(135deg, var(--chumei-bamboo-text), var(--chumei-plum-strong)); }
 .feed-col .col-evs { margin-top: 4px; }
+.col-agd { padding-top: 2px; }
+.col-agd .agd-date { padding: 10px 2px 6px; font-size: 0.8rem; }
+.col-agd .agd-ev { margin-bottom: 8px; }
+.feed-col .col-stories, .post-feed > .story-wall {
+  margin-top: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px;
+}
 .combo-builder { position: static; backdrop-filter: none; background: none; }
 
 /* 名錄表頭（點擊排序） */
