@@ -278,6 +278,23 @@ def format_recurrings_line(event):
     return "📅 例行時段：" + html.escape("；".join(parts)) if parts else None
 
 
+def attach_original(header, original_text, first_limit):
+    """原文引用只附在第一則訊息內；放不下就截斷——不再溢出成後續孤兒訊息。"""
+    chunks = split_text(original_text)
+    if not chunks:
+        return [header]
+    quote, truncated = chunks[0], len(chunks) > 1
+    def render(q, mark):
+        return header + "\n\n" + f"<blockquote expandable>{html.escape(q)}{mark}</blockquote>"
+    mark = "\n⋯（全文請見原始貼文）" if truncated else ""
+    msg = render(quote, mark)
+    while quote and rendered_length(msg) > first_limit:
+        quote = quote[: max(0, len(quote) - 200)].rstrip()
+        mark = "\n⋯（全文請見原始貼文）"
+        msg = render(quote, mark)
+    return [msg] if quote else [header]
+
+
 def format_event_messages(event, first_limit=4096):
     detail_url = f"{BASE_URL}/event/{event['id']}/"
     title = html.escape(compact(event.get("title"), 180))
@@ -297,21 +314,7 @@ def format_event_messages(event, first_limit=4096):
         lines.extend(["", summary])
     if (event.get("extraction") or {}).get("needs_review"):
         lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
-    original_chunks = split_text(event.get("original_text"))
-    if not original_chunks:
-        return ["\n".join(lines)]
-
-    header = "\n".join(lines)
-    first_block = f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"
-    if rendered_length(header + "\n\n" + first_block) <= first_limit:
-        messages = [header + "\n\n" + first_block]
-        remaining_chunks = original_chunks[1:]
-    else:
-        messages = [header]
-        remaining_chunks = original_chunks
-    for chunk in remaining_chunks:
-        messages.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
-    return messages
+    return attach_original("\n".join(lines), event.get("original_text"), first_limit)
 
 
 def format_event(event):
@@ -353,20 +356,7 @@ def format_post_messages(group, first_limit=4096):
         lines.extend(["", rec_line])
     if any((e.get("extraction") or {}).get("needs_review") for e in group):
         lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
-    header = "\n".join(lines)
-    original_chunks = split_text(lead.get("original_text"))
-    if not original_chunks:
-        return [header]
-    first_block = f"<blockquote expandable>{html.escape(original_chunks[0])}</blockquote>"
-    if rendered_length(header + "\n\n" + first_block) <= first_limit:
-        messages = [header + "\n\n" + first_block]
-        remaining = original_chunks[1:]
-    else:
-        messages = [header]
-        remaining = original_chunks
-    for chunk in remaining:
-        messages.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
-    return messages
+    return attach_original("\n".join(lines), lead.get("original_text"), first_limit)
 
 
 def is_silent_hour(now=None):
