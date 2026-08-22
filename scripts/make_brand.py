@@ -1,12 +1,12 @@
 """竹梅品牌資產產生器 — 一支腳本產出全套 logo／og 圖，設計系統單一來源。
 
 設計系統（2026-08-22 定版）：
-  底色一律黑（網站深色 canvas #000）、字型一律 Noto Serif TC Bold、
+  底色一律黑（網站深色 canvas #000）、字型一律 Noto Sans TC Bold、
   竹＝交大藍漸層、梅＝清大紫漸層（同 site.css 的 chumei-bamboo/plum tokens）。
 
 字型不進 git（26MB）；缺檔時先下載：
-  curl -sL -o state/fonts/NotoSerifTC-Bold.otf \
-    https://github.com/notofonts/noto-cjk/raw/main/Serif/OTF/TraditionalChinese/NotoSerifCJKtc-Bold.otf
+  curl -sL -o state/fonts/NotoSansTC-Bold.otf \
+    https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Bold.otf
 
 產出（site/assets/…）：
   brand/logo-mark-{16,32,48,64,256,1024}.png   竹梅雙字（favicon 等）
@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from chumei_lib import ROOT
 
-FONT_PATH = ROOT / "state" / "fonts" / "NotoSerifTC-Bold.otf"
+FONT_PATH = ROOT / "state" / "fonts" / "NotoSansTC-Bold.otf"
 BRAND_DIR = ROOT / "site" / "assets" / "brand"
 
 BG = "#000000"

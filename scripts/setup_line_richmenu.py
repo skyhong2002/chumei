@@ -19,7 +19,7 @@ IMG_PATH = ROOT / "state" / "line_richmenu.png"
 
 W, H = 2500, 1686
 # 品牌統一字型（同 make_brand.py；缺檔時下載方式見該檔 docstring）
-FONT = str(ROOT / "state" / "fonts" / "NotoSerifTC-Bold.otf")
+FONT = str(ROOT / "state" / "fonts" / "NotoSansTC-Bold.otf")
 
 # 暗色設計系統（同 make_brand.py / 網站深色 tokens）：梅＝清大紫、竹＝交大藍
 INK = "#F5F7FF"

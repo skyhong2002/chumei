@@ -41,14 +41,14 @@ a:hover { text-decoration: underline; }
 }
 .brand { display: flex; align-items: baseline; gap: 2px; padding: 4px 12px 20px; text-decoration: none; }
 .brand:hover { text-decoration: none; }
-/* 品牌字標：與 make_brand.py 產的 logo 同字型（Noto Serif TC Bold 子集）同漸層 */
+/* 品牌字標：與 make_brand.py 產的 logo 同字型（Noto Sans TC Bold 子集）同漸層 */
 @font-face {
   font-family: "ChumeiBrand";
   src: url("/assets/fonts/chumei-brand.woff2") format("woff2");
   font-weight: 700;
   font-display: swap;
 }
-.brand-chu, .brand-mei { font-family: "ChumeiBrand", "Noto Serif TC", serif; font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.brand-chu, .brand-mei { font-family: "ChumeiBrand", "Noto Sans TC", sans-serif; font-size: 1.6rem; font-weight: 700; line-height: 1; }
 .brand-chu, .brand-mei {
   -webkit-background-clip: text;
   background-clip: text;
@@ -56,7 +56,7 @@ a:hover { text-decoration: underline; }
 }
 .brand-chu { background-image: linear-gradient(180deg, #5A78FF, #2462FF); }
 .brand-mei { background-image: linear-gradient(180deg, #C069DD, #8E24AA); }
-.brand-sub { margin-left: 8px; font-family: "ChumeiBrand", "Noto Serif TC", serif; font-size: 0.8rem; color: var(--color-text-muted); font-weight: 500; }
+.brand-sub { margin-left: 8px; font-family: "ChumeiBrand", "Noto Sans TC", sans-serif; font-size: 0.8rem; color: var(--color-text-muted); font-weight: 500; }
 .site-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; }
 .nav-item {
   display: flex; align-items: center; gap: 14px;
