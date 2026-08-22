@@ -929,9 +929,18 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 @media (max-width: 699px) { .feed-img { max-height: 300px; } }
 .chip-campus { background: var(--color-category-orange-surface); color: var(--color-category-orange-text); }
 
-/* 桌機雙欄河道：Threads 式面板，兩欄各自獨立捲動 */
+/* 桌機雙欄河道：Threads 式——外層頁面鎖定視窗高度，只有欄內捲動（body.feed-locked 由 JS 切） */
 @media (min-width: 1080px) {
   .feed-main .story-strip { max-width: 1160px; }
+  body.feed-locked { height: 100dvh; overflow: hidden; }
+  body.feed-locked .feed-main {
+    display: flex; flex-direction: column;
+    height: 100dvh; padding-bottom: 16px;
+  }
+  body.feed-locked .story-strip, body.feed-locked .feed-tabs-row { flex: 0 0 auto; width: 100%; }
+  body.feed-locked .post-feed.feed-wide { flex: 1 1 auto; min-height: 0; width: 100%; }
+  body.feed-locked .feed-cols { height: 100%; align-items: stretch; }
+  body.feed-locked .feed-cols .feed-col { position: static; height: auto; }
 }
 .post-feed.feed-wide { max-width: 1160px; }
 .feed-cols {

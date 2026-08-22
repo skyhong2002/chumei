@@ -241,6 +241,8 @@
         if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
         var wide = window.innerWidth >= 1080 && state.school === "all";
         feed.classList.toggle("feed-wide", wide);
+        // 雙欄模式：鎖住外層捲動，只捲欄內（Threads 式）
+        document.body.classList.toggle("feed-locked", wide);
         var remaining;
         if (wide) {
           // 雙欄：清大｜陽明交大；兩校聯合同時出現在兩欄
