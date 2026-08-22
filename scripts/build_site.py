@@ -1076,6 +1076,17 @@ def main():
     for d in ("data", "api", "feeds", "event"):
         (SITE / d).mkdir(parents=True, exist_ok=True)
 
+    # 原貼文時間掛回活動（Telegram 用「貼文新舊」判斷是否推播，防新帳號回填洪水）
+    from chumei_lib import iter_inbox
+    post_ts = {}
+    for it in iter_inbox():
+        post_ts[(it["source_id"], it["post_id"])] = it.get("posted_at")
+    for e in events:
+        src = e.get("source") or {}
+        ts = post_ts.get((src.get("source_id"), src.get("post_id")))
+        if ts:
+            src["posted_at"] = ts
+
     bundle = {"generated_at": now_iso(), "events": events,
               "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL, "org": ORG_LABEL}}
     (SITE / "data" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False))

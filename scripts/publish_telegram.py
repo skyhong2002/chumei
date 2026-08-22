@@ -10,7 +10,7 @@ import json
 import re
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -117,6 +117,18 @@ def save_state(state, path=STATE_PATH):
     tmp.replace(path)
 
 
+MAX_POST_AGE_DAYS = 14  # 新收錄帳號的舊貼文不推播，防回填洪水
+
+
+def post_is_fresh(event, today):
+    """原貼文夠新才推。沒有 posted_at（舊快取）視為新，不影響正常流程。"""
+    ts = ((event.get("source") or {}).get("posted_at") or "")[:10]
+    if not ts:
+        return True
+    cutoff = (date.fromisoformat(today) - timedelta(days=MAX_POST_AGE_DAYS)).isoformat()
+    return ts >= cutoff
+
+
 def eligible_events(events, today=None):
     today = today or date.today().isoformat()
     return [
@@ -124,6 +136,7 @@ def eligible_events(events, today=None):
         if event.get("id")
         and (event.get("start_at") or "")[:10] >= today
         and event.get("status") != "rejected"
+        and post_is_fresh(event, today)
     ]
 
 
