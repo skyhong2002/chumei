@@ -143,6 +143,102 @@
     }, true);
   })();
 
+  // ---- 手機全域搜尋（Threads 式）：頂欄右上 🔍 → 全螢幕搜尋層（單位＋活動） ----
+  (function () {
+    var header = document.querySelector(".site-header");
+    if (!header) return;
+    var SVGO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+    var btn = document.createElement("button");
+    btn.className = "topbar-search";
+    btn.setAttribute("aria-label", "搜尋");
+    btn.innerHTML = SVGO + '<path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>';
+    header.appendChild(btn);
+
+    var sdata = null, ov = null, sT;
+    function loadData() {
+      if (sdata) return Promise.resolve(sdata);
+      return Promise.all([
+        fetch("/data/posts.json").then(function (r) { return r.json(); }).catch(function () { return null; }),
+        fetch("/data/sources.json").then(function (r) { return r.json(); }).catch(function () { return null; })
+      ]).then(function (rs) {
+        var seen = {}, events = [];
+        (((rs[0] || {}).posts) || []).forEach(function (p) {
+          p.events.forEach(function (e) { if (!seen[e.id]) { seen[e.id] = 1; events.push(e); } });
+        });
+        sdata = { events: events, orgs: ((rs[1] || {}).entries) || [] };
+        return sdata;
+      });
+    }
+    function evSchool(e) {
+      return /nthu/.test(e.campus || "") ? "nthu" : /nycu|yangming/.test(e.campus || "") ? "nycu" : "";
+    }
+    function results(q) {
+      var body = ov.querySelector(".search-ov-body");
+      q = q.trim().toLowerCase();
+      if (!q) { body.innerHTML = '<p class="empty">搜尋社團、單位或活動名稱。</p>'; return; }
+      if (!sdata) { body.innerHTML = '<p class="empty">載入中…</p>'; return; }
+      var orgs = sdata.orgs.filter(function (o) { return o.name.toLowerCase().indexOf(q) !== -1; }).slice(0, 6);
+      var now = Date.now();
+      var evs = sdata.events.filter(function (e) { return e.title.toLowerCase().indexOf(q) !== -1; });
+      evs.sort(function (a, b) {
+        var ta = new Date(a.start_at).getTime(), tb = new Date(b.start_at).getTime();
+        var fa = ta >= now, fb = tb >= now;
+        if (fa !== fb) return fa ? -1 : 1;   // 未來的排前
+        return fa ? ta - tb : tb - ta;       // 未來近→遠；過去新→舊
+      });
+      evs = evs.slice(0, 10);
+      var html = "";
+      if (orgs.length) {
+        html += '<p class="sr-sec">社團與單位</p>' + orgs.map(function (o) {
+          var av = o.avatar
+            ? '<img class="sr-avatar" src="' + esc(o.avatar) + '" alt="">'
+            : '<span class="sr-avatar src-avatar-fallback av-' + esc(o.school) + '">' + esc(o.name.charAt(0)) + "</span>";
+          return '<a class="sr-org" href="/org/' + o.id + '/">' + av +
+            '<span class="sr-org-main"><strong>' + esc(o.name) + "</strong>" +
+            '<span class="sub">' + (o.events ? o.events + " 場活動" : "尚無收錄活動") + "</span></span></a>";
+        }).join("");
+      }
+      if (evs.length) {
+        html += '<p class="sr-sec">活動</p><div class="col-agd">' + evs.map(function (e) {
+          var d = new Date(e.start_at);
+          var sc = evSchool(e);
+          return '<a class="agd-ev' + (sc ? " ev-" + sc : "") + '" href="/event/' + e.id + '/">' +
+            '<span class="agd-when">' + (d.getMonth() + 1) + "/" + d.getDate() + "</span>" +
+            '<span class="agd-main"><span class="agd-title">' + esc(e.title) + "</span>" +
+            (e.venue ? '<span class="agd-meta">' + esc(e.venue) + "</span>" : "") + "</span></a>";
+        }).join("") + "</div>";
+      }
+      html += '<a class="sr-more" href="/events/?q=' + encodeURIComponent(q) + '">在活動總覽搜尋「' + esc(q) + '」→</a>';
+      if (!orgs.length && !evs.length) html = '<p class="empty">沒有符合的社團或活動。</p>' + html;
+      body.innerHTML = html;
+    }
+    function close() {
+      if (!ov) return;
+      ov.remove(); ov = null;
+      document.body.style.overflow = "";
+    }
+    btn.addEventListener("click", function () {
+      if (ov) return;
+      ov = document.createElement("div");
+      ov.className = "search-ov";
+      ov.innerHTML = '<div class="search-ov-bar">' +
+        '<input type="search" placeholder="搜尋社團、單位、活動…" aria-label="全站搜尋">' +
+        '<button class="search-ov-cancel">取消</button></div>' +
+        '<div class="search-ov-body"><p class="empty">搜尋社團、單位或活動名稱。</p></div>';
+      document.body.appendChild(ov);
+      document.body.style.overflow = "hidden";
+      var input = ov.querySelector("input");
+      input.focus();
+      loadData().then(function () { if (ov && input.value) results(input.value); });
+      input.addEventListener("input", function () {
+        clearTimeout(sT);
+        sT = setTimeout(function () { if (ov) results(input.value); }, 120);
+      });
+      ov.querySelector(".search-ov-cancel").addEventListener("click", close);
+      input.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    });
+  })();
+
   // 更多篩選：舊式行內摺疊才在桌機自動展開；.feed-filters popover 一律預設收合
   (function () {
     var mf = document.getElementById("more-filters");

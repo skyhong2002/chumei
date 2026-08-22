@@ -837,11 +837,63 @@ main.main-wide { max-width: min(1680px, 100%); }
   display: flex; align-items: center;
   background: none; backdrop-filter: none;
 }
+.feed-tabs-row { height: 44px; }
+.feed-tabs-row .feed-filters { height: 44px; }
 .feed-tabs-row .feed-filters summary {
-  width: 44px; min-height: 44px; border-bottom: none; border-radius: var(--radius-pill);
+  width: 44px; height: 44px; border-bottom: none; border-radius: var(--radius-pill);
 }
-@media (max-width: 699px) { .feed-tabs-row { top: 5px; right: 6px; } }
+/* 手機：篩選在頂欄左側、與標題垂直對齊（右側留給全域搜尋） */
+@media (max-width: 699px) { .feed-tabs-row { top: 5px; left: 10px; right: auto; } }
 @media (min-width: 700px) and (max-width: 1079px) { .feed-tabs-row { top: 10px; right: 12px; } }
+
+/* 手機全域搜尋：頂欄右側 🔍 ＋ 全螢幕搜尋層 */
+.topbar-search {
+  display: none; position: fixed; top: 5px; right: 10px; z-index: 41;
+  align-items: center; justify-content: center; width: 44px; height: 44px;
+  border: none; background: none; cursor: pointer; border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+}
+.topbar-search:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.topbar-search svg { width: 22px; height: 22px; }
+@media (max-width: 699px) { .topbar-search { display: flex; } }
+.search-ov {
+  position: fixed; inset: 0; z-index: 90;
+  background: var(--color-canvas); display: flex; flex-direction: column;
+}
+.search-ov-bar {
+  display: flex; gap: 4px; align-items: center;
+  padding: 10px 12px; border-bottom: 1px solid var(--color-border-subtle);
+}
+.search-ov-bar input {
+  flex: 1; min-width: 0; height: 40px; padding: 0 16px;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill);
+  background: var(--color-surface-soft); color: var(--color-text-primary);
+  font-family: inherit; font-size: 0.95rem;
+}
+.search-ov-bar input::placeholder { color: var(--color-text-muted); }
+.search-ov-cancel {
+  border: none; background: none; cursor: pointer; padding: 8px 10px;
+  color: var(--color-text-secondary); font-family: inherit; font-size: 0.95rem; font-weight: 600;
+}
+.search-ov-body {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 4px 14px calc(24px + env(safe-area-inset-bottom));
+}
+.sr-sec { margin: 0; padding: 14px 2px 6px; font-size: 0.78rem; font-weight: 700; color: var(--color-text-muted); }
+.sr-org {
+  display: flex; align-items: center; gap: 12px; min-height: 52px;
+  padding: 6px 2px; color: var(--color-text-primary);
+}
+.sr-org:hover { text-decoration: none; background: var(--color-surface-soft); border-radius: var(--radius-md); }
+.sr-avatar {
+  width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--color-border-subtle); background: var(--color-surface-soft);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.sr-org-main { min-width: 0; display: flex; flex-direction: column; line-height: 1.4; }
+.sr-org-main strong { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr-org-main .sub { font-size: 0.78rem; color: var(--color-text-muted); }
+.sr-more { display: block; padding: 16px 2px 8px; font-weight: 600; }
 /* 收合篩選元件：桌機 popover、（.filters 內的）手機行內展開 */
 .feed-filters { position: relative; display: flex; }
 .feed-filters[hidden] { display: none; }
