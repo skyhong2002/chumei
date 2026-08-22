@@ -41,6 +41,20 @@
     });
   });
 
+  // ---- 導覽：當前頁高亮；details 彈出選單點外自動收合 ----
+  (function () {
+    var path = location.pathname;
+    document.querySelectorAll(".site-nav a.nav-item").forEach(function (a) {
+      var h = a.getAttribute("href");
+      if (h === "/" ? path === "/" : path.indexOf(h) === 0) a.setAttribute("aria-current", "page");
+    });
+    document.addEventListener("click", function (e) {
+      document.querySelectorAll("details.post-menu[open], details.feed-filters[open], details.nav-more[open]").forEach(function (d) {
+        if (!d.contains(e.target)) d.open = false;
+      });
+    });
+  })();
+
   // 更多篩選（手機摺疊）：桌機自動展開 — 全站通用
   (function () {
     var mf = document.getElementById("more-filters");
@@ -83,20 +97,21 @@
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
       var groups = {};
-      function chips(id, options, key) {
+      function chips(id, options, key, cls) {
         var host = document.getElementById(id);
         if (!host) return;
         groups[key] = { options: options, buttons: {} };
         options.forEach(function (opt) {
           var b = document.createElement("button");
-          b.className = "fchip";
+          b.className = cls || "fchip";
           b.dataset.value = opt[0];
-          b.innerHTML = '<span class="fchip-label">' + esc(opt[1]) + '</span><span class="fchip-count" aria-hidden="true"></span>';
+          b.innerHTML = '<span class="fchip-label">' + esc(opt[1]) + "</span>" +
+            (cls ? "" : '<span class="fchip-count" aria-hidden="true"></span>');
           b.setAttribute("aria-pressed", String(state[key] === opt[0]));
           groups[key].buttons[opt[0]] = b;
           b.addEventListener("click", function () {
             state[key] = opt[0];
-            host.querySelectorAll(".fchip").forEach(function (x) {
+            host.querySelectorAll("[data-value]").forEach(function (x) {
               x.setAttribute("aria-pressed", String(x.dataset.value === opt[0]));
             });
             render();
@@ -104,7 +119,7 @@
           host.appendChild(b);
         });
       }
-      chips("pf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
+      chips("pf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school", "feed-tab");
       chips("pf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["bulletin", "公告"]], "platform");
       var feedCats = {};
       posts.forEach(function (p) { p.events.forEach(function (e) { feedCats[e.category || "其他"] = 1; }); });
@@ -140,11 +155,20 @@
         return (d.getMonth() + 1) + "/" + d.getDate();
       }
 
+      var SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+      var I = {
+        dots: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
+        cal: SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
+        send: SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
+        ext: SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>'
+      };
+
       function evChip(e) {
         var d = new Date(e.start_at);
         var when = (d.getMonth() + 1) + "/" + d.getDate() +
           (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
-        return '<a class="feed-ev" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">🗓 ' + esc(when) + "｜" + esc(e.title) + "</a>";
+        return '<a class="feed-ev" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
+          '<span class="feed-ev-date">' + esc(when) + '</span><span class="feed-ev-title">' + esc(e.title) + "</span></a>";
       }
 
       function row(p) {
@@ -153,23 +177,40 @@
           : '<span class="feed-avatar src-avatar-fallback av-' + esc(p.school) + '">' +
             esc((p.source_name || "？").replace(/^(清大|交大|陽明|國立)/, "").charAt(0)) + "</span>";
         var orgHref = p.org_id ? '/org/' + p.org_id + '/' : null;
+        var avatarEl = orgHref
+          ? '<a class="feed-org-link" href="' + orgHref + '" aria-label="' + esc(p.source_name || "") + ' 的單位頁">' + avatar + "</a>"
+          : avatar;
+        var schoolLabel = (data.labels.school || {})[p.school] || "";
+        var menuItems =
+          (p.url ? '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">查看原文（' + esc(PLAT[p.platform] || p.platform) + "）↗</a>" : "") +
+          (orgHref ? '<a href="' + orgHref + '">單位頁面</a>' : "");
+        var menu = menuItems
+          ? '<details class="post-menu"><summary aria-label="更多選項">' + I.dots + '</summary><div class="post-menu-panel">' + menuItems + "</div></details>"
+          : "";
         var head = '<div class="feed-head">' +
-          (orgHref ? '<a class="feed-org-link" href="' + orgHref + '" aria-label="' + esc(p.source_name || "") + ' 的單位頁">' + avatar + "</a>" : avatar) +
-          '<span class="feed-who"><strong>' + (orgHref ? '<a class="feed-org-link" href="' + orgHref + '">' + esc(p.source_name || "") + "</a>" : esc(p.source_name || "")) + "</strong>" +
-          '<span class="feed-sub">' + esc(PLAT[p.platform] || p.platform) + " ・ " + esc(ago(p.posted_at)) +
-          '<span class="chip chip-' + esc(p.school) + '">' + esc((data.labels.school || {})[p.school] || "") + "</span></span></span>" +
-          (p.url ? '<a class="feed-orig" href="' + esc(p.url) + '" rel="noopener" target="_blank">原文 ↗</a>' : "") + "</div>";
-        var body = '<div class="feed-body">' +
-          (p.text ? '<p class="feed-text">' + esc(p.text) + "</p>" : "") +
-          (p.image ? '<img class="feed-img" src="' + esc(p.image) + '" alt="" loading="lazy">' : "") + "</div>";
-        var evs = '<div class="feed-evs">' + p.events.map(evChip).join("") + "</div>";
-        return '<article class="feed-post">' + head + body + evs + "</article>";
+          '<strong class="feed-name">' + (orgHref ? '<a class="feed-org-link" href="' + orgHref + '">' + esc(p.source_name || "") + "</a>" : esc(p.source_name || "")) + "</strong>" +
+          (schoolLabel ? '<span class="feed-topic"><span class="sep">›</span>' + esc(schoolLabel) + "</span>" : "") +
+          '<span class="feed-time">' + esc(ago(p.posted_at)) + "</span>" + menu + "</div>";
+        var body = (p.text ? '<p class="feed-text">' + esc(p.text) + "</p>" : "") +
+          (p.image ? '<img class="feed-img" src="' + esc(p.image) + '" alt="" loading="lazy">' : "");
+        var evs = p.events.length ? '<div class="feed-evs">' + p.events.map(evChip).join("") + "</div>" : "";
+        var ev0 = p.events[0];
+        var shareUrl = ev0 ? location.origin + "/event/" + ev0.id + "/" : (p.url || location.origin);
+        var shareTitle = ev0 ? ev0.title : (p.source_name || "竹梅活動觀測站");
+        var actions = '<div class="feed-actions">' +
+          (ev0 ? '<a class="feed-action" href="/event/' + ev0.id + '/" title="活動詳情">' + I.cal +
+            (p.events.length > 1 ? "<span>" + p.events.length + "</span>" : "") + "</a>" : "") +
+          '<button class="feed-action btn-share" data-url="' + esc(shareUrl) + '" data-title="' + esc(shareTitle) + '" title="分享">' + I.send + "</button>" +
+          (p.url ? '<a class="feed-action" href="' + esc(p.url) + '" target="_blank" rel="noopener" title="開啟原文">' + I.ext + "</a>" : "") +
+          "</div>";
+        return '<article class="feed-post">' + avatarEl + '<div class="feed-content">' + head + body + evs + actions + "</div></article>";
       }
 
       var shown = 30;
-      function colHtml(title, list) {
-        return '<section class="feed-col"><h2 class="feed-col-title">' + title +
-          '<span class="result-count">' + list.length + " 則</span></h2>" +
+      function colHtml(key, title, list) {
+        return '<section class="feed-col"><header class="feed-col-head">' +
+          '<span class="feed-col-dot dot-' + key + '"></span><h2>' + title + "</h2>" +
+          '<span class="result-count">' + list.length + " 則</span></header>" +
           (list.slice(0, shown).map(row).join("") || '<p class="empty">尚無貼文。</p>') +
           (list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + " 則）</button>" : "") +
           "</section>";
@@ -186,7 +227,7 @@
           // 雙欄：清大｜陽明交大；兩校聯合同時出現在兩欄
           var nthu = list.filter(function (p) { return p.school === "nthu" || p.school === "both"; });
           var nycu = list.filter(function (p) { return p.school === "nycu" || p.school === "both"; });
-          feed.innerHTML = '<div class="feed-cols">' + colHtml("清大", nthu) + colHtml("陽明交大", nycu) + "</div>";
+          feed.innerHTML = '<div class="feed-cols">' + colHtml("nthu", "清大", nthu) + colHtml("nycu", "陽明交大", nycu) + "</div>";
         } else {
           remaining = list.length - shown;
           feed.innerHTML = list.slice(0, shown).map(row).join("") +
@@ -196,10 +237,14 @@
         Object.keys(groups).forEach(function (key) {
           groups[key].options.forEach(function (opt) {
             var b = groups[key].buttons[opt[0]];
-            if (b) b.querySelector(".fchip-count").textContent =
+            var c = b && b.querySelector(".fchip-count");
+            if (c) c.textContent =
               String(posts.filter(function (p) { return matches(p, key, opt[0]); }).length);
           });
         });
+        var ff = document.querySelector(".feed-filters");
+        if (ff) ff.classList.toggle("fon",
+          state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
         var qs = new URLSearchParams();
         Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
