@@ -140,12 +140,18 @@ def dedupe(events):
     for e in events:
         day = (e.get("start_at") or "")[:10]
         groups.setdefault((norm_title(e["title"])[:24], day), []).append(e)
+    def absorb(keep, dup_e):
+        """dup_e 併入 keep：原始貼文完整記錄進 alt_posts（顯示用），網址進 alt_sources（相容舊 API）。"""
+        keep.setdefault("alt_posts", []).append(dup_e["source"])
+        keep["alt_posts"] += dup_e.get("alt_posts", [])
+        keep["alt_sources"] = [p.get("url") for p in keep["alt_posts"] if p.get("url")]
+
     stage1 = []
     for grp in groups.values():
         grp.sort(key=score, reverse=True)
         best = grp[0]
-        if len(grp) > 1:
-            best["alt_sources"] = [g["source"]["url"] for g in grp[1:]]
+        for g in grp[1:]:
+            absorb(best, g)
         stage1.append(best)
 
     # 第二階段：同一天、標題相似（同活動多貼文/轉發）。
@@ -196,7 +202,7 @@ def dedupe(events):
                         or (title_core(k) and title_core(k) == title_core(e))
                         or same_slot(k, e)), None)
             if dup:
-                dup.setdefault("alt_sources", []).append(e["source"]["url"])
+                absorb(dup, e)
                 if e.get("school") != dup.get("school"):
                     dup["school"] = "both"  # 跨校轉發＝兩校聯合
             else:
@@ -575,7 +581,7 @@ def join_loc(e, sep=" ・ "):
     return sep.join(parts)
 
 
-def detail_page(e, org=None, siblings=()):
+def detail_page(e, org=None, org_sections=(), alt_posts=()):
     st, en = e.get("start_at"), e.get("end_at")
     loc = join_loc(e)
     gcal = ""
@@ -601,9 +607,12 @@ def detail_page(e, org=None, siblings=()):
         ("報名", {"required": "需事先報名", "free": "自由入場，免報名"}.get(e.get("reg"))),
         ("費用", e.get("price") or {"free": "免費", "paid": "需付費（金額見原文）"}.get(e.get("fee"))),
         ("報名截止", fmt_dt(e.get("registration_deadline"))),
+        ("原始貼文", "、".join(
+            f'<a href="{esc(p["url"])}" rel="noopener" target="_blank">{esc(p["label"])} ↗</a>'
+            for p in alt_posts) or None),
     ]
     meta_html = "".join(
-        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k == '主辦' else esc(v)}</dd></div>"
+        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k in ('主辦', '原始貼文') else esc(v)}</dd></div>"
         for k, v in rows if v)
     review = ('<p class="review-note">⚠️ 此活動由 AI 從公開貼文擷取，欄位尚待確認，請以原始貼文為準。</p>'
               if e["extraction"].get("needs_review") else "")
@@ -632,7 +641,7 @@ def detail_page(e, org=None, siblings=()):
         f'<a class="btn" href="{gcal}" rel="noopener">加入 Google 日曆</a>' if gcal else None,
         (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">在地圖上看</a>'
          if e.get("geo") else None),
-        f'<a class="btn" href="{esc(e["source"]["url"])}" rel="noopener">原始貼文</a>' if e["source"].get("url") else None,
+        # 原始貼文統一列在資訊列（含帳號／平台／日期），不另設按鈕
         f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
     ]))
     jsonld = json.dumps({
@@ -644,6 +653,7 @@ def detail_page(e, org=None, siblings=()):
         "description": e.get("summary"),
         "image": (BASE_URL + e["poster_image"]) if e.get("poster_image") else None,
         "url": f"{BASE_URL}/event/{e['id']}/",
+        "sameAs": [p["url"] for p in alt_posts] or None,
     }, ensure_ascii=False)
     school = e.get("school") or "other"
     content = f"""<article class="detail">
@@ -658,9 +668,14 @@ def detail_page(e, org=None, siblings=()):
     <dl class="meta">{meta_html}</dl>
     <div class="actions">{actions}</div>
     <div class="desc">{''.join(f'<p>{esc(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
-    {(f'<section class="org-more"><h2>來自 <a href="/org/{org[0]}/">{esc(org[1])}</a> 的更多活動</h2><ul class="org-evs">'
-      + "".join(f'<li class="org-ev"><a href="/event/{s2["id"]}/"><span class="org-ev-date">{fmt_dt(s2["start_at"], s2.get("all_day"))}</span>{esc(s2["title"])}</a></li>' for s2 in siblings)
-      + f'</ul><p class="src-desc"><a href="/org/{org[0]}/">查看 {esc(org[1])} 的完整頁面 →</a></p></section>') if org and siblings else ''}
+    {''.join(
+      (f'<section class="org-more"><h2>來自 <a href="/org/{oid}/">{esc(oname)}</a> 的更多活動</h2><ul class="org-evs">'
+       + "".join(f'<li class="org-ev"><a href="/event/{s2["id"]}/"><span class="org-ev-date">{fmt_dt(s2["start_at"], s2.get("all_day"))}</span>{esc(s2["title"])}</a></li>' for s2 in sibs)
+       + f'</ul><p class="src-desc"><a href="/org/{oid}/">查看 {esc(oname)} 的完整頁面 →</a></p></section>')
+      if sibs else
+      (f'<section class="org-more"><h2>來自 <a href="/org/{oid}/">{esc(oname)}</a> 的更多活動</h2>'
+       f'<p class="src-desc">這是目前收錄自該單位的唯一活動。<a href="/org/{oid}/">查看 {esc(oname)} 的完整頁面 →</a></p></section>')
+      for oid, oname, sibs in org_sections)}
   </div>
 </div>
 <script type="application/ld+json">{jsonld}</script>
@@ -711,10 +726,11 @@ def _org_sim(a, b):
 
 def build_sources_data(events):
     """全機構名錄 site/data/sources.json：官方名冊為底＋監測帳號＋公告來源，含未收錄單位。"""
-    counts = {}
+    seen = {}  # sid → 活動 id 集合（跨帳號合併的活動歸戶到每個來源；同帳號多貼文只算一次）
     for e in events:
-        sid = e["source"]["source_id"]
-        counts[sid] = counts.get(sid, 0) + 1
+        for src in [e["source"]] + e.get("alt_posts", []):
+            seen.setdefault(src["source_id"], set()).add(e["id"])
+    counts = {sid: len(ids) for sid, ids in seen.items()}
 
     # 各 source_id 最近一篇貼文/公告時間（inbox 掃描）
     from chumei_lib import iter_inbox
@@ -894,7 +910,8 @@ def org_pages(entries, events):
     """每個名錄條目一頁 /org/<id>/：頭貼、連結、該單位的活動與收錄貼文。"""
     by_sid = {}
     for e in events:
-        by_sid.setdefault(e["source"]["source_id"], []).append(e)
+        for src in [e["source"]] + e.get("alt_posts", []):  # 跨帳號合併的活動歸戶到每個來源單位
+            by_sid.setdefault(src["source_id"], []).append(e)
     # 收錄貼文（含沒抽出活動的），各來源合流
     from chumei_lib import iter_inbox
     now = now_iso()
@@ -902,8 +919,9 @@ def org_pages(entries, events):
     for it in iter_inbox():
         posts_by_sid.setdefault(it["source_id"], []).append(it)
     for e in events:
-        k = (e["source"]["source_id"], e["source"]["post_id"])
-        ev_per_post[k] = ev_per_post.get(k, 0) + 1
+        for src in [e["source"]] + e.get("alt_posts", []):
+            k = (src["source_id"], src["post_id"])
+            ev_per_post[k] = ev_per_post.get(k, 0) + 1
     today = date.today().isoformat()
     PLAT = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads",
             "x": "X", "bulletin": "公告頁", "website": "官網", "api": "NYCU LIFE"}
@@ -1416,10 +1434,10 @@ def main():
     for it in iter_inbox():
         post_ts[(it["source_id"], it["post_id"])] = it.get("posted_at")
     for e in events:
-        src = e.get("source") or {}
-        ts = post_ts.get((src.get("source_id"), src.get("post_id")))
-        if ts:
-            src["posted_at"] = ts
+        for src in [e.get("source") or {}] + e.get("alt_posts", []):
+            ts = post_ts.get((src.get("source_id"), src.get("post_id")))
+            if ts:
+                src["posted_at"] = ts
 
     bundle = {"generated_at": now_iso(), "events": events,
               "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL, "org": ORG_LABEL}}
@@ -1468,21 +1486,40 @@ def main():
     today_s = date.today().isoformat()
     ent_events = {}
     for e in events:
-        ent = sid_to_entry.get(e["source"]["source_id"])
-        if ent is not None:
-            ent_events.setdefault(ent["id"], []).append(e)
+        seen_ent = set()
+        for src in [e["source"]] + e.get("alt_posts", []):
+            ent = sid_to_entry.get(src.get("source_id"))
+            if ent is not None and ent["id"] not in seen_ent:
+                seen_ent.add(ent["id"])
+                ent_events.setdefault(ent["id"], []).append(e)
     for e in events:
         ent = sid_to_entry.get(e["source"]["source_id"])
         org = (ent["id"], ent["name"]) if ent else None
-        siblings = []
-        if ent:
-            sibs = [x for x in ent_events.get(ent["id"], []) if x["id"] != e["id"]]
+        # 每個來源單位（主來源優先）各一段「更多活動」
+        org_sections, seen_ent = [], set()
+        for src in [e["source"]] + e.get("alt_posts", []):
+            ent2 = sid_to_entry.get(src.get("source_id"))
+            if ent2 is None or ent2["id"] in seen_ent:
+                continue
+            seen_ent.add(ent2["id"])
+            sibs = [x for x in ent_events.get(ent2["id"], []) if x["id"] != e["id"]]
             up = sorted([x for x in sibs if x["start_at"][:10] >= today_s], key=lambda x: x["start_at"])
             past = sorted([x for x in sibs if x["start_at"][:10] < today_s], key=lambda x: x["start_at"], reverse=True)
-            siblings = (up + past)[:4]
+            org_sections.append((ent2["id"], ent2["name"], (up + past)[:4]))
+        # 資訊列「原始貼文」＝這場活動的所有來源貼文（主來源＋合併掉的），依發文時間排序
+        alt_posts = []
+        for src in sorted([e["source"]] + e.get("alt_posts", []), key=lambda s2: s2.get("posted_at") or "9999"):
+            if not src.get("url"):
+                continue
+            ent2 = sid_to_entry.get(src.get("source_id"))
+            plat = FEED_PLAT.get(src.get("platform"), src.get("platform") or "")
+            posted = _iso_dt(src.get("posted_at"))
+            when = f"，{posted.astimezone(TZ_TAIPEI).month}/{posted.astimezone(TZ_TAIPEI).day}" if posted else ""
+            alt_posts.append({"url": src["url"],
+                              "label": (f'{ent2["name"]}（{plat}{when}）' if ent2 else plat + when.lstrip("，"))})
         d = SITE / "event" / e["id"]
         d.mkdir(parents=True, exist_ok=True)
-        (d / "index.html").write_text(detail_page(e, org=org, siblings=siblings))
+        (d / "index.html").write_text(detail_page(e, org=org, org_sections=org_sections, alt_posts=alt_posts))
 
     org_ids = source_page(events, entries)
     prerender_feed(build_posts_data(events, sid_to_entry))
