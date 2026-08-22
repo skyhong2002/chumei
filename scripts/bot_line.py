@@ -1,18 +1,20 @@
 """LINE 查詢 bot — 官方帳號 webhook，只用免費的 Reply API（不主動推播、零訊息費）。
 
 對外：Caddy 把 https://chumei.observe.tw/line/webhook 反代到 127.0.0.1:8322。
-排程：launchd deploy/tw.observe.chumei.bot-line.plist 常駐（拿到金鑰後再載入）。
-需要 .env：
-  CHUMEI_LINE_CHANNEL_SECRET=<LINE Developers → channel → Basic settings>
-  CHUMEI_LINE_ACCESS_TOKEN=<同上 → Messaging API → channel access token (long-lived)>
-LINE Developers 後台 webhook URL 填 https://chumei.observe.tw/line/webhook 並開啟「Use webhook」；
-「自動回應訊息」記得關掉，不然官方罐頭訊息會跟 bot 搶話。
+排程：launchd deploy/tw.observe.chumei.bot-line.plist 常駐。
+需要 .env（LINE Developers → channel → Basic settings）：
+  CHUMEI_LINE_CHANNEL_ID=...
+  CHUMEI_LINE_CHANNEL_SECRET=...
+access token 走 stateless 端點（15 分鐘效期）用 ID+secret 現領現用，不存長期金鑰。
+LINE 後台：webhook URL 填 https://chumei.observe.tw/line/webhook、Use webhook 開；
+回應設定的「聊天」「歡迎訊息」「自動回應訊息」都要關，不然罐頭訊息會跟 bot 搶話。
 """
 
 import base64
 import hashlib
 import hmac
 import json
+import time
 
 import requests
 from starlette.applications import Starlette
@@ -24,10 +26,29 @@ from chumei_lib import load_env
 
 PORT = 8322
 REPLY_URL = "https://api.line.me/v2/bot/message/reply"
+TOKEN_URL = "https://api.line.me/oauth2/v3/token"
 
 _env = load_env()
+CHANNEL_ID = _env.get("CHUMEI_LINE_CHANNEL_ID", "").strip()
 CHANNEL_SECRET = _env.get("CHUMEI_LINE_CHANNEL_SECRET", "").strip()
-ACCESS_TOKEN = _env.get("CHUMEI_LINE_ACCESS_TOKEN", "").strip()
+
+_token = {"value": None, "expires": 0.0}
+
+
+def access_token():
+    """Stateless channel access token，過期前 60 秒自動換新。"""
+    if time.monotonic() < _token["expires"] - 60:
+        return _token["value"]
+    r = requests.post(TOKEN_URL, timeout=15, data={
+        "grant_type": "client_credentials",
+        "client_id": CHANNEL_ID,
+        "client_secret": CHANNEL_SECRET,
+    })
+    r.raise_for_status()
+    data = r.json()
+    _token["value"] = data["access_token"]
+    _token["expires"] = time.monotonic() + data.get("expires_in", 900)
+    return _token["value"]
 
 WELCOME = (
     "歡迎加入竹梅活動觀測站！\n\n" + bot_core.HELP_TEXT
@@ -54,7 +75,7 @@ def render(reply):
 
 def send_reply(reply_token, text):
     r = requests.post(REPLY_URL, timeout=15,
-                      headers={"Authorization": f"Bearer {ACCESS_TOKEN}"},
+                      headers={"Authorization": f"Bearer {access_token()}"},
                       json={"replyToken": reply_token,
                             "messages": [{"type": "text", "text": text[:4900]}]})
     if r.status_code != 200:
@@ -90,6 +111,6 @@ app = Starlette(routes=[Route("/line/webhook", webhook, methods=["POST"])])
 
 if __name__ == "__main__":
     import uvicorn
-    if not (CHANNEL_SECRET and ACCESS_TOKEN):
-        raise SystemExit("CHUMEI_LINE_CHANNEL_SECRET / CHUMEI_LINE_ACCESS_TOKEN 未設定")
+    if not (CHANNEL_ID and CHANNEL_SECRET):
+        raise SystemExit("CHUMEI_LINE_CHANNEL_ID / CHUMEI_LINE_CHANNEL_SECRET 未設定")
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
