@@ -77,8 +77,8 @@ def main():
     results["map"] = run_step("map", ["build_map_data.py"])
     results["build"] = (results["map"] and run_step("build", ["build_site.py"])
                         and run_step("validate", ["validate_outputs.py"]))
-    if results["build"]:
-        results["telegram"] = run_step("telegram", ["publish_telegram.py"])
+    # Telegram 改由獨立 launchd job（tw.observe.chumei.telegram，每 30 分鐘、
+    # 每次最多 2 則）滴灌發送，與抓取節奏解耦，避免一輪攢一堆一次炸出。
 
     state["last_run"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state["last_results"] = results
