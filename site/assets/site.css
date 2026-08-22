@@ -63,7 +63,7 @@ a:hover { text-decoration: underline; }
 .brand-chu { background-image: linear-gradient(180deg, #5A78FF, #2462FF); }
 .brand-mei { background-image: linear-gradient(180deg, #C069DD, #8E24AA); }
 /* 副標同品牌字型但用 Medium（500）子集，對比竹梅的 700 */
-.brand-sub { margin-left: 8px; font-family: "ChumeiBrand", "Noto Sans TC", sans-serif; font-size: 1.6rem; line-height: 1; color: var(--color-text-muted); font-weight: 500; }
+.brand-sub { font-family: "ChumeiBrand", "Noto Sans TC", sans-serif; font-size: 1.6rem; line-height: 1; color: var(--color-text-muted); font-weight: 500; }
 .site-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; }
 .nav-item {
   display: flex; align-items: center; gap: 14px;
@@ -134,7 +134,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   }
   .brand { padding: 0; }
   .brand-chu, .brand-mei { font-size: 1.45rem; }
-  .brand-sub { margin-left: 7px; font-size: 1.45rem; }
+  .brand-sub { font-size: 1.45rem; }
   .site-nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
     flex-direction: row; gap: 0; flex: none;
