@@ -118,10 +118,13 @@ def _bigrams(s):
 
 
 def _similar(a, b):
-    """正規化標題相似：包含關係或 bigram Jaccard ≥ 0.6。"""
+    """正規化標題相似：包含關係或 bigram Jaccard ≥ 0.6。
+    短字串（≤5 字）只差一字 Jaccard 也會壓線過（羽球／網球夏令營），改要求完全相等。"""
     if not a or not b:
         return False
-    if len(a) >= 6 and len(b) >= 6 and (a in b or b in a):
+    if min(len(a), len(b)) <= 5:
+        return a == b
+    if a in b or b in a:
         return True
     ba, bb = _bigrams(a), _bigrams(b)
     return len(ba & bb) / max(1, len(ba | bb)) >= 0.6
@@ -154,6 +157,34 @@ def dedupe(events):
                 t = t.replace(cand, "")
         return t
 
+    # 同帳號連發多篇貼文宣傳同一場活動，標題每次寫法不同（「工工新生北區茶會」vs
+    # 「工業工程與管理學系北區新生茶會」）會低於相似門檻；改用「同帳號＋不同貼文＋
+    # 開始時間到分相同＋地點相容」判定，標題只需沾到邊（≥2 個共同 bigram）。
+    def same_slot(k, e):
+        if k.get("all_day") or e.get("all_day") or k.get("start_at") != e.get("start_at"):
+            return False
+        ks, es = k["source"], e["source"]
+        if ks["source_id"] == es["source_id"] and ks["post_id"] == es["post_id"]:
+            return False
+        ta, tb = norm_title(k["title"]), norm_title(e["title"])
+        ba, bb = _bigrams(ta), _bigrams(tb)
+        va, vb = norm_title(k.get("venue")), norm_title(e.get("venue"))
+        venue_ok = bool(va and vb and (va in vb or vb in va or _similar(va, vb)))
+        if ks["source_id"] == es["source_id"]:
+            if len(ba & bb) < 2:
+                return False
+            if va and vb:
+                return venue_ok
+            # 缺地點佐證時提高標題門檻：只共享尾綴（「游泳／羽球夏令營」）不算同活動
+            return len(ba & bb) / max(1, len(ba | bb)) >= 0.4
+        # 跨帳號（主辦與轉發單位各自發文、副標改寫）要更硬的證據：
+        # 起訖時間全等＋地點相容＋標題共同前綴夠長（系列名，如「台灣矽谷解密：」）。
+        # 前綴不能太短，免得「社團博覽會Ａ社攤位」「社團博覽會Ｂ社攤位」這類同場不同攤被誤併。
+        if not venue_ok or k.get("end_at") != e.get("end_at"):
+            return False
+        prefix = next((i for i, (x, y) in enumerate(zip(ta, tb)) if x != y), min(len(ta), len(tb)))
+        return prefix >= 6
+
     by_day = {}
     for e in stage1:
         by_day.setdefault((e.get("start_at") or "")[:10], []).append(e)
@@ -162,7 +193,8 @@ def dedupe(events):
         kept = []
         for e in sorted(grp, key=score, reverse=True):
             dup = next((k for k in kept if _similar(norm_title(k["title"]), norm_title(e["title"]))
-                        or (title_core(k) and title_core(k) == title_core(e))), None)
+                        or (title_core(k) and title_core(k) == title_core(e))
+                        or same_slot(k, e)), None)
             if dup:
                 dup.setdefault("alt_sources", []).append(e["source"]["url"])
                 if e.get("school") != dup.get("school"):
