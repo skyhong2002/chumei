@@ -73,11 +73,19 @@ def render(reply):
     return "\n".join(lines).strip()
 
 
+# 每則回覆下方的快速回覆列（點按代打字，仍走免費 Reply API）
+QUICK_REPLY = {"items": [
+    {"type": "action", "action": {"type": "message", "label": w, "text": w}}
+    for w in ("今天", "明天", "這週末", "下週", "演講", "展覽", "市集", "清大", "交大", "說明")
+]}
+
+
 def send_reply(reply_token, text):
     r = requests.post(REPLY_URL, timeout=15,
                       headers={"Authorization": f"Bearer {access_token()}"},
                       json={"replyToken": reply_token,
-                            "messages": [{"type": "text", "text": text[:4900]}]})
+                            "messages": [{"type": "text", "text": text[:4900],
+                                          "quickReply": QUICK_REPLY}]})
     if r.status_code != 200:
         print(f"bot_line: reply failed {r.status_code}: {r.text[:200]}", flush=True)
 
