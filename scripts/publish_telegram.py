@@ -371,7 +371,7 @@ def format_post_messages(group, first_limit=4096):
 
 def is_silent_hour(now=None):
     now = now or datetime.now(TZ_TAIPEI)
-    return now.hour >= 22 or now.hour < 8
+    return 1 <= now.hour < 8
 
 
 class TelegramClient:
