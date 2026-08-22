@@ -185,7 +185,7 @@
     fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
       var posts = data.posts;
       // 手機單欄的全域篩選＋檢視切換；桌機欄位各自帶篩選（見 cols）
-      var state = { view: "posts", school: "all", platform: "all", cat: "all", org: "all", q: "" };
+      var state = { school: "all", platform: "all", cat: "all", org: "all", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
@@ -219,7 +219,6 @@
       posts.forEach(function (p) { p.events.forEach(function (e) { feedCats[e.category || "其他"] = 1; }); });
       var CAT_OPTS = [["all", "全部類型"]].concat(Object.keys(feedCats).sort().map(function (k) { return [k, k]; }));
 
-      chips("pf-view", [["posts", "貼文"], ["events", "即將"]], "view", "feed-tab");
       chips("pf-school", SCHOOL_OPTS, "school");
       chips("pf-platform", PLAT_OPTS, "platform");
       chips("pf-cat", CAT_OPTS, "cat");
@@ -484,10 +483,6 @@
           feed.innerHTML = '<div class="feed-cols' + (cols.length > 3 ? " cols-many" : "") +
             '" style="--ncols:' + cols.length + '">' +
             cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") + "</div>";
-        } else if (state.view === "events") {
-          var evs = upcomingEvents();
-          if (fc) fc.textContent = "共 " + evs.length + " 場即將活動。";
-          feed.innerHTML = (evs.length ? evAgenda(evs) : '<p class="empty">近期沒有活動。</p>') + moreBtn(evs, " 場");
         } else {
           var list = posts.filter(function (p) { return matches(p, state); });
           if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
@@ -498,8 +493,8 @@
         if (af) af.hidden = !wide || cols.length >= 6;
         var ff = document.querySelector(".feed-filters");
         if (ff) {
-          // 桌機：篩選在各欄選單；手機「即將」檢視沒有貼文篩選
-          ff.hidden = wide || state.view === "events";
+          // 桌機：篩選在各欄選單
+          ff.hidden = wide;
           ff.classList.toggle("fon",
             state.school !== "all" || state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
         }
@@ -514,7 +509,7 @@
         });
         var qs = new URLSearchParams();
         Object.keys(state).forEach(function (k) {
-          if (state[k] && state[k] !== "all" && !(k === "view" && state[k] === "posts")) qs.set(k, state[k]);
+          if (state[k] && state[k] !== "all") qs.set(k, state[k]);
         });
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       }

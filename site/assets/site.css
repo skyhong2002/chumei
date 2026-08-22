@@ -831,23 +831,17 @@ main.main-wide { max-width: min(1680px, 100%); }
 .feed-main .story-strip, .feed-main .feed-tabs-row, .post-feed {
   max-width: 660px; margin-left: auto; margin-right: auto;
 }
+/* 手機/平板單欄只剩篩選鈕：浮到右上角（手機＝頂欄列內），不佔一整排 */
 .feed-tabs-row {
-  position: sticky; top: 0; z-index: 20; display: flex; align-items: stretch;
-  background: color-mix(in srgb, var(--color-canvas) 86%, transparent);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  position: fixed; z-index: 41; width: auto; margin: 0;
+  display: flex; align-items: center;
+  background: none; backdrop-filter: none;
 }
-@media (max-width: 699px) { .feed-tabs-row { top: 54px; } }
-.feed-tabs { display: flex; flex: 1; min-width: 0; }
-.feed-tab {
-  flex: 1; min-height: 46px; padding: 0 4px; border: none; background: none; cursor: pointer;
-  font-family: inherit; font-size: 0.92rem; font-weight: 700; white-space: nowrap;
-  color: var(--color-text-muted);
-  border-bottom: 1.5px solid var(--color-border-subtle);
-  transition: color var(--motion-fast, 140ms);
+.feed-tabs-row .feed-filters summary {
+  width: 44px; min-height: 44px; border-bottom: none; border-radius: var(--radius-pill);
 }
-.feed-tab:hover { color: var(--color-text-secondary); }
-.feed-tab[aria-pressed="true"] { color: var(--color-text-primary); border-bottom-color: currentColor; }
-
+@media (max-width: 699px) { .feed-tabs-row { top: 5px; right: 6px; } }
+@media (min-width: 700px) and (max-width: 1079px) { .feed-tabs-row { top: 10px; right: 12px; } }
 /* 收合篩選元件：桌機 popover、（.filters 內的）手機行內展開 */
 .feed-filters { position: relative; display: flex; }
 .feed-filters[hidden] { display: none; }
