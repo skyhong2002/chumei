@@ -485,7 +485,7 @@ def write_rss(path, events, title):
 def page_shell(title, desc, content, og_image=None, canonical=None):
     og_img = og_image or f"{BASE_URL}/assets/og-default.png"
     return f"""<!doctype html>
-<html lang="zh-Hant-TW" data-theme="light">
+<html lang="zh-Hant-TW" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -501,7 +501,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="alternate" type="application/rss+xml" title="竹梅活動 RSS" href="/feeds/all.xml">
-<script>try{{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.dataset.theme='dark'}}catch(e){{}}</script>
+<script>try{{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}}catch(e){{}}</script>
 </head>
 <body>
 <header class="site-header">

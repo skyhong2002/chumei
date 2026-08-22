@@ -18,16 +18,17 @@ API_DATA = "https://api-data.line.me/v2/bot"
 IMG_PATH = ROOT / "state" / "line_richmenu.png"
 
 W, H = 2500, 1686
-FONT = "/System/Library/Fonts/STHeiti Medium.ttc"
+# 品牌統一字型（同 make_brand.py；缺檔時下載方式見該檔 docstring）
+FONT = str(ROOT / "state" / "fonts" / "NotoSerifTC-Bold.otf")
 
-# 梅＝清大紫、竹＝交大藍（同站上 tokens）
-INK = "#10162A"
-CANVAS = "#F7F9FC"
-CARD = "#FFFFFF"
-BORDER = "#D9E1F0"
-BLUE = "#1B41C5"
-PLUM = "#7A1FA2"
-GRAY = "#66708A"
+# 暗色設計系統（同 make_brand.py / 網站深色 tokens）：梅＝清大紫、竹＝交大藍
+INK = "#F5F7FF"
+CANVAS = "#000000"
+CARD = "#111111"
+BORDER = "#2B2B2B"
+BLUE = "#5A78FF"
+PLUM = "#C069DD"
+GRAY = "#9EA8BF"
 
 # (標籤, 送出的文字, accent 色)，3×2
 CELLS = [

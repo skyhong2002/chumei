@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#F7F9FC"/>
+  <rect width="64" height="64" rx="14" fill="#000000"/>
   <!-- 竹：三節竹竿（藍） -->
-  <g stroke="#0045F2" stroke-width="6" stroke-linecap="round">
+  <g stroke="#2462FF" stroke-width="6" stroke-linecap="round">
     <line x1="20" y1="10" x2="20" y2="24"/>
     <line x1="20" y1="29" x2="20" y2="43"/>
     <line x1="20" y1="48" x2="20" y2="56"/>
   </g>
   <!-- 竹葉 -->
-  <path d="M20 26 Q28 20 33 22 Q27 28 20 26 Z" fill="#0045F2"/>
+  <path d="M20 26 Q28 20 33 22 Q27 28 20 26 Z" fill="#2462FF"/>
   <!-- 梅：五瓣梅花（紫） -->
   <g fill="#8E24AA">
     <circle cx="44" cy="34" r="5.5"/>
