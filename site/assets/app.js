@@ -246,8 +246,13 @@
         var remaining;
         if (wide) {
           // 雙欄：清大｜陽明交大；兩校聯合同時出現在兩欄
-          var nthu = list.filter(function (p) { return p.school === "nthu" || p.school === "both"; });
-          var nycu = list.filter(function (p) { return p.school === "nycu" || p.school === "both"; });
+          // 兩校聯合只出現一次：輪流分到左右欄（topic 標籤仍標「清大×交大」，全覽走「兩校聯合」tab）
+          var nthu = [], nycu = [], flip = false;
+          list.forEach(function (p) {
+            if (p.school === "nthu") nthu.push(p);
+            else if (p.school === "nycu") nycu.push(p);
+            else { (flip ? nycu : nthu).push(p); flip = !flip; }
+          });
           feed.innerHTML = '<div class="feed-cols">' + colHtml("nthu", "清大", nthu) + colHtml("nycu", "陽明交大", nycu) + "</div>";
         } else {
           remaining = list.length - shown;
