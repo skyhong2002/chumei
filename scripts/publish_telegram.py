@@ -235,6 +235,13 @@ def format_source(event):
     return f"🔗 {label}"
 
 
+def format_school(event):
+    """Render the event's school explicitly instead of relying on source names."""
+    school = str(event.get("school") or "").strip()
+    label = SCHOOL_LABEL.get(school) or "學校未標示"
+    return f"🏫 {html.escape(label)}"
+
+
 def split_text(text, limit=2500):
     """Split a long original post without discarding any non-whitespace text."""
     remaining = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -306,7 +313,7 @@ def format_event_messages(event, first_limit=4096):
     source_line = format_source(event)
     if source_line:
         lines.append(source_line)
-    lines.extend([f"🗓 {when}", format_location(event)])
+    lines.extend([format_school(event), f"🗓 {when}", format_location(event)])
     rec_line = format_recurrings_line(event)
     if rec_line:
         lines.append(rec_line)
@@ -350,7 +357,13 @@ def format_post_messages(group, first_limit=4096):
         url = html.escape(f"{BASE_URL}/event/{event['id']}/", quote=True)
         when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
         loc = format_location(event)
-        lines.extend(["", f'▸ <a href="{url}"><b>{title}</b></a>', f"　🗓 {when}", f"　{loc}"])
+        lines.extend([
+            "",
+            f'▸ <a href="{url}"><b>{title}</b></a>',
+            f"　{format_school(event)}",
+            f"　🗓 {when}",
+            f"　{loc}",
+        ])
     rec_line = format_recurrings_line(lead)
     if rec_line:
         lines.extend(["", rec_line])

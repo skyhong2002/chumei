@@ -75,7 +75,7 @@ class PublisherTests(unittest.TestCase):
         self.assertNotIn("原始內文", text)
         self.assertNotIn("📄", text)
         self.assertNotIn("📣", text)
-        self.assertNotIn("🏫", text)
+        self.assertIn("🏫 清大 × 交大", text)
         self.assertNotIn("🎤", text)
         self.assertNotIn("活動摘要", text)
         self.assertIn("第二段有 &lt;標籤&gt; &amp; 符號。", text)
@@ -180,6 +180,15 @@ class PublisherTests(unittest.TestCase):
             source_platform="bulletin",
         )
         self.assertIn('國立陽明交通大學校園公告－演講課程 (<a href="https://example.com/source">官方網站</a>)', telegram.format_event(value))
+
+    def test_multi_event_post_labels_each_events_school(self):
+        values = [
+            event("evt_nthu", school="nthu", original_text=""),
+            event("evt_nycu", school="nycu", original_text=""),
+        ]
+        text = telegram.format_post_messages(values)[0]
+        self.assertIn("　🏫 清大", text)
+        self.assertIn("　🏫 陽明交大", text)
 
     def test_silent_hours(self):
         self.assertTrue(telegram.is_silent_hour(datetime(2026, 8, 21, 23, tzinfo=timezone.utc)))
