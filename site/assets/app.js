@@ -283,7 +283,10 @@
       // 手機單欄的全域篩選＋檢視切換；桌機欄位各自帶篩選（見 cols）
       var state = { school: "all", platform: "all", cat: "all", org: "all", q: "" };
       var params = new URLSearchParams(location.search);
-      Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
+      var seededFromUrl = false;
+      Object.keys(state).forEach(function (k) { if (params.get(k)) { state[k] = params.get(k); seededFromUrl = true; } });
+      var activeCol = 0;
+      function pagerMode() { return window.innerWidth < 1080; }
 
       var groups = {};
       function chips(id, options, key, cls) {
@@ -303,7 +306,7 @@
             host.querySelectorAll("[data-value]").forEach(function (x) {
               x.setAttribute("aria-pressed", String(x.dataset.value === opt[0]));
             });
-            render();
+            applyFilterToCol(key, opt[0]);
           });
           host.appendChild(b);
         });
@@ -323,7 +326,29 @@
       var search = document.getElementById("search");
       if (search) {
         search.value = state.q;
-        search.addEventListener("input", function () { state.q = search.value.trim(); render(); });
+        search.addEventListener("input", function () { state.q = search.value.trim(); applyFilterToCol("q", state.q); });
+      }
+
+      // 手機分頁模式：頂欄篩選＝「這一欄」的篩選；桌機沿用整體重繪
+      function applyFilterToCol(key, value) {
+        var c = cols[activeCol];
+        if (pagerMode() && c && c.t === "feed") {
+          c[key] = value;
+          saveCols(); updateBodies(); refreshMeta();
+          return;
+        }
+        render();
+      }
+      function syncFilterUI() {
+        var c = cols[activeCol];
+        if (!c || c.t !== "feed") return;
+        ["school", "platform", "cat", "org", "q"].forEach(function (k) { state[k] = c[k]; });
+        Object.keys(groups).forEach(function (k) {
+          Object.keys(groups[k].buttons).forEach(function (v) {
+            groups[k].buttons[v].setAttribute("aria-pressed", String(state[k] === v));
+          });
+        });
+        if (search && document.activeElement !== search) search.value = state.q;
       }
 
       function matches(p, f) {
@@ -567,32 +592,92 @@
           el.querySelector(".col-picker").classList.toggle("fon", colFilterActive(c));
         });
       }
-      function render(more) {
-        if (!more) shown = 30;
-        var fc = document.getElementById("feed-count");
-        var wide = window.innerWidth >= 1080;
-        feed.classList.toggle("feed-wide", wide);
-        // 欄位模式：鎖住外層捲動，只捲欄內（Threads 式）
-        document.body.classList.toggle("feed-locked", wide);
-        if (wide) {
-          var buckets = computeBuckets();
-          if (fc) fc.textContent = "";
-          // Threads deck：第 4 欄起欄寬降一階（實測 Threads 為 420px）
-          feed.innerHTML = '<div class="feed-cols' + (cols.length > 3 ? " cols-many" : "") +
-            '" style="--ncols:' + cols.length + '">' +
-            cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") + "</div>";
-        } else {
-          var list = posts.filter(function (p) { return matches(p, state); });
-          if (fc) fc.textContent = "共 " + list.length + " 則活動貼文。";
-          feed.innerHTML = (list.slice(0, shown).map(row).join("") ||
-            '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list, " 則");
-        }
-        var af = document.querySelector(".addcol");
-        if (af) af.hidden = !wide || cols.length >= 6;
+      // 分頁指示列（手機）：圓點跳欄＋新增欄位
+      var pagerBar = null;
+      function ensurePagerBar() {
+        if (pagerBar) return pagerBar;
+        pagerBar = document.createElement("div");
+        pagerBar.className = "feed-pager-bar";
+        feed.parentNode.insertBefore(pagerBar, feed);
+        pagerBar.addEventListener("click", function (ev) {
+          var dot = ev.target.closest("[data-goto]");
+          if (dot) { goToCol(+dot.dataset.goto, true); return; }
+          var add = ev.target.closest("button[data-add]");
+          if (!add || cols.length >= 6) return;
+          cols.push(add.dataset.add === "feed" ? feedCol("all") : { t: add.dataset.add });
+          saveCols();
+          pagerBar.querySelector("details.pager-add").open = false;
+          activeCol = cols.length - 1;
+          render(true);
+          goToCol(activeCol, true);
+        });
+        return pagerBar;
+      }
+      function renderPagerBar(wide) {
+        var bar = ensurePagerBar();
+        bar.hidden = wide || cols.length < 1;
+        if (bar.hidden) return;
+        var dots = cols.map(function (c, i) {
+          var tt = colTitle(c);
+          return '<button class="pdot' + (i === activeCol ? " on" : "") + '" data-goto="' + i +
+            '" aria-label="' + esc(tt.label) + '" aria-current="' + (i === activeCol) + '">' +
+            '<span class="feed-col-dot dot-' + tt.dot + '"></span></button>';
+        }).join("");
+        bar.innerHTML = '<div class="pager-dots">' + dots + "</div>" +
+          (cols.length < 6
+            ? '<details class="pager-add"><summary aria-label="新增河道">' + SVG_OPEN +
+              '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg></summary>' +
+              '<div class="addcol-menu"><div class="addcol-title">新增河道</div>' +
+              '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>' +
+              '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button>' +
+              '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div></details>'
+            : "");
+      }
+      function updatePagerActive() {
+        if (!pagerBar || pagerBar.hidden) return;
+        pagerBar.querySelectorAll(".pdot").forEach(function (d, i) {
+          d.classList.toggle("on", i === activeCol);
+          d.setAttribute("aria-current", String(i === activeCol));
+        });
+      }
+      function goToCol(i, smooth) {
+        var deck = feed.querySelector(".feed-cols");
+        if (!deck) return;
+        deck.scrollTo({ left: i * deck.clientWidth, behavior: smooth ? "smooth" : "auto" });
+      }
+      var pagerT;
+      function bindStripAutoHide(deck) {
+        var strip = document.getElementById("story-strip");
+        if (!strip) return;
+        deck.querySelectorAll(".feed-col").forEach(function (colEl) {
+          colEl.addEventListener("scroll", function () {
+            document.body.classList.toggle("strip-away", colEl.scrollTop > 40);
+          }, { passive: true });
+        });
+      }
+      function bindPager() {
+        var deck = feed.querySelector(".feed-cols");
+        if (!deck) return;
+        bindStripAutoHide(deck);
+        deck.scrollLeft = activeCol * deck.clientWidth;
+        deck.addEventListener("scroll", function () {
+          clearTimeout(pagerT);
+          pagerT = setTimeout(function () {
+            var i = Math.round(deck.scrollLeft / Math.max(1, deck.clientWidth));
+            if (i === activeCol || i < 0 || i >= cols.length) return;
+            activeCol = i;
+            syncFilterUI(); updatePagerActive(); refreshMeta();
+          }, 80);
+        }, { passive: true });
+      }
+      // 篩選鈕狀態、各選項計數、網址參數
+      function refreshMeta() {
+        var wide = !pagerMode();
+        var cur = cols[activeCol];
         var ff = document.querySelector(".feed-filters");
         if (ff) {
-          // 桌機：篩選在各欄選單
-          ff.hidden = wide;
+          // 桌機：篩選在各欄選單；手機：只有貼文欄能篩
+          ff.hidden = wide || !cur || cur.t !== "feed";
           ff.classList.toggle("fon",
             state.school !== "all" || state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
         }
@@ -611,8 +696,45 @@
         });
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       }
+      function render(more) {
+        if (!more) shown = 30;
+        var fc = document.getElementById("feed-count");
+        var wide = window.innerWidth >= 1080;
+        if (activeCol >= cols.length) activeCol = Math.max(0, cols.length - 1);
+        // 網址帶篩選參數時，套用到第一個貼文欄（深連結）
+        if (seededFromUrl) {
+          seededFromUrl = false;
+          var ci = cols.findIndex(function (c) { return c.t === "feed"; });
+          if (ci >= 0) {
+            ["school", "platform", "cat", "org", "q"].forEach(function (k) { cols[ci][k] = state[k]; });
+            activeCol = ci; saveCols();
+          }
+        }
+        var buckets = computeBuckets();
+        if (fc) fc.textContent = "";
+        feed.classList.toggle("feed-wide", wide);
+        feed.classList.toggle("feed-pager", !wide);
+        // 欄位模式：鎖住外層捲動，只捲欄內（Threads 式）；手機為左右分頁的河道
+        document.body.classList.add("feed-locked");
+        // Threads deck：第 4 欄起欄寬降一階（實測 Threads 為 420px）
+        feed.innerHTML = '<div class="feed-cols' + (wide && cols.length > 3 ? " cols-many" : "") +
+          '" style="--ncols:' + cols.length + '">' +
+          cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") + "</div>";
+        if (!wide) { bindPager(); syncFilterUI(); }
+        renderPagerBar(wide);
+        var af = document.querySelector(".addcol");
+        if (af) af.hidden = !wide || cols.length >= 6;
+        refreshMeta();
+      }
       feed.addEventListener("click", function (ev) {
-        if (ev.target.classList.contains("feed-more")) { shown += 30; render(true); return; }
+        if (ev.target.classList.contains("feed-more")) {
+          shown += 30;
+          var colEl = ev.target.closest(".feed-col");
+          var keep = colEl ? colEl.scrollTop : 0;
+          updateBodies();
+          if (colEl) colEl.scrollTop = keep;   // 換內容不該把這一欄捲回頂端
+          return;
+        }
         var sc = ev.target.closest(".story-card[data-story]");
         if (sc && storyShare.open) { storyShare.open(parseInt(sc.dataset.story, 10)); return; }
         var chip = ev.target.closest(".col-picker-menu .fchip[data-ck]");

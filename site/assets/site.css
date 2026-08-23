@@ -1280,3 +1280,81 @@ body.feed-locked .fab { bottom: 96px; }
 /* 已追蹤的紫色不被 :hover 覆蓋（同特異度、後定義者勝） */
 .heart-btn[aria-pressed="true"]:hover { color: var(--chumei-plum-text, #C069DD); }
 .card-heart[aria-pressed="true"]:hover { color: #DA8FF0; }
+
+/* ---------- 手機/平板：河道＝左右分頁（欄內只上下捲，整頁不捲） ---------- */
+@media (max-width: 1079px) {
+  body.feed-locked { height: 100dvh; overflow: hidden; padding-bottom: 0; }
+  body.feed-locked .feed-main {
+    display: flex; flex-direction: column; min-height: 0;
+    max-width: none; margin: 0; padding-bottom: 0;
+    height: calc(100dvh - var(--feed-chrome, 0px));
+    /* 橫向分頁由 .feed-cols 自己捲；不裁切的話整頁寬度會被撐開（行動瀏覽器會縮放） */
+    overflow: hidden;
+  }
+  body.feed-locked .story-strip { flex: 0 0 auto; max-width: none; }
+  body.feed-locked .feed-main { padding-left: 0; padding-right: 0; }
+  body.feed-locked .story-strip, body.feed-locked .feed-pager-bar { padding-left: 14px; padding-right: 14px; }
+  body.feed-locked .post-feed.feed-pager {
+    /* 每頁滿版：抵銷 main 的左右內距，讓左右滑動像整頁換河道 */
+    flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; margin: 0;
+  }
+  .post-feed.feed-pager .feed-cols {
+    display: flex; gap: 0; height: 100%; align-items: stretch;
+    overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .post-feed.feed-pager .feed-cols::-webkit-scrollbar { display: none; }
+  .post-feed.feed-pager .feed-col {
+    flex: 0 0 100%; width: 100%; min-width: 0;
+    scroll-snap-align: start; scroll-snap-stop: always;
+    position: static; height: 100%;
+    overflow-y: auto; overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    border: none; border-radius: 0; background: var(--color-canvas);
+    padding: 0 14px 24px;
+  }
+  /* 分頁指示列：圓點跳欄＋新增河道 */
+  .feed-pager-bar {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 2px 14px 6px; max-width: none;
+  }
+  .feed-pager-bar[hidden] { display: none; }
+  .pager-dots { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .pager-dots::-webkit-scrollbar { display: none; }
+  .pdot {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border: 0; background: none; cursor: pointer; border-radius: 50%;
+  }
+  .pdot .feed-col-dot { width: 7px; height: 7px; opacity: 0.4; transition: width 0.2s, opacity 0.2s; }
+  .pdot.on .feed-col-dot { width: 20px; border-radius: 999px; opacity: 1; }
+  .pager-add { position: relative; flex: 0 0 auto; }
+  .pager-add summary {
+    display: flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    list-style: none; cursor: pointer; border-radius: 50%; color: var(--color-text-muted);
+  }
+  .pager-add summary::-webkit-details-marker { display: none; }
+  .pager-add summary svg { width: 18px; height: 18px; }
+  .pager-add[open] summary { background: var(--color-surface-soft); color: var(--color-text-primary); }
+  .pager-add .addcol-menu { position: absolute; right: 0; top: calc(100% + 8px); bottom: auto; z-index: 45; }
+  /* 欄頭在分頁模式貼齊欄頂，捲動時仍看得到這一欄是什麼 */
+  .post-feed.feed-pager .feed-col-head { padding: 10px 2px 8px; }
+}
+@media (max-width: 699px) {
+  /* 頂欄 54px＋底欄 60px＋安全區 */
+  body.feed-locked .feed-main { --feed-chrome: calc(54px + 60px + env(safe-area-inset-bottom)); }
+}
+@media (min-width: 700px) and (max-width: 1079px) {
+  body.feed-locked .feed-main { --feed-chrome: 0px; }
+  .post-feed.feed-pager .feed-col { padding: 0 20px 24px; }
+}
+@media (max-width: 1079px) {
+  /* 欄內下捲時讓出限動列的空間（回到頂端自動展開） */
+  body.feed-locked .story-strip {
+    transition: max-height 0.24s var(--motion-ease, ease), opacity 0.18s;
+    max-height: 260px; overflow: hidden;
+  }
+  body.feed-locked.strip-away .story-strip {
+    max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;
+  }
+}
