@@ -655,10 +655,54 @@
           }, { passive: true });
         });
       }
+      // 觸控換頁：欄位是垂直捲動容器，橫向手勢不會自動鏈到外層，這裡自己接
+      function bindSwipe(deck) {
+        var drag = null, snapT;
+        function restoreSnap(delay) {
+          clearTimeout(snapT);
+          snapT = setTimeout(function () { deck.style.scrollSnapType = ""; }, delay);
+        }
+        deck.addEventListener("pointerdown", function (e) {
+          if (e.pointerType === "mouse") return;
+          drag = { x: e.clientX, y: e.clientY, left: deck.scrollLeft, t: Date.now(), on: false };
+        }, { passive: true });
+        deck.addEventListener("pointermove", function (e) {
+          if (!drag) return;
+          var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+          if (!drag.on) {
+            if (Math.abs(dx) < 10 || Math.abs(dx) <= Math.abs(dy)) return;  // 尚未判定為橫向
+            drag.on = true;
+            clearTimeout(snapT);
+            deck.style.scrollSnapType = "none";   // 拖曳中先關 snap，放開才吸附
+          }
+          deck.scrollLeft = drag.left - dx;
+        }, { passive: true });
+        function end(e) {
+          if (!drag) return;
+          var d = drag; drag = null;
+          if (!d.on) return;
+          var w = Math.max(1, deck.clientWidth);
+          var dx = (e && e.clientX != null ? e.clientX : d.x) - d.x;
+          var from = Math.round(d.left / w);
+          var v = Math.abs(dx) / Math.max(1, Date.now() - d.t);   // px/ms
+          var target = (Math.abs(dx) > w * 0.25 || v > 0.35)
+            ? from + (dx < 0 ? 1 : -1)
+            : Math.round(deck.scrollLeft / w);
+          target = Math.max(0, Math.min(cols.length - 1, target));
+          deck.scrollTo({ left: target * w, behavior: "smooth" });
+          restoreSnap(420);
+        }
+        deck.addEventListener("pointerup", end, { passive: true });
+        deck.addEventListener("pointercancel", function () {
+          if (drag && drag.on) restoreSnap(0);
+          drag = null;
+        }, { passive: true });
+      }
       function bindPager() {
         var deck = feed.querySelector(".feed-cols");
         if (!deck) return;
         bindStripAutoHide(deck);
+        bindSwipe(deck);
         deck.scrollLeft = activeCol * deck.clientWidth;
         deck.addEventListener("scroll", function () {
           clearTimeout(pagerT);
@@ -666,6 +710,8 @@
             var i = Math.round(deck.scrollLeft / Math.max(1, deck.clientWidth));
             if (i === activeCol || i < 0 || i >= cols.length) return;
             activeCol = i;
+            var colEl = deck.querySelectorAll(".feed-col")[i];
+            document.body.classList.toggle("strip-away", !!colEl && colEl.scrollTop > 40);
             syncFilterUI(); updatePagerActive(); refreshMeta();
           }, 80);
         }, { passive: true });

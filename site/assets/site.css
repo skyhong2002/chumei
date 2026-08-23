@@ -1313,6 +1313,9 @@ body.feed-locked .fab { bottom: 96px; }
     -webkit-overflow-scrolling: touch;
     border: none; border-radius: 0; background: var(--color-canvas);
     padding: 0 14px 24px;
+    /* 只把垂直平移交給瀏覽器；橫向手勢留給 JS 換頁——Chrome 不會把橫向捲動
+       從內層垂直捲動容器鏈到外層橫向容器，純 CSS scroll-snap 在觸控下滑不動 */
+    touch-action: pan-y;
   }
   /* 分頁指示列：圓點跳欄＋新增河道 */
   .feed-pager-bar {
