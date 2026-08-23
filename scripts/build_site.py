@@ -1039,8 +1039,14 @@ def org_pages(entries, events):
         avatar = (f'<img class="org-avatar" src="{esc(ent["avatar"])}" alt="">' if ent.get("avatar")
                   else '<span class="org-avatar src-avatar-fallback av-' + esc(ent["school"]) + '">'
                        + esc((ent["name"] or "？")[len(ent["name"]) > 2 and ent["name"][:2] in ("清大", "交大", "陽明") and 2 or 0]) + "</span>")
-        links = "".join(f'<a class="btn" href="{esc(l["url"])}" rel="noopener">{PLAT.get(l["platform"], l["platform"])}</a>'
-                        for l in ent["links"])
+        follow_btn = (f'<button class="btn heart-btn heart-btn-label" data-org-id="{ent["id"]}" '
+                      f'data-org-name="{esc(ent["name"])}" aria-pressed="false" '
+                      f'title="追蹤 {esc(ent["name"])}">{FEED_ICON["heart"]}'
+                      f'<span class="hb-follow">追蹤</span>'
+                      f'<span class="hb-following">追蹤中</span></button>')
+        links = follow_btn + "".join(
+            f'<a class="btn" href="{esc(l["url"])}" rel="noopener">{PLAT.get(l["platform"], l["platform"])}</a>'
+            for l in ent["links"])
         campus_chip = ""
         if ent.get("campus") in ("yangming", "guangfu"):
             campus_chip = f'<span class="chip chip-campus">{"陽明" if ent["campus"] == "yangming" else "交大"}校區</span>'
