@@ -833,6 +833,8 @@ main.main-wide { max-width: min(1680px, 100%); }
 :root[data-theme="dark"] .cal-cell.cal-empty { background: none; border: none; }
 
 /* ---------- 貼文河道（Threads 式） ---------- */
+/* 橫滑不要變成瀏覽器的上一頁/下一頁導覽手勢 */
+html:has(.feed-main) { overscroll-behavior-x: none; }
 .feed-main .story-strip, .feed-main .feed-tabs-row, .post-feed {
   max-width: 660px; margin-left: auto; margin-right: auto;
 }
@@ -1020,7 +1022,7 @@ main.main-wide { max-width: min(1680px, 100%); }
 /* 桌機欄位河道：Threads 式——外層鎖定視窗高度、只捲欄內；每欄自選河道，tabs 收進右上工具組 */
 @media (min-width: 1080px) {
   .feed-main .story-strip { max-width: 1160px; }
-  body.feed-locked { height: 100dvh; overflow: hidden; }
+  body.feed-locked { height: 100dvh; overflow: hidden; overscroll-behavior-x: none; }
   body.feed-locked .feed-main {
     display: flex; flex-direction: column;
     height: 100dvh; padding-bottom: 10px;
@@ -1057,7 +1059,11 @@ main.main-wide { max-width: min(1680px, 100%); }
   min-width: 0;
   position: sticky; top: 12px;
   height: calc(100vh - 24px);
-  overflow-y: auto; overscroll-behavior: contain;
+  /* overflow-y:auto 會讓 overflow-x 自動算成 auto，欄位就變成橫向捲動容器，
+     橫滑時是欄內的貼文在微幅位移、外層 deck 不動。clip 不會建立捲動容器，
+     橫向手勢才會鏈到 deck。 */
+  overflow-x: clip; overflow-y: auto;
+  overscroll-behavior-y: contain;
   scrollbar-width: thin;
   /* 面板同畫布色（Threads 式），只靠細邊框分欄，不做色階過渡 */
   background: var(--color-canvas);
@@ -1283,7 +1289,7 @@ body.feed-locked .fab { bottom: 96px; }
 
 /* ---------- 手機/平板：河道＝左右分頁（欄內只上下捲，整頁不捲） ---------- */
 @media (max-width: 1079px) {
-  body.feed-locked { height: 100dvh; overflow: hidden; padding-bottom: 0; }
+  body.feed-locked { height: 100dvh; overflow: hidden; padding-bottom: 0; overscroll-behavior-x: none; }
   body.feed-locked .feed-main {
     display: flex; flex-direction: column; min-height: 0;
     max-width: none; margin: 0; padding-bottom: 0;
@@ -1309,7 +1315,7 @@ body.feed-locked .fab { bottom: 96px; }
     flex: 0 0 100%; width: 100%; min-width: 0;
     scroll-snap-align: start; scroll-snap-stop: always;
     position: static; height: 100%;
-    overflow-y: auto; overscroll-behavior-y: contain;
+    overflow-x: clip; overflow-y: auto; overscroll-behavior-y: contain;
     /* 不用 -webkit-overflow-scrolling: touch——iOS 會另開捲動圖層吃掉 touchmove，
        換頁手勢就傳不到 JS（iOS 13+ 本來就有慣性捲動，不需要它） */
     border: none; border-radius: 0; background: var(--color-canvas);

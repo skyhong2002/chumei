@@ -726,6 +726,25 @@
       // 一般滑鼠等於無法左右移動 → 補上左右箭頭與 shift/橫向滾輪。
       function bindDeckNav(deck) {
         var wrap = deck.parentNode;
+        var dbg = null;
+        if (/[?&]swipedebug=1/.test(location.search)) {
+          dbg = document.getElementById("chumei-swipedebug");
+          if (!dbg) {
+            dbg = document.createElement("div");
+            dbg.id = "chumei-swipedebug";
+            dbg.style.cssText = "position:fixed;left:280px;bottom:12px;z-index:99;max-width:620px;padding:8px 10px;" +
+              "background:#000d;color:#0f0;font:12px/1.5 monospace;border:1px solid #0f0;border-radius:8px;white-space:pre-wrap";
+            document.body.appendChild(dbg);
+          }
+        }
+        function dbgInit() {
+          if (!dbg) return;
+          dbg.textContent = "桌機 deck debug：在河道上用觸控板左右滑\ncols=" + cols.length +
+            " deckW=" + deck.clientWidth + " scrollW=" + deck.scrollWidth +
+            " 可捲=" + (deck.scrollWidth - deck.clientWidth) +
+            "\n欄 overscroll-x=" + getComputedStyle(deck.querySelector(".feed-col")).overscrollBehaviorX +
+            " 箭頭=" + (wrap.querySelector(".deck-next") ? "有" : "無");
+        }
         var prev = wrap.querySelector(".deck-prev"), next = wrap.querySelector(".deck-next");
         if (!prev) {
           prev = document.createElement("button");
@@ -753,7 +772,7 @@
         }
         deck.addEventListener("scroll", sync, { passive: true });
         window.addEventListener("resize", sync);
-        sync();
+        sync(); dbgInit();
         // 觸控板左右滑：真實手勢前幾個事件常帶垂直雜訊，Chrome 會先把整個手勢
         // 軸鎖定到欄位的垂直捲動 → 這裡自己累積判定方向，橫向勝出就鎖定接手。
         var gx = 0, gy = 0, gt = 0, lock = null;
@@ -766,6 +785,12 @@
           } else {
             gx += Math.abs(e.deltaX); gy += Math.abs(e.deltaY);
             if (!lock && (gx > 6 || gy > 6)) lock = gx > gy ? "x" : "y";
+          }
+          if (dbg) {
+            dbg.textContent = "wheel dX=" + Math.round(e.deltaX) + " dY=" + Math.round(e.deltaY) +
+              " 累積x=" + Math.round(gx) + " 累積y=" + Math.round(gy) + " 鎖定=" + lock +
+              " cancelable=" + e.cancelable +
+              "\nscrollLeft=" + Math.round(deck.scrollLeft) + " / 可捲=" + (deck.scrollWidth - deck.clientWidth);
           }
           if (lock !== "x") return;
           var dx = e.deltaX || (e.shiftKey ? e.deltaY : 0);
@@ -819,6 +844,7 @@
         Object.keys(state).forEach(function (k) {
           if (state[k] && state[k] !== "all") qs.set(k, state[k]);
         });
+        if (/[?&]swipedebug=1/.test(location.search)) qs.set("swipedebug", "1");  // 診斷旗標別被洗掉
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       }
       function render(more) {
