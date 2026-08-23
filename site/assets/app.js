@@ -655,46 +655,54 @@
           }, { passive: true });
         });
       }
-      // 觸控換頁：欄位是垂直捲動容器，橫向手勢不會自動鏈到外層，這裡自己接
+      // 觸控換頁：欄位是垂直捲動容器，橫向手勢不會自動鏈到外層捲動容器
+      // （Chrome 不鏈、iOS Safari 會把 pointer 事件在判定捲動時取消），所以用
+      // touch 事件自己接：判定為橫向時 preventDefault 搶下手勢再驅動 deck。
       function bindSwipe(deck) {
         var drag = null, snapT;
-        function restoreSnap(delay) {
+        function snapBack(delay) {
           clearTimeout(snapT);
           snapT = setTimeout(function () { deck.style.scrollSnapType = ""; }, delay);
         }
-        deck.addEventListener("pointerdown", function (e) {
-          if (e.pointerType === "mouse") return;
-          drag = { x: e.clientX, y: e.clientY, left: deck.scrollLeft, t: Date.now(), on: false };
+        deck.addEventListener("touchstart", function (e) {
+          if (e.touches.length !== 1 || cols.length < 2) { drag = null; return; }
+          var t0 = e.touches[0];
+          drag = { x: t0.clientX, y: t0.clientY, left: deck.scrollLeft, t: Date.now(), on: false, dec: false };
         }, { passive: true });
-        deck.addEventListener("pointermove", function (e) {
-          if (!drag) return;
-          var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-          if (!drag.on) {
-            if (Math.abs(dx) < 10 || Math.abs(dx) <= Math.abs(dy)) return;  // 尚未判定為橫向
-            drag.on = true;
-            clearTimeout(snapT);
-            deck.style.scrollSnapType = "none";   // 拖曳中先關 snap，放開才吸附
+        deck.addEventListener("touchmove", function (e) {
+          if (!drag || e.touches.length !== 1) return;
+          var t0 = e.touches[0];
+          var dx = t0.clientX - drag.x, dy = t0.clientY - drag.y;
+          if (!drag.dec) {
+            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;   // 還看不出方向（門檻要低，趕在瀏覽器決定捲動前接手）
+            drag.dec = true;
+            drag.on = Math.abs(dx) > Math.abs(dy);              // 橫向優勢才接手
+            if (drag.on) { clearTimeout(snapT); deck.style.scrollSnapType = "none"; }
           }
+          if (!drag.on) return;
+          if (e.cancelable) e.preventDefault();                 // 不讓瀏覽器當成垂直捲動
           deck.scrollLeft = drag.left - dx;
-        }, { passive: true });
-        function end(e) {
+          drag.dx = dx;
+        }, { passive: false });
+        function end() {
           if (!drag) return;
           var d = drag; drag = null;
           if (!d.on) return;
           var w = Math.max(1, deck.clientWidth);
-          var dx = (e && e.clientX != null ? e.clientX : d.x) - d.x;
+          var dx = d.dx || 0;
           var from = Math.round(d.left / w);
           var v = Math.abs(dx) / Math.max(1, Date.now() - d.t);   // px/ms
           var target = (Math.abs(dx) > w * 0.25 || v > 0.35)
             ? from + (dx < 0 ? 1 : -1)
             : Math.round(deck.scrollLeft / w);
           target = Math.max(0, Math.min(cols.length - 1, target));
-          deck.scrollTo({ left: target * w, behavior: "smooth" });
-          restoreSnap(420);
+          if (deck.scrollTo) deck.scrollTo({ left: target * w, behavior: "smooth" });
+          else deck.scrollLeft = target * w;
+          snapBack(420);
         }
-        deck.addEventListener("pointerup", end, { passive: true });
-        deck.addEventListener("pointercancel", function () {
-          if (drag && drag.on) restoreSnap(0);
+        deck.addEventListener("touchend", end, { passive: true });
+        deck.addEventListener("touchcancel", function () {
+          if (drag && drag.on) snapBack(0);
           drag = null;
         }, { passive: true });
       }

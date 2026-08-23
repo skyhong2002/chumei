@@ -1310,7 +1310,8 @@ body.feed-locked .fab { bottom: 96px; }
     scroll-snap-align: start; scroll-snap-stop: always;
     position: static; height: 100%;
     overflow-y: auto; overscroll-behavior-y: contain;
-    -webkit-overflow-scrolling: touch;
+    /* 不用 -webkit-overflow-scrolling: touch——iOS 會另開捲動圖層吃掉 touchmove，
+       換頁手勢就傳不到 JS（iOS 13+ 本來就有慣性捲動，不需要它） */
     border: none; border-radius: 0; background: var(--color-canvas);
     padding: 0 14px 24px;
     /* 只把垂直平移交給瀏覽器；橫向手勢留給 JS 換頁——Chrome 不會把橫向捲動
