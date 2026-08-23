@@ -403,6 +403,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 .card {
+  position: relative;
   background: var(--color-surface); border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg, 16px); overflow: hidden; display: flex; flex-direction: column;
   transition: transform var(--motion-normal, 220ms) var(--motion-ease), box-shadow var(--motion-normal, 220ms);
@@ -1237,3 +1238,45 @@ body.feed-locked .fab { bottom: 96px; }
 }
 .agd-meta { font-size: 0.76rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agd-empty { color: var(--color-text-muted); font-size: 0.85rem; padding: 8px 2px; }
+
+/* ---------- 追蹤愛心 + toast ---------- */
+.heart-btn { cursor: pointer; }
+.heart-btn[aria-pressed="true"] { color: var(--chumei-plum-text, #C069DD); }
+.heart-btn[aria-pressed="true"] svg { fill: currentColor; }
+.card-heart {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  width: 38px; height: 38px; border: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgb(0 0 0 / 45%); color: #fff;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.card-heart svg { width: 20px; height: 20px; }
+.card-heart[aria-pressed="true"] { color: #DA8FF0; }
+.heart-btn-label svg { width: 18px; height: 18px; margin-right: 7px; }
+.heart-btn-label .hb-following { display: none; }
+.heart-btn-label[aria-pressed="true"] .hb-follow { display: none; }
+.heart-btn-label[aria-pressed="true"] .hb-following { display: inline; }
+.chumei-toast {
+  position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 80;
+  transform: translate(-50%, 12px);
+  max-width: min(92vw, 480px); padding: 10px 18px; border-radius: 999px;
+  background: var(--color-surface-raised); color: var(--color-text-primary);
+  border: 1px solid var(--color-border-subtle); box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+  font-size: 0.9rem; text-align: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s;
+}
+.chumei-toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.chumei-toast a { color: var(--color-text-brand); }
+@media (min-width: 700px) { .chumei-toast { bottom: 28px; } }
+.ev-row-wrap { position: relative; display: flex; }
+.ev-row-wrap .ev-row { flex: 1; min-width: 0; padding-right: 44px; }
+.ev-row-heart {
+  position: absolute; top: 50%; right: 2px; transform: translateY(-50%); z-index: 2;
+  width: 36px; height: 36px; border: 0; border-radius: 50%; background: none;
+  display: flex; align-items: center; justify-content: center; color: var(--color-text-muted);
+}
+.ev-row-heart:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.ev-row-heart svg { width: 19px; height: 19px; }
+/* 已追蹤的紫色不被 :hover 覆蓋（同特異度、後定義者勝） */
+.heart-btn[aria-pressed="true"]:hover { color: var(--chumei-plum-text, #C069DD); }
+.card-heart[aria-pressed="true"]:hover { color: #DA8FF0; }

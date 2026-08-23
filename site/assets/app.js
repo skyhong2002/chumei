@@ -353,7 +353,8 @@
         dots: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
         cal: SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
         send: SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
-        ext: SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>'
+        ext: SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
+        heart: SVG_OPEN + '<path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg>'
       };
 
       function evChip(e) {
@@ -391,6 +392,7 @@
         var shareUrl = ev0 ? location.origin + "/event/" + ev0.id + "/" : (p.url || location.origin);
         var shareTitle = ev0 ? ev0.title : (p.source_name || "竹梅活動觀測站");
         var actions = '<div class="feed-actions">' +
+          (p.org_id ? '<button class="feed-action heart-btn" data-org-id="' + p.org_id + '" data-org-name="' + esc(p.source_name || "") + '" aria-pressed="false" title="追蹤 ' + esc(p.source_name || "") + '">' + I.heart + "</button>" : "") +
           (ev0 ? '<a class="feed-action" href="/event/' + ev0.id + '/" title="活動詳情">' + I.cal +
             (p.events.length > 1 ? "<span>" + p.events.length + "</span>" : "") + "</a>" : "") +
           '<button class="feed-action btn-share" data-url="' + esc(shareUrl) + '" data-title="' + esc(shareTitle) + '" title="分享">' + I.send + "</button>" +
@@ -1163,13 +1165,17 @@
         ? '<img class="evr-thumb" src="' + esc(e.poster_image) + '" alt="" loading="lazy">'
         : '<span class="evr-thumb evr-thumb-txt np-' + esc(e.school === "nthu" ? "nthu" : e.school === "nycu" ? "nycu" : "other") + '">' +
           (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "梅竹") + "</span>";
-      return '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
+      var rowHeart = e.org_id
+        ? '<button class="heart-btn ev-row-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" title="追蹤 ' + esc(e.org_name || e.organizer || "") + '">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg></button>'
+        : "";
+      return '<div class="ev-row-wrap">' + rowHeart + '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
         '<span class="evr-main"><span class="evr-when">' + esc(when) +
         (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">自由入場</span>' : "") +
         (e.fee === "free" ? '<span class="chip chip-fee-free">免費</span>' : e.fee === "paid" ? '<span class="chip chip-fee-paid">$</span>' : "") +
         (e.extraction && e.extraction.needs_review ? '<span class="chip chip-review">待確認</span>' : "") +
         '</span><span class="evr-title">' + esc(e.title) + "</span>" +
-        '<span class="evr-meta">' + esc([where, e.organizer].filter(Boolean).join("｜")) + "</span></span></a>";
+        '<span class="evr-meta">' + esc([where, e.organizer].filter(Boolean).join("｜")) + "</span></span></a></div>";
     }
 
     function card(e) {
@@ -1192,7 +1198,11 @@
       var bd = ongoing ? new Date(e.end_at) : d;
       var badge = '<div class="date-badge"><span class="m">' + (ongoing ? "至" : "") + (bd.getMonth() + 1) + '月</span><span class="d">' + bd.getDate() + "</span></div>";
       var where = [e.campus ? bundle.labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
-      return '<div class="card"><a class="card-link" href="/event/' + e.id + '/">' +
+      var heart = e.org_id
+        ? '<button class="heart-btn card-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" title="追蹤 ' + esc(e.org_name || e.organizer || "") + '">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg></button>'
+        : "";
+      return '<div class="card">' + heart + '<a class="card-link" href="/event/' + e.id + '/">' +
         '<div class="card-media">' + media +
         badge + "</div>" +
         '<div class="card-body">' +
@@ -1645,4 +1655,78 @@
   window.addEventListener("load", function () {
     navigator.serviceWorker.register("/sw.js").catch(function () {});
   });
+})();
+
+/* 追蹤（愛心）：追蹤單位＝push 偏好的 orgs。未開推播也先記在 localStorage，
+   開啟推播後（/notify/）同一份偏好直接生效。 */
+(function () {
+  "use strict";
+  function readPrefs() {
+    try { return JSON.parse(localStorage.getItem("push-prefs") || "null") || {}; } catch (e) { return {}; }
+  }
+  function writePrefs(p) { try { localStorage.setItem("push-prefs", JSON.stringify(p)); } catch (e) {} }
+  function isFollowed(id) {
+    return (readPrefs().orgs || []).some(function (o) { return String(o.id) === String(id); });
+  }
+  var syncT;
+  function syncServer() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    clearTimeout(syncT);
+    syncT = setTimeout(function () {
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        return reg && reg.pushManager.getSubscription();
+      }).then(function (sub) {
+        if (!sub) return;
+        var p = readPrefs();
+        return fetch("/push/subscribe", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: sub.toJSON(), prefs: {
+            schools: p.schools || [], cats: p.cats || [], orgs: p.orgs || [], keywords: p.keywords || []
+          } })
+        });
+      }).catch(function () {});
+    }, 500);
+  }
+  function toggle(id, name) {
+    var p = readPrefs();
+    p.orgs = p.orgs || [];
+    var i = p.orgs.findIndex(function (o) { return String(o.id) === String(id); });
+    var followed;
+    if (i >= 0) { p.orgs.splice(i, 1); followed = false; }
+    else { p.orgs.push({ id: isNaN(+id) ? id : +id, name: name }); followed = true; }
+    writePrefs(p); syncServer(); refresh();
+    return followed;
+  }
+  function refresh() {
+    document.querySelectorAll(".heart-btn").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(isFollowed(b.dataset.orgId)));
+    });
+  }
+  var toastT;
+  function toast(html) {
+    var el = document.querySelector(".chumei-toast");
+    if (!el) { el = document.createElement("div"); el.className = "chumei-toast"; document.body.appendChild(el); }
+    el.innerHTML = html;
+    el.classList.add("show");
+    clearTimeout(toastT);
+    toastT = setTimeout(function () { el.classList.remove("show"); }, 3800);
+  }
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest(".heart-btn");
+    if (!b || !b.dataset.orgId) return;
+    ev.preventDefault();
+    var name = b.dataset.orgName || "這個單位";
+    if (toggle(b.dataset.orgId, name)) {
+      var pushOn = false;
+      try { pushOn = "Notification" in window && Notification.permission === "granted"; } catch (e) {}
+      toast("❤️ 已追蹤 " + name + (pushOn ? "，有新活動會通知你" : "——<a href=\"/notify/\">開啟推播</a>才會收到通知"));
+    } else {
+      toast("已取消追蹤 " + name);
+    }
+  });
+  // 河道/卡片重繪後補上愛心狀態（childList 觀察不會被 aria-pressed 自身觸發）
+  new MutationObserver(refresh).observe(document.documentElement, { childList: true, subtree: true });
+  if (document.readyState !== "loading") refresh();
+  else document.addEventListener("DOMContentLoaded", refresh);
+  window.chumeiFollow = { isFollowed: isFollowed, toggle: toggle, refresh: refresh, sync: syncServer };
 })();

@@ -1,0 +1,352 @@
+<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>通知與追蹤｜竹梅活動觀測站</title><meta name="description" content="App 推播與追蹤設定——挑學校、類型、追蹤單位、關鍵字，符合條件的新活動才通知你。"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css"><link rel="stylesheet" href="/assets/site.css"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
+.sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+@media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
+.sub-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);text-decoration:none;color:var(--color-text-primary)}
+.sub-card:hover{border-color:var(--color-border-strong);text-decoration:none}
+.sub-card .icon{width:44px;height:44px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.sub-card .icon svg{width:26px;height:26px;fill:#fff}
+.sub-card strong{display:block;line-height:1.35}
+.sub-card .handle{display:block;color:var(--color-text-brand);font-size:.9rem;margin-top:1px}
+.sub-card p{margin:6px 0 0;font-size:.9rem;color:var(--color-text-secondary)}
+.sub-note{font-size:.9rem;color:var(--color-text-muted)}
+.sub-combo{margin:10px 0}
+.sub-combo>summary{cursor:pointer;color:var(--color-text-secondary)}
+.push-card{border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);padding:16px 18px;margin:14px 0}
+.push-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.push-top .icon{background:linear-gradient(135deg,#8E24AA 0%,#2462FF 100%)}
+.push-title{flex:1;min-width:200px}
+.push-title strong{display:block;line-height:1.35}
+.push-status{margin:3px 0 0;font-size:.9rem;color:var(--color-text-secondary)}
+.push-status.on{color:var(--color-text-brand)}
+button.btn{cursor:pointer;font-family:inherit;background:none}
+button.btn.btn-primary{background:var(--color-action-primary)}
+.push-guide{margin:12px 0 0;padding:12px 14px;border:1px dashed var(--color-border-strong);border-radius:12px;font-size:.92rem}
+.push-guide ol{margin:6px 0 0;padding-left:1.3em}
+.push-guide li{margin:4px 0}
+.push-prefs{margin-top:14px;border-top:1px solid var(--color-border-subtle);padding-top:12px}
+.push-prefs-lede{font-size:.9rem;color:var(--color-text-secondary);margin:0 0 10px}
+.push-input{border:1px solid var(--color-border-subtle);border-radius:999px;background:var(--color-surface);color:var(--color-text-primary);font:inherit;font-size:.88rem;padding:4px 12px;min-width:14em;flex:1}
+.push-input:focus{outline:none;border-color:var(--color-border-strong)}
+.push-sug{margin:6px 0 0 0;border:1px solid var(--color-border-subtle);border-radius:12px;overflow:hidden}
+.push-sug button{display:flex;gap:10px;align-items:center;width:100%;padding:8px 12px;border:0;background:none;color:var(--color-text-primary);font:inherit;font-size:.9rem;cursor:pointer;text-align:left}
+.push-sug button:hover{background:var(--color-surface-soft)}
+.push-sug img,.push-sug .sug-av{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:var(--color-surface-soft)}
+.push-sug .sug-school{margin-left:auto;font-size:.78rem;color:var(--color-text-muted);flex:0 0 auto}
+.push-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 0}
+.push-card [hidden]{display:none!important}
+.push-saved{font-size:.85rem;color:var(--color-text-brand)}
+.fchip .x{margin-left:6px;opacity:.6}
+@media(max-width:640px){.push-top .btn{width:100%;justify-content:center}}
+</style></head><body><header class="site-header">
+  <a class="brand" href="/" aria-label="竹梅活動觀測站"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a>
+  <nav class="site-nav" aria-label="主導覽">
+    <a class="nav-item" href="/"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l-2 0l9 -9l9 9l-2 0"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7"/><path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6"/></svg><span class="nav-label">最新</span></a>
+    <a class="nav-item" href="/events/"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="nav-label">活動</span></a>
+    <a class="nav-item" href="/calendar/"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg><span class="nav-label">日曆</span></a>
+    <a class="nav-item" href="/stories/"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.56 3.69a9 9 0 0 0 -2.92 1.95"/><path d="M3.69 8.56a9 9 0 0 0 -.69 3.44"/><path d="M3.69 15.44a9 9 0 0 0 1.95 2.92"/><path d="M8.56 20.31a9 9 0 0 0 3.44 .69"/><path d="M15.44 20.31a9 9 0 0 0 2.92 -1.95"/><path d="M20.31 15.44a9 9 0 0 0 .69 -3.44"/><path d="M20.31 8.56a9 9 0 0 0 -1.95 -2.92"/><path d="M15.44 3.69a9 9 0 0 0 -3.44 -.69"/></svg><span class="nav-label">限動</span></a>
+    <details class="nav-more">
+      <summary class="nav-item" aria-label="更多選單"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l16 0"/><path d="M4 12l16 0"/><path d="M4 18l16 0"/></svg><span class="nav-label">更多</span></summary>
+      <div class="nav-more-menu">
+        <a href="/notify/">推播與追蹤</a>
+        <a href="/subscribe/">訂閱管道</a>
+        <a href="/source/">資料來源</a>
+        <a href="/about/">關於竹梅</a>
+        <button id="theme-toggle">切換深淺色</button>
+      </div>
+    </details>
+  </nav>
+</header><main class="prose">
+<h1>通知與追蹤</h1>
+<p>把竹梅裝成 App、挑你在乎的——符合條件的新活動才會通知你。在貼文或活動上按 <b>❤️</b> 追蹤單位，也會記到這裡。</p>
+<section class="push-card" id="push-card">
+  <div class="push-top">
+    <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></span>
+    <span class="push-title">
+      <strong>App 推播（客製化）</strong>
+      <p class="push-status" id="push-status">檢查支援度⋯</p>
+    </span>
+    <button class="btn btn-primary" id="push-toggle" hidden>開啟推播</button>
+  </div>
+  <div class="push-guide" id="push-ios-guide" hidden>
+    <b>iPhone／iPad 三步驟</b>（Apple 規定：要先把竹梅裝成 App 才能收推播）
+    <ol>
+      <li>用 <b>Safari</b> 開啟這個網站，點下方<b>分享</b>按鈕 <span aria-hidden="true">⎋</span></li>
+      <li>選<b>「加入主畫面」</b>→ 加入</li>
+      <li>從<b>主畫面的竹梅圖示</b>打開，回到這一頁按「開啟推播」</li>
+    </ol>
+  </div>
+  <div class="push-prefs" id="push-prefs">
+    <p class="push-prefs-lede">挑你在乎的，其他的不吵你——<b>什麼都不選＝所有新活動都通知</b>；有選的話，學校先過濾，類型／單位／關鍵字任一命中就推。</p>
+    <div class="filter-row"><span class="label">學校</span><span id="pp-school" class="fgroup"></span></div>
+    <div class="filter-row"><span class="label">類型</span><span id="pp-cat" class="fgroup"></span></div>
+    <div class="filter-row"><span class="label">單位</span><span class="fgroup" id="pp-org-box"><span id="pp-orgs" style="display:contents"></span><input id="pp-org-q" class="push-input" type="search" placeholder="搜尋社團／系學會／單位名稱⋯" autocomplete="off"></span></div>
+    <div class="push-sug" id="pp-org-sug" hidden></div>
+    <div class="filter-row"><span class="label">關鍵字</span><span class="fgroup" id="pp-kw-box"><span id="pp-kws" style="display:contents"></span><input id="pp-kw" class="push-input" type="text" placeholder="像是：爵士、AI、桌遊⋯（Enter 加入）" autocomplete="off"></span></div>
+    <p class="push-foot">
+      <button class="fchip" id="push-test" hidden><span class="fchip-label">發送測試通知</span></button>
+      <button class="fchip" id="push-off" hidden><span class="fchip-label">關閉推播</span></button>
+      <span class="push-saved" id="pp-saved" hidden>偏好已儲存 ✓</span>
+    </p>
+  </div>
+</section>
+<details class="sub-combo"><summary>📖 安裝與推播教學（iPhone 必看）</summary>
+  <div class="push-guide" style="border-style:solid">
+    <b>📱 iPhone／iPad（Safari）</b>
+    <ol>
+      <li>點 Safari 下方的分享按鈕 → <b>「加入主畫面」</b>（竹梅是 PWA，不用經過 App Store）</li>
+      <li>從主畫面打開竹梅 → 來訂閱頁按<b>「開啟推播」</b>→ 允許通知</li>
+      <li>需要 iOS 16.4 以上；沒先加入主畫面的話，Safari 不會出現推播選項</li>
+    </ol>
+  </div>
+  <div class="push-guide" style="border-style:solid">
+    <b>🤖 Android（Chrome）</b>
+    <ol>
+      <li>直接按「開啟推播」→ 允許通知就完成，<b>不必</b>先安裝</li>
+      <li>想要有 App 圖示：右上 ⋮ 選單 → <b>「加到主畫面」</b>或<b>「安裝應用程式」</b></li>
+    </ol>
+  </div>
+  <div class="push-guide" style="border-style:solid">
+    <b>💻 電腦（Chrome／Edge／Firefox）</b>
+    <ol>
+      <li>按「開啟推播」→ 允許通知即可；Chrome／Edge 也可按網址列右側的安裝圖示把竹梅裝成視窗 App</li>
+      <li>macOS 記得在「系統設定 → 通知」允許瀏覽器顯示通知，「專注模式」開著會靜音</li>
+    </ol>
+  </div>
+  <div class="push-guide" style="border-style:solid">
+    <b>🔕 通知沒出現？</b>
+    <ol>
+      <li>先按上面的「發送測試通知」確認線路通不通</li>
+      <li>檢查系統通知設定有沒有允許（iOS：設定 → 通知 → 竹梅；Android／電腦：允許瀏覽器通知）</li>
+      <li>推播只發<b>新收錄</b>的活動——訂閱當下既有的活動不會回放</li>
+    </ol>
+  </div>
+</details>
+<h2>其他訂閱方式</h2>
+<p>Telegram 頻道、查詢 Bot、RSS 與行事曆訂閱都在<a href="/subscribe/">訂閱管道</a>。</p>
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id)};
+  var statusEl=$("push-status"), toggle=$("push-toggle"), iosGuide=$("push-ios-guide"),
+      testBtn=$("push-test"), offBtn=$("push-off"), savedEl=$("pp-saved");
+  var CATS=["演講","工作坊","表演","展覽","比賽","營隊","徵才","市集","運動","聚會","其他"];
+  var supported="serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  var isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  var standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+  var subscribed=false, saveTimer=null, savedTimer=null;
+
+  var prefs={schools:[],cats:[],orgs:[],keywords:[]};
+  try{var st=JSON.parse(localStorage.getItem("push-prefs")||"null"); if(st) prefs=Object.assign(prefs,st);}catch(e){}
+
+  function post(url,body){
+    return fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){return r.json()});
+  }
+  function b64ToU8(s){
+    var pad="=".repeat((4-s.length%4)%4), raw=atob((s+pad).replace(/-/g,"+").replace(/_/g,"/"));
+    var out=new Uint8Array(raw.length);
+    for(var i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
+    return out;
+  }
+  function setStatus(text,on){statusEl.textContent=text;statusEl.classList.toggle("on",!!on);}
+  function getSub(){
+    return navigator.serviceWorker.register("/sw.js").then(function(reg){return reg.pushManager.getSubscription();});
+  }
+
+  // ---- 偏好 UI ----
+  function chip(label,pressed,onclick,removable){
+    var b=document.createElement("button");
+    b.className="fchip"; b.type="button";
+    b.innerHTML='<span class="fchip-label"></span>';
+    b.querySelector(".fchip-label").textContent=label;
+    if(removable){var x=document.createElement("span");x.className="x";x.textContent="✕";b.appendChild(x);}
+    b.setAttribute("aria-pressed",String(!!pressed));
+    b.addEventListener("click",onclick);
+    return b;
+  }
+  function renderSchool(){
+    var host=$("pp-school");host.innerHTML="";
+    [["","清交都要"],["nthu","清大"],["nycu","陽明交大"]].forEach(function(o){
+      var cur=prefs.schools.length===1?prefs.schools[0]:"";
+      host.appendChild(chip(o[1],cur===o[0],function(){
+        prefs.schools=o[0]?[o[0]]:[]; renderSchool(); save();
+      }));
+    });
+  }
+  function renderCats(){
+    var host=$("pp-cat");host.innerHTML="";
+    CATS.forEach(function(c){
+      host.appendChild(chip(c,prefs.cats.indexOf(c)>=0,function(){
+        var i=prefs.cats.indexOf(c);
+        if(i>=0)prefs.cats.splice(i,1);else prefs.cats.push(c);
+        renderCats(); save();
+      }));
+    });
+  }
+  function renderOrgs(){
+    var host=$("pp-orgs");host.innerHTML="";
+    prefs.orgs.forEach(function(o,i){
+      host.appendChild(chip(o.name,true,function(){prefs.orgs.splice(i,1);renderOrgs();save();},true));
+    });
+  }
+  function renderKws(){
+    var host=$("pp-kws");host.innerHTML="";
+    prefs.keywords.forEach(function(k,i){
+      host.appendChild(chip(k,true,function(){prefs.keywords.splice(i,1);renderKws();save();},true));
+    });
+  }
+  function save(){
+    try{localStorage.setItem("push-prefs",JSON.stringify(prefs));}catch(e){}
+    if(!subscribed)return;
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(function(){
+      getSub().then(function(sub){
+        if(!sub)return;
+        return post("/push/subscribe",{subscription:sub.toJSON(),prefs:prefs}).then(function(){
+          savedEl.hidden=false;
+          clearTimeout(savedTimer);
+          savedTimer=setTimeout(function(){savedEl.hidden=true;},1800);
+        });
+      }).catch(function(){});
+    },600);
+  }
+
+  // ---- 單位搜尋 ----
+  var orgIndex=null;
+  function loadOrgs(){
+    if(orgIndex)return Promise.resolve(orgIndex);
+    return fetch("/data/sources.json").then(function(r){return r.json()}).then(function(d){
+      orgIndex=(d.entries||[]).filter(function(e){return e.id!=null;});
+      return orgIndex;
+    });
+  }
+  var SCHOOL_S={nthu:"清大",nycu:"陽明交大",both:"清交"};
+  var orgQ=$("pp-org-q"), sug=$("pp-org-sug");
+  function showSug(list){
+    sug.innerHTML="";
+    if(!list.length){sug.hidden=true;return;}
+    list.forEach(function(e){
+      var b=document.createElement("button");b.type="button";
+      var av=e.avatar?'<img src="'+e.avatar+'" alt="" loading="lazy">':'<span class="sug-av"></span>';
+      b.innerHTML=av+'<span class="sug-name"></span><span class="sug-school"></span>';
+      b.querySelector(".sug-name").textContent=e.name;
+      b.querySelector(".sug-school").textContent=(SCHOOL_S[e.school]||"")+(e.events?"・"+e.events+" 場":"");
+      b.addEventListener("click",function(){
+        if(!prefs.orgs.some(function(o){return o.id===e.id;}))prefs.orgs.push({id:e.id,name:e.name});
+        orgQ.value="";sug.hidden=true;renderOrgs();save();
+      });
+      sug.appendChild(b);
+    });
+    sug.hidden=false;
+  }
+  orgQ.addEventListener("input",function(){
+    var q=orgQ.value.trim();
+    if(!q){sug.hidden=true;return;}
+    loadOrgs().then(function(list){
+      var ql=q.toLowerCase();
+      var hits=list.filter(function(e){return e.name.toLowerCase().indexOf(ql)>=0;});
+      hits.sort(function(a,b){
+        var ap=a.name.toLowerCase().indexOf(ql)===0?0:1, bp=b.name.toLowerCase().indexOf(ql)===0?0:1;
+        return ap-bp||(b.events||0)-(a.events||0);
+      });
+      showSug(hits.slice(0,8));
+    });
+  });
+  document.addEventListener("click",function(ev){
+    if(!sug.contains(ev.target)&&ev.target!==orgQ)sug.hidden=true;
+  });
+
+  // ---- 關鍵字 ----
+  var kwInput=$("pp-kw");
+  function addKw(){
+    var v=kwInput.value.trim();
+    if(!v)return;
+    if(prefs.keywords.indexOf(v)<0)prefs.keywords.push(v);
+    kwInput.value="";renderKws();save();
+  }
+  kwInput.addEventListener("keydown",function(ev){
+    if(ev.key==="Enter"){ev.preventDefault();addKw();}
+  });
+  kwInput.addEventListener("blur",addKw);
+
+  renderSchool();renderCats();renderOrgs();renderKws();
+
+  // ---- 訂閱流程 ----
+  function uiSubscribed(){
+    subscribed=true;
+    setStatus("推播已開啟──偏好改了會自動儲存。",true);
+    toggle.hidden=true;testBtn.hidden=false;offBtn.hidden=false;
+  }
+  function uiUnsubscribed(){
+    subscribed=false;
+    setStatus("開啟後，只有符合你條件的新活動會通知你。");
+    toggle.hidden=false;toggle.textContent="開啟推播";toggle.disabled=false;
+    testBtn.hidden=true;offBtn.hidden=true;
+  }
+  function enable(){
+    toggle.disabled=true;toggle.textContent="開啟中⋯";
+    Notification.requestPermission().then(function(perm){
+      if(perm!=="granted")throw new Error("permission");
+      return navigator.serviceWorker.register("/sw.js");
+    }).then(function(reg){
+      return navigator.serviceWorker.ready.then(function(){return reg;});
+    }).then(function(reg){
+      return fetch("/push/config").then(function(r){return r.json()}).then(function(cfg){
+        return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(cfg.publicKey)});
+      });
+    }).then(function(sub){
+      return post("/push/subscribe",{subscription:sub.toJSON(),prefs:prefs});
+    }).then(function(res){
+      if(!res.ok)throw new Error(res.error||"server");
+      uiSubscribed();
+      setStatus("推播已開啟 ✅ 剛剛應該有收到一則歡迎通知。",true);
+    }).catch(function(err){
+      if(String(err.message)==="permission"){
+        setStatus("你封鎖了通知權限——要在瀏覽器設定裡重新允許才能開啟。");
+      }else{
+        setStatus("開啟失敗（"+err.message+"），稍後再試一次。");
+      }
+      toggle.disabled=false;toggle.textContent="開啟推播";
+    });
+  }
+  function disable(){
+    getSub().then(function(sub){
+      if(sub){post("/push/unsubscribe",{endpoint:sub.endpoint});return sub.unsubscribe();}
+    }).then(uiUnsubscribed).catch(uiUnsubscribed);
+  }
+  toggle.addEventListener("click",enable);
+  offBtn.addEventListener("click",disable);
+  testBtn.addEventListener("click",function(){
+    getSub().then(function(sub){
+      if(!sub)return;
+      testBtn.querySelector(".fchip-label").textContent="已送出⋯";
+      post("/push/test",{endpoint:sub.endpoint}).then(function(){
+        setTimeout(function(){testBtn.querySelector(".fchip-label").textContent="發送測試通知";},1500);
+      });
+    });
+  });
+
+  // ---- 初始狀態 ----
+  if(!supported){
+    if(isIOS&&!standalone){
+      setStatus("iPhone／iPad 要先把竹梅加入主畫面才能開推播——照下面三步驟做。");
+      iosGuide.hidden=false;
+    }else{
+      setStatus("這個瀏覽器不支援網頁推播（可以先選好偏好，換支援的瀏覽器再開）。");
+    }
+    return;
+  }
+  uiUnsubscribed();
+  getSub().then(function(sub){
+    if(!sub)return;
+    return post("/push/status",{endpoint:sub.endpoint}).then(function(res){
+      if(res.ok&&res.subscribed){
+        if(res.prefs){prefs=Object.assign(prefs,res.prefs);renderSchool();renderCats();renderOrgs();renderKws();}
+        uiSubscribed();
+      }
+    });
+  }).catch(function(){});
+})();
+</script>
+</main><footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/notify/">推播與追蹤</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer><a class="fab" href="/notify/" aria-label="推播與追蹤"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
+<script src="/assets/app.js"></script></body></html>

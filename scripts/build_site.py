@@ -644,7 +644,8 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
     <details class="nav-more">
       <summary class="nav-item" aria-label="更多選單"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l16 0"/><path d="M4 12l16 0"/><path d="M4 18l16 0"/></svg><span class="nav-label">更多</span></summary>
       <div class="nav-more-menu">
-        <a href="/subscribe/">訂閱通知</a>
+        <a href="/notify/">推播與追蹤</a>
+        <a href="/subscribe/">訂閱管道</a>
         <a href="/source/">資料來源</a>
         <a href="/about/">關於竹梅</a>
         <button id="theme-toggle">切換深淺色</button>
@@ -657,9 +658,9 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 </main>
 <footer class="site-footer">
   <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
-  <p><a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p>
+  <p><a href="/notify/">推播與追蹤</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p>
 </footer>
-<a class="fab" href="/subscribe/" aria-label="訂閱通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
+<a class="fab" href="/notify/" aria-label="推播與追蹤"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
 <script src="/assets/app.js"></script>
 </body>
 </html>"""
@@ -735,6 +736,9 @@ def detail_page(e, org=None, org_sections=(), alt_posts=()):
          if e.get("geo") else None),
         # 原始貼文統一列在資訊列（含帳號／平台／日期），不另設按鈕
         f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
+        (f'<button class="btn heart-btn heart-btn-label" data-org-id="{org[0]}" data-org-name="{esc(org[1])}" '
+         f'aria-pressed="false" title="追蹤 {esc(org[1])}">{FEED_ICON["heart"]}'
+         f'<span class="hb-follow">追蹤主辦</span><span class="hb-following">追蹤中</span></button>') if org else None,
     ]))
     jsonld = json.dumps({
         "@context": "https://schema.org", "@type": "Event",
@@ -1216,7 +1220,15 @@ FEED_ICON = {
     "cal": FEED_SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
     "send": FEED_SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
     "ext": FEED_SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
+    "heart": FEED_SVG_OPEN + '<path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg>',
 }
+
+
+def heart_btn(org_id, org_name, extra_class=""):
+    """追蹤愛心：狀態由 app.js 依 push-prefs 的 orgs 同步。"""
+    return (f'<button class="heart-btn{" " + extra_class if extra_class else ""}" '
+            f'data-org-id="{org_id}" data-org-name="{esc(org_name)}" '
+            f'aria-pressed="false" title="追蹤 {esc(org_name)}">{FEED_ICON["heart"]}</button>')
 FEED_PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "api": "官方"}
 
 
@@ -1278,6 +1290,7 @@ def _feed_row(p, now):
     share_url = f'{BASE_URL}/event/{ev0["id"]}/' if ev0 else (p.get("url") or BASE_URL)
     share_title = ev0["title"] if ev0 else (p.get("source_name") or "竹梅活動觀測站")
     actions = ('<div class="feed-actions">' +
+               (heart_btn(p["org_id"], p.get("source_name") or "", "feed-action") if p.get("org_id") else "") +
                (f'<a class="feed-action" href="/event/{ev0["id"]}/" title="活動詳情">{FEED_ICON["cal"]}' +
                 (f'<span>{len(p["events"])}</span>' if len(p["events"]) > 1 else "") + "</a>" if ev0 else "") +
                f'<button class="feed-action btn-share" data-url="{esc(share_url)}" data-title="{esc(share_title)}" title="分享">{FEED_ICON["send"]}</button>' +
@@ -1332,10 +1345,13 @@ def _ev_list_row(e):
               '<span class="chip chip-fee-paid">$</span>' if fee == "paid" else "") +
              ('<span class="chip chip-review">待確認</span>' if (e.get("extraction") or {}).get("needs_review") else ""))
     meta = "｜".join(x for x in (where, e.get("organizer")) if x)
-    return (f'<a class="ev-row ev-row-{esc(sch or "")}" href="/event/{e["id"]}/">{thumb}'
+    row_heart = (heart_btn(e["org_id"], e.get("org_name") or e.get("organizer") or "", "ev-row-heart")
+                 if e.get("org_id") else "")
+    return (f'<div class="ev-row-wrap">{row_heart}'
+            f'<a class="ev-row ev-row-{esc(sch or "")}" href="/event/{e["id"]}/">{thumb}'
             f'<span class="evr-main"><span class="evr-when">{esc(_ev_when(e))}{chips}</span>'
             f'<span class="evr-title">{esc(e["title"])}</span>'
-            f'<span class="evr-meta">{esc(meta)}</span></span></a>')
+            f'<span class="evr-meta">{esc(meta)}</span></span></a></div>')
 
 
 def prerender_events(events):
@@ -1534,6 +1550,17 @@ def main():
             if ts:
                 src["posted_at"] = ts
 
+    # 名錄歸戶提前：活動 JSON 帶 org_id/org_name，前端愛心（追蹤單位）靠它
+    entries = build_sources_data(events)
+    sid_to_entry = {}
+    for ent in entries:
+        for sid in ent.get("sids", []):
+            sid_to_entry[sid] = ent
+    for e in events:
+        ent = sid_to_entry.get((e.get("source") or {}).get("source_id"))
+        if ent is not None:
+            e["org_id"], e["org_name"] = ent["id"], ent["name"]
+
     bundle = {"generated_at": now_iso(), "events": events,
               "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL, "org": ORG_LABEL}}
     (SITE / "data" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False))
@@ -1573,11 +1600,6 @@ def main():
             write_ics(cdir / f"{name}.ics", subset_up, title)
     print(f"combo feeds: {len(combo_specs) * 3} pairs")
 
-    entries = build_sources_data(events)
-    sid_to_entry = {}
-    for ent in entries:
-        for sid in ent.get("sids", []):
-            sid_to_entry[sid] = ent
     today_s = date.today().isoformat()
     ent_events = {}
     for e in events:
@@ -1622,7 +1644,7 @@ def main():
     prerender_calendar(events)
     prerender_stories()
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
+    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
            [f"{BASE_URL}/org/{i}/" for i in (org_ids or [])]
     (SITE / "sitemap.xml").write_text(
