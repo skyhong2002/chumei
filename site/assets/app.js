@@ -722,6 +722,61 @@
           drag = null;
         }, { passive: true });
       }
+      // 桌機多欄：欄位是垂直捲動容器，shift+滾輪會被它吃掉、macOS 捲軸又是隱藏式的，
+      // 一般滑鼠等於無法左右移動 → 補上左右箭頭與 shift/橫向滾輪。
+      function bindDeckNav(deck) {
+        var wrap = deck.parentNode;
+        var prev = wrap.querySelector(".deck-prev"), next = wrap.querySelector(".deck-next");
+        if (!prev) {
+          prev = document.createElement("button");
+          next = document.createElement("button");
+          prev.className = "deck-nav deck-prev"; next.className = "deck-nav deck-next";
+          prev.setAttribute("aria-label", "看左邊的河道");
+          next.setAttribute("aria-label", "看右邊的河道");
+          prev.innerHTML = SVG_OPEN + '<path d="M15 6l-6 6l6 6"/></svg>';
+          next.innerHTML = SVG_OPEN + '<path d="M9 6l6 6l-6 6"/></svg>';
+          wrap.appendChild(prev); wrap.appendChild(next);
+          [["deck-prev", -1], ["deck-next", 1]].forEach(function (pair) {
+            wrap.querySelector("." + pair[0]).addEventListener("click", function () {
+              var col = deck.querySelector(".feed-col");
+              var step = col ? col.getBoundingClientRect().width + 12 : deck.clientWidth * 0.8;
+              deck.scrollBy({ left: pair[1] * step, behavior: "smooth" });
+            });
+          });
+        }
+        function sync() {
+          var max = deck.scrollWidth - deck.clientWidth;
+          var overflow = max > 8;
+          prev.hidden = !overflow; next.hidden = !overflow;
+          prev.disabled = deck.scrollLeft <= 2;
+          next.disabled = deck.scrollLeft >= max - 2;
+        }
+        deck.addEventListener("scroll", sync, { passive: true });
+        window.addEventListener("resize", sync);
+        sync();
+        // 觸控板左右滑：真實手勢前幾個事件常帶垂直雜訊，Chrome 會先把整個手勢
+        // 軸鎖定到欄位的垂直捲動 → 這裡自己累積判定方向，橫向勝出就鎖定接手。
+        var gx = 0, gy = 0, gt = 0, lock = null;
+        deck.addEventListener("wheel", function (e) {
+          var now = Date.now();
+          if (now - gt > 180) { gx = 0; gy = 0; lock = null; }   // 間隔夠久＝新手勢
+          gt = now;
+          if (e.shiftKey && !e.deltaX) {                          // shift+滾輪＝左右移動
+            lock = "x";
+          } else {
+            gx += Math.abs(e.deltaX); gy += Math.abs(e.deltaY);
+            if (!lock && (gx > 6 || gy > 6)) lock = gx > gy ? "x" : "y";
+          }
+          if (lock !== "x") return;
+          var dx = e.deltaX || (e.shiftKey ? e.deltaY : 0);
+          if (!dx) return;
+          var max = deck.scrollWidth - deck.clientWidth;
+          if (max <= 0) return;
+          if ((dx < 0 && deck.scrollLeft <= 0) || (dx > 0 && deck.scrollLeft >= max)) return;
+          e.preventDefault();
+          deck.scrollLeft += dx;
+        }, { passive: false });
+      }
       function bindPager() {
         var deck = feed.querySelector(".feed-cols");
         if (!deck) return;
@@ -791,6 +846,7 @@
           '" style="--ncols:' + cols.length + '">' +
           cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") + "</div>";
         if (!wide) { bindPager(); syncFilterUI(); }
+        else { bindDeckNav(feed.querySelector(".feed-cols")); }
         renderPagerBar(wide);
         var af = document.querySelector(".addcol");
         if (af) af.hidden = !wide || cols.length >= 6;

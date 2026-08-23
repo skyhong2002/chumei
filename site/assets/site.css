@@ -1362,3 +1362,26 @@ body.feed-locked .fab { bottom: 96px; }
     max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;
   }
 }
+
+/* ---------- 桌機多欄：左右移動的箭頭（滑鼠沒有橫向滾輪時的唯一出路） ---------- */
+.deck-nav { display: none; }   /* 手機分頁模式用圓點，不用箭頭（視窗縮小時也不殘留） */
+@media (min-width: 1080px) {
+  body.feed-locked .post-feed.feed-wide { position: relative; }
+  .deck-nav {
+    display: flex;
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 30;
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--color-surface-raised); color: var(--color-text-primary);
+    border: 1px solid var(--color-border-subtle); box-shadow: var(--shadow-raised);
+    opacity: 0.55; transition: opacity 0.15s, transform 0.15s;
+  }
+  .deck-nav:hover { opacity: 1; }
+  .deck-nav:disabled { opacity: 0; pointer-events: none; }
+  .deck-nav[hidden] { display: none; }
+  .deck-nav svg { width: 22px; height: 22px; }
+  .deck-prev { left: 4px; }
+  .deck-next { right: 4px; }
+  /* 捲軸留著並且看得見，讓滑鼠使用者也能直接拖 */
+  body.feed-locked .feed-cols { scrollbar-width: thin; }
+}
