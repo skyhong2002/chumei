@@ -697,17 +697,22 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-row {
   display: grid;
   /* 連結欄不設上限時會吃掉標籤欄（長 handle 讓標籤被壓成直排）——給它上限並讓它換行 */
-  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 160px) 80px 54px 38px;
+  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 150px) 78px 52px 84px;
   gap: 10px; align-items: center;
   padding: 10px 6px; border-bottom: 1px solid var(--color-border-subtle);
 }
 .src-c-follow {
-  width: 34px; height: 34px; border: 0; border-radius: 50%; background: none;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--color-text-muted); justify-self: end;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 32px; padding: 0 12px; border-radius: var(--radius-pill); cursor: pointer;
+  border: 1px solid var(--color-border-strong); background: none;
+  color: var(--color-text-primary); font-family: inherit; font-size: 0.82rem; font-weight: 600;
+  white-space: nowrap; justify-self: end;
 }
-.src-c-follow:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
-.src-c-follow svg { width: 19px; height: 19px; }
+.src-c-follow:hover { background: var(--color-surface-soft); }
+.src-c-follow svg { width: 15px; height: 15px; margin: 0; }
+.src-c-follow[aria-pressed="true"] {
+  border-color: var(--color-bell-on); background: var(--color-bell-on-surface); color: var(--color-bell-on);
+}
 .src-th-follow { text-align: center; }
 .src-c-name {
   display: flex; align-items: center; gap: 10px; min-width: 0;
@@ -741,11 +746,11 @@ main.main-wide { max-width: min(1680px, 100%); }
 @media (max-width: 700px) {
   /* compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
   .src-row {
-    grid-template-columns: 1fr auto 36px;
+    grid-template-columns: 1fr auto auto;
     grid-template-areas: "name ev follow" "links upd follow";
     gap: 2px 10px; padding: 6px 2px;
   }
-  .src-c-follow { grid-area: follow; align-self: center; width: 32px; height: 32px; }
+  .src-c-follow { grid-area: follow; align-self: center; height: 30px; padding: 0 10px; font-size: 0.76rem; }
   .src-th-follow { display: none; }
   .src-c-name { grid-area: name; font-size: 0.85rem; gap: 8px; }
   .src-c-chips { display: none; }
@@ -1191,7 +1196,7 @@ body.feed-locked .fab { bottom: 96px; }
 /* 名錄表頭（點擊排序） */
 .src-head {
   display: grid;
-  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 160px) 80px 54px 38px;
+  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 150px) 78px 52px 84px;
   gap: 10px; align-items: center;
   padding: 6px 6px; border-bottom: 2px solid var(--color-border-strong);
   position: sticky; top: 0; z-index: 5;
@@ -1257,9 +1262,14 @@ body.feed-locked .fab { bottom: 96px; }
 .agd-empty { color: var(--color-text-muted); font-size: 0.85rem; padding: 8px 2px; }
 
 /* ---------- 追蹤愛心 + toast ---------- */
-.heart-btn { cursor: pointer; }
-.heart-btn[aria-pressed="true"] { color: var(--chumei-plum-text, #C069DD); }
+.heart-btn { cursor: pointer; font-family: inherit; background: none; }
+.heart-btn[aria-pressed="true"] { color: var(--color-bell-on); }
 .heart-btn[aria-pressed="true"] svg { fill: currentColor; }
+/* <button> 在 .btn 樣式下仍有瀏覽器預設灰底（同 .btn-share 的處理） */
+.btn.heart-btn { background: var(--color-surface); }
+.btn.heart-btn[aria-pressed="true"] {
+  background: var(--color-bell-on-surface); border-color: var(--color-bell-on); color: var(--color-bell-on);
+}
 .card-heart {
   position: absolute; top: 10px; right: 10px; z-index: 2;
   width: 38px; height: 38px; border: 0; border-radius: 50%;
@@ -1268,7 +1278,7 @@ body.feed-locked .fab { bottom: 96px; }
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
 .card-heart svg { width: 20px; height: 20px; }
-.card-heart[aria-pressed="true"] { color: #DA8FF0; }
+.card-heart[aria-pressed="true"] { color: var(--color-bell-on); }
 .heart-btn-label svg { width: 18px; height: 18px; margin-right: 7px; }
 .heart-btn-label .hb-following { display: none; }
 .heart-btn-label[aria-pressed="true"] .hb-follow { display: none; }
@@ -1295,8 +1305,8 @@ body.feed-locked .fab { bottom: 96px; }
 .ev-row-heart:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
 .ev-row-heart svg { width: 19px; height: 19px; }
 /* 已追蹤的紫色不被 :hover 覆蓋（同特異度、後定義者勝） */
-.heart-btn[aria-pressed="true"]:hover { color: var(--chumei-plum-text, #C069DD); }
-.card-heart[aria-pressed="true"]:hover { color: #DA8FF0; }
+.heart-btn[aria-pressed="true"]:hover { color: var(--color-bell-on); }
+.card-heart[aria-pressed="true"]:hover { color: var(--color-bell-on); }
 
 /* ---------- 手機/平板：河道＝左右分頁（欄內只上下捲，整頁不捲） ---------- */
 @media (max-width: 1079px) {
@@ -1402,3 +1412,34 @@ body.feed-locked .fab { bottom: 96px; }
   /* 捲軸留著並且看得見，讓滑鼠使用者也能直接拖 */
   body.feed-locked .feed-cols { scrollbar-width: thin; }
 }
+
+/* ---------- /notify/ 通知規則 ---------- */
+.np-rule {
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg);
+  background: var(--color-surface-raised); padding: 12px 14px; margin: 10px 0;
+}
+.np-rule-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.np-rule-no { font-weight: 700; font-size: 0.9rem; }
+.np-rule-sum { flex: 1; min-width: 140px; font-size: 0.86rem; color: var(--color-text-secondary); }
+.np-rule-count {
+  font-size: 0.78rem; font-weight: 600; color: var(--color-text-brand);
+  background: var(--color-surface-soft); border-radius: 999px; padding: 2px 10px;
+}
+.np-rule-head button {
+  border: 1px solid var(--color-border-subtle); background: none; cursor: pointer;
+  color: var(--color-text-secondary); font-family: inherit; font-size: 0.78rem;
+  border-radius: 999px; padding: 3px 10px;
+}
+.np-rule-head button:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.np-rule-body { position: static; background: none; backdrop-filter: none; padding: 0; }
+.np-empty {
+  border: 1px dashed var(--color-border-strong); border-radius: var(--radius-lg);
+  padding: 14px 16px; margin: 10px 0; font-size: 0.9rem; color: var(--color-text-secondary);
+}
+.np-not { margin-top: 6px; border-top: 1px dashed var(--color-border-subtle); padding-top: 8px; }
+.np-not > summary {
+  cursor: pointer; font-size: 0.84rem; color: var(--color-text-secondary); padding: 2px 0;
+}
+.np-sub { opacity: 0.75; font-size: 0.82rem; }
+.np-presets { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.np-follow-row { position: static; background: none; backdrop-filter: none; padding: 0; margin-top: 6px; }

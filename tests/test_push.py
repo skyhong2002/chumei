@@ -25,6 +25,10 @@ def event(**overrides):
         "organizer": "清大電機系學會",
         "venue": "台達館",
         "school": "nthu",
+        "campus": "nthu-main",
+        "organizer_type": "club",
+        "reg": "required",
+        "fee": "free",
         "category": "演講",
         "source": {"source_id": "ig_ee_nthu", "post_id": "1"},
     }
@@ -35,33 +39,67 @@ def event(**overrides):
 ORG_SIDS = {5: {"ig_ee_nthu"}, 47: {"fb_nycuartscenter"}}
 
 
-class MatchTest(unittest.TestCase):
+class RuleTest(unittest.TestCase):
+    """規則引擎：單條規則內各維度 AND、規則之間 OR、not 否決。"""
+
     def match(self, prefs, ev=None):
         return pc.event_matches(ev or event(), pc.normalize_prefs(prefs), ORG_SIDS)
 
-    def test_empty_prefs_match_everything(self):
+    def test_no_rules_matches_everything(self):
         self.assertTrue(self.match({}))
 
-    def test_school_filter(self):
-        self.assertTrue(self.match({"schools": ["nthu"]}))
-        self.assertFalse(self.match({"schools": ["nycu"]}))
-        self.assertTrue(self.match({"schools": ["nycu"]}, event(school="both")))
-        self.assertEqual(pc.normalize_prefs({"schools": ["nthu", "nycu"]})["schools"], [])
+    def test_dimensions_are_and_within_a_rule(self):
+        rule = {"schools": ["nthu"], "cats": ["演講"]}
+        self.assertTrue(self.match({"rules": [rule]}))
+        self.assertFalse(self.match({"rules": [rule]}, event(school="nycu")))
+        self.assertFalse(self.match({"rules": [rule]}, event(category="表演")))
 
-    def test_interest_groups_are_or(self):
-        self.assertTrue(self.match({"cats": ["演講"]}))
-        self.assertFalse(self.match({"cats": ["表演"]}))
-        self.assertTrue(self.match({"cats": ["表演"], "keywords": ["半導體"]}))
-        self.assertTrue(self.match({"orgs": [{"id": 5, "name": "電機系學會"}]}))
-        self.assertFalse(self.match({"orgs": [{"id": 47, "name": "藝文中心"}]}))
+    def test_values_within_a_dimension_are_or(self):
+        rule = {"cats": ["演講", "表演"]}
+        self.assertTrue(self.match({"rules": [rule]}))
+        self.assertTrue(self.match({"rules": [rule]}, event(category="表演")))
+        self.assertFalse(self.match({"rules": [rule]}, event(category="展覽")))
 
-    def test_keyword_case_insensitive(self):
-        self.assertTrue(self.match({"keywords": ["ai"]}))
-        self.assertTrue(self.match({"keywords": ["台達"]}))
-        self.assertFalse(self.match({"keywords": ["羽球"]}))
+    def test_rules_are_or(self):
+        rules = [{"schools": ["nycu"]}, {"cats": ["演講"]}]
+        self.assertTrue(self.match({"rules": rules}))
+        self.assertTrue(self.match({"rules": rules}, event(school="nycu", category="表演")))
+        self.assertFalse(self.match({"rules": rules}, event(school="nthu", category="表演")))
 
-    def test_school_and_interest_combine_as_and(self):
-        self.assertFalse(self.match({"schools": ["nycu"], "cats": ["演講"]}))
+    def test_exclusions_veto(self):
+        # (清大 AND 演講) - 付費
+        rule = {"schools": ["nthu"], "cats": ["演講"], "not": {"fee": ["paid"]}}
+        self.assertTrue(self.match({"rules": [rule]}, event(fee="free")))
+        self.assertFalse(self.match({"rules": [rule]}, event(fee="paid")))
+
+    def test_keyword_exclusion(self):
+        rule = {"keywords": ["AI"], "not": {"keywords": ["招生"]}}
+        self.assertTrue(self.match({"rules": [rule]}))
+        self.assertFalse(self.match({"rules": [rule]}, event(title="AI 招生說明會")))
+
+    def test_both_school_events_match_either_school(self):
+        self.assertTrue(self.match({"rules": [{"schools": ["nycu"]}]}, event(school="both")))
+
+    def test_followed_orgs_bypass_rules(self):
+        prefs = {"orgs": [{"id": 5, "name": "電機系學會"}], "rules": [{"schools": ["nycu"]}]}
+        self.assertTrue(self.match(prefs))                       # 來源屬於追蹤單位
+        self.assertFalse(self.match(prefs, event(source={"source_id": "other"})))
+
+    def test_campus_and_org_type(self):
+        self.assertTrue(self.match({"rules": [{"campuses": ["nthu-main"]}]}))
+        self.assertFalse(self.match({"rules": [{"campuses": ["nycu-guangfu"]}]}))
+        self.assertTrue(self.match({"rules": [{"orgTypes": ["club"]}]}))
+        self.assertFalse(self.match({"rules": [{"orgTypes": ["official"]}]}))
+
+    def test_all_values_selected_means_unrestricted(self):
+        self.assertEqual(pc.normalize_rule({"fee": ["free", "paid"]})["fee"], [])
+
+    def test_legacy_flat_prefs_become_one_rule(self):
+        prefs = pc.normalize_prefs({"schools": ["nthu"], "cats": ["演講"]})
+        self.assertEqual(len(prefs["rules"]), 1)
+        self.assertEqual(prefs["rules"][0]["schools"], ["nthu"])
+        self.assertTrue(pc.event_matches(event(), prefs, ORG_SIDS))
+        self.assertFalse(pc.event_matches(event(school="nycu"), prefs, ORG_SIDS))
 
 
 class StoreTest(unittest.TestCase):
@@ -80,21 +118,21 @@ class StoreTest(unittest.TestCase):
     SUB = {"endpoint": "https://push.example/abc", "keys": {"p256dh": "k", "auth": "a"}}
 
     def test_upsert_get_remove(self):
-        pc.upsert_sub(self.SUB, prefs={"cats": ["演講"]})
+        pc.upsert_sub(self.SUB, prefs={"rules": [{"cats": ["演講"]}]})
         record = pc.get_sub(self.SUB["endpoint"])
-        self.assertEqual(record["prefs"]["cats"], ["演講"])
+        self.assertEqual(record["prefs"]["rules"][0]["cats"], ["演講"])
         # 更新訂閱但不帶 prefs → 偏好保留
         pc.upsert_sub(self.SUB, prefs=None)
-        self.assertEqual(pc.get_sub(self.SUB["endpoint"])["prefs"]["cats"], ["演講"])
+        self.assertEqual(pc.get_sub(self.SUB["endpoint"])["prefs"]["rules"][0]["cats"], ["演講"])
         self.assertTrue(pc.remove_sub(self.SUB["endpoint"]))
         self.assertIsNone(pc.get_sub(self.SUB["endpoint"]))
 
     def test_migrate_keeps_prefs(self):
-        pc.upsert_sub(self.SUB, prefs={"keywords": ["爵士"]})
+        pc.upsert_sub(self.SUB, prefs={"rules": [{"keywords": ["爵士"]}]})
         new_sub = {"endpoint": "https://push.example/new", "keys": {"p256dh": "k2", "auth": "a2"}}
         pc.upsert_sub(new_sub, prefs=None, migrate_from=self.SUB["endpoint"])
         self.assertIsNone(pc.get_sub(self.SUB["endpoint"]))
-        self.assertEqual(pc.get_sub(new_sub["endpoint"])["prefs"]["keywords"], ["爵士"])
+        self.assertEqual(pc.get_sub(new_sub["endpoint"])["prefs"]["rules"][0]["keywords"], ["爵士"])
 
 
 class _Sink(BaseHTTPRequestHandler):

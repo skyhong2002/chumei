@@ -3,13 +3,18 @@
 訂閱存 state/push/subscriptions.json（跨行程以 flock 保護——push_server 寫入、
 publish_push 讀取兼清理失效 endpoint）。每筆訂閱帶偏好（prefs）：
 
-  schools:  ["nthu","nycu"]（空＝不限）
-  cats:     ["演講","表演", ...]（中文標籤，同 events.json 的 category）
-  orgs:     [{"id": 47, "name": "陽明交大藝文中心"}, ...]（/source/ 名錄 id）
-  keywords: ["AI", "半導體", ...]
+偏好是「規則清單」——任一條規則命中就推播（規則之間 OR）：
 
-比對語意：學校先過濾；cats／orgs／keywords 三組之間是 OR——
-全部留空＝該校所有新活動都通知，有選就只推命中的。
+  orgs:  [{"id": 47, "name": "陽明交大藝文中心"}, ...]
+         追蹤的單位，自成一條規則：這些單位的活動一律通知。
+  rules: [{ schools, campuses, orgTypes, reg, fee, cats, keywords,
+            not: { cats, keywords, reg, fee, campuses, orgTypes } }, ...]
+
+單條規則內：**各維度之間 AND，同維度內 OR**，留空＝該維度不限；
+`not` 內任一命中就否決整條規則。例：
+  (學校=nycu) AND (類型∈{表演,展覽}) AND NOT(費用=付費)
+
+orgs 與 rules 都空＝所有新活動都通知。舊版平鋪格式會自動轉成單一規則。
 """
 
 import fcntl
@@ -60,18 +65,83 @@ def save_subs(data):
     tmp.replace(SUBS_PATH)
 
 
+CAMPUSES = ("nthu-main", "nthu-nanda", "nycu-guangfu", "nycu-boai", "nycu-yangming", "online", "other")
+ORG_TYPES = ("official", "department", "club", "external")
+REG_VALUES = ("required", "free")
+FEE_VALUES = ("free", "paid")
+
+
+def _pick(raw, key, allowed):
+    """留下合法值；全選＝不限（回空 list）。"""
+    seen, out = set(), []
+    for v in (raw.get(key) or []):
+        if v in allowed and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return [] if len(out) == len(allowed) else out
+
+
+RULE_DIMS = {
+    "schools": ("nthu", "nycu"),
+    "campuses": CAMPUSES,
+    "orgTypes": ORG_TYPES,
+    "reg": REG_VALUES,
+    "fee": FEE_VALUES,
+}
+NOT_DIMS = ("cats", "keywords", "reg", "fee", "campuses", "orgTypes")
+
+
+def _strings(values, limit=30, maxlen=40):
+    out, seen = [], set()
+    for v in (values or []):
+        s = str(v).strip()[:maxlen]
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _orgs(values):
+    out = []
+    for org in (values or [])[:200]:
+        if isinstance(org, dict) and org.get("id") is not None:
+            out.append({"id": org["id"], "name": str(org.get("name") or "")[:80]})
+    return out
+
+
+def normalize_rule(raw):
+    raw = raw or {}
+    rule = {k: _pick(raw, k, allowed) for k, allowed in RULE_DIMS.items()}
+    rule["cats"] = _strings(raw.get("cats"), maxlen=20)
+    rule["keywords"] = _strings(raw.get("keywords"))
+    raw_not = raw.get("not") or {}
+    rule["not"] = {
+        "cats": _strings(raw_not.get("cats"), maxlen=20),
+        "keywords": _strings(raw_not.get("keywords")),
+        "reg": _pick(raw_not, "reg", REG_VALUES),
+        "fee": _pick(raw_not, "fee", FEE_VALUES),
+        "campuses": _pick(raw_not, "campuses", CAMPUSES),
+        "orgTypes": _pick(raw_not, "orgTypes", ORG_TYPES),
+    }
+    rule["name"] = str(raw.get("name") or "")[:40]
+    return rule
+
+
+def rule_is_empty(rule):
+    return not any(rule.get(k) for k in list(RULE_DIMS) + ["cats", "keywords"])
+
+
 def normalize_prefs(raw):
     raw = raw or {}
-    schools = [s for s in (raw.get("schools") or []) if s in ("nthu", "nycu")]
-    if len(schools) == 2:  # 兩個都選＝不限
-        schools = []
-    cats = [str(c)[:20] for c in (raw.get("cats") or []) if str(c).strip()][:20]
-    orgs = []
-    for org in (raw.get("orgs") or [])[:50]:
-        if isinstance(org, dict) and org.get("id") is not None:
-            orgs.append({"id": org["id"], "name": str(org.get("name") or "")[:80]})
-    keywords = [str(k).strip()[:40] for k in (raw.get("keywords") or []) if str(k).strip()][:20]
-    return {"schools": schools, "cats": cats, "orgs": orgs, "keywords": keywords}
+    rules = [normalize_rule(r) for r in (raw.get("rules") or [])][:20]
+    if not rules:
+        # 舊版平鋪格式（schools/cats/keywords… 直接放在頂層）→ 轉成單一規則
+        legacy = normalize_rule(raw)
+        if not rule_is_empty(legacy):
+            rules = [legacy]
+    return {"orgs": _orgs(raw.get("orgs")), "rules": rules}
 
 
 def upsert_sub(subscription, prefs=None, migrate_from=None, ua=""):
@@ -121,33 +191,66 @@ def load_org_sids(sources_path=SOURCES_PATH):
     return {e["id"]: set(e.get("sids") or []) for e in entries if e.get("id") is not None}
 
 
-def event_matches(event, prefs, org_sids):
-    schools = prefs.get("schools") or []
-    if schools:
-        school = event.get("school")
-        if school not in schools and school != "both":
+def _haystack(event):
+    return " ".join(
+        str(event.get(field) or "")
+        for field in ("title", "summary", "description", "organizer", "venue")
+    ).casefold()
+
+
+def _org_hit(event, orgs, org_sids):
+    source_id = str((event.get("source") or {}).get("source_id") or "")
+    if not source_id:
+        return False
+    return any(source_id in org_sids.get(org["id"], ()) for org in orgs)
+
+
+def _event_values(event):
+    return {
+        "schools": ["nthu", "nycu"] if event.get("school") == "both" else [event.get("school")],
+        "campuses": [event.get("campus") or "other"],
+        "orgTypes": [event.get("organizer_type") or ""],
+        "reg": [event.get("reg") or ""],
+        "fee": [event.get("fee") or ""],
+        "cats": [event.get("category") or "其他"],
+    }
+
+
+def rule_matches(event, rule, org_sids=None):
+    """單條規則：各維度 AND、同維度內 OR；not 任一命中就否決。"""
+    vals = _event_values(event)
+    for dim in list(RULE_DIMS) + ["cats"]:
+        want = rule.get(dim) or []
+        if want and not any(v in want for v in vals[dim]):
             return False
-    cats = prefs.get("cats") or []
-    orgs = prefs.get("orgs") or []
-    keywords = prefs.get("keywords") or []
-    if not cats and not orgs and not keywords:
-        return True
-    if cats and (event.get("category") or "其他") in cats:
-        return True
-    if orgs:
-        source_id = str((event.get("source") or {}).get("source_id") or "")
-        for org in orgs:
-            if source_id and source_id in org_sids.get(org["id"], ()):
-                return True
+    keywords = rule.get("keywords") or []
     if keywords:
-        haystack = " ".join(
-            str(event.get(field) or "")
-            for field in ("title", "summary", "description", "organizer", "venue")
-        ).casefold()
-        for keyword in keywords:
-            if keyword.casefold() in haystack:
-                return True
-    return False
+        hay = _haystack(event)
+        if not any(k.casefold() in hay for k in keywords):
+            return False
+    veto = rule.get("not") or {}
+    for dim in ("campuses", "orgTypes", "reg", "fee", "cats"):
+        bad = veto.get(dim) or []
+        if bad and any(v in bad for v in vals[dim]):
+            return False
+    bad_kw = veto.get("keywords") or []
+    if bad_kw:
+        hay = _haystack(event)
+        if any(k.casefold() in hay for k in bad_kw):
+            return False
+    return True
+
+
+def event_matches(event, prefs, org_sids):
+    """任一規則命中即推；追蹤的單位自成一條規則。都沒設＝全收。"""
+    prefs = prefs or {}
+    orgs = prefs.get("orgs") or []
+    rules = prefs.get("rules") or []
+    if not orgs and not rules:
+        return True
+    if orgs and _org_hit(event, orgs, org_sids or {}):
+        return True
+    return any(rule_matches(event, r, org_sids) for r in rules)
 
 
 # ---- VAPID ----

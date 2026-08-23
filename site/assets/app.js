@@ -379,7 +379,7 @@
         cal: SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
         send: SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
         ext: SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
-        heart: SVG_OPEN + '<path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg>'
+        heart: SVG_OPEN + '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>'
       };
 
       function evChip(e) {
@@ -1060,9 +1060,10 @@
           '<div class="src-links">' + (links || '<span class="src-none">尚未找到公開帳號</span>') + "</div>" +
           '<div class="src-upd" title="' + esc(e.updated || "") + '">' + fmtUpdated(e.updated) + "</div>" +
           '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div>" +
-          '<button class="heart-btn src-c-follow" data-org-id="' + e.id + '" data-org-name="' + esc(e.name) +
+          '<button class="heart-btn heart-btn-label src-c-follow" data-org-id="' + e.id + '" data-org-name="' + esc(e.name) +
           '" aria-pressed="' + followed(e.id) + '" title="追蹤 ' + esc(e.name) + '">' +
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg></button>' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>' +
+          '<span class="hb-follow">追蹤</span><span class="hb-following">追蹤中</span></button>' +
           "</div>";
       }
 
@@ -1456,7 +1457,7 @@
           (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "梅竹") + "</span>";
       var rowHeart = e.org_id
         ? '<button class="heart-btn ev-row-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" title="追蹤 ' + esc(e.org_name || e.organizer || "") + '">' +
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg></button>'
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></button>'
         : "";
       return '<div class="ev-row-wrap">' + rowHeart + '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
         '<span class="evr-main"><span class="evr-when">' + esc(when) +
@@ -1489,7 +1490,7 @@
       var where = [e.campus ? bundle.labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
       var heart = e.org_id
         ? '<button class="heart-btn card-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" title="追蹤 ' + esc(e.org_name || e.organizer || "") + '">' +
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg></button>'
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></button>'
         : "";
       return '<div class="card">' + heart + '<a class="card-link" href="/event/' + e.id + '/">' +
         '<div class="card-media">' + media +
@@ -2009,7 +2010,7 @@
     if (toggle(b.dataset.orgId, name)) {
       var pushOn = false;
       try { pushOn = "Notification" in window && Notification.permission === "granted"; } catch (e) {}
-      toast("❤️ 已追蹤 " + name + (pushOn ? "，有新活動會通知你" : "——<a href=\"/notify/\">開啟推播</a>才會收到通知"));
+      toast("🔔 已追蹤 " + name + (pushOn ? "，有新活動會通知你" : "——<a href=\"/notify/\">開啟推播</a>才會收到通知"));
     } else {
       toast("已取消追蹤 " + name);
     }

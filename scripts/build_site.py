@@ -1220,7 +1220,7 @@ FEED_ICON = {
     "cal": FEED_SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
     "send": FEED_SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
     "ext": FEED_SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
-    "heart": FEED_SVG_OPEN + '<path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg>',
+    "heart": FEED_SVG_OPEN + '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>',
 }
 
 
@@ -1503,7 +1503,10 @@ def source_table_html(entries):
                 f'<div class="src-links">{links_html}</div>'
                 f'<div class="src-upd" title="{esc(e.get("updated") or "")}">{fmt_updated(e.get("updated"))}</div>'
                 f'<div class="src-ev">{str(e["events"]) + " 場" if e["events"] else "—"}</div>'
-                + heart_btn(e["id"], e["name"], "src-c-follow") + "</div>")
+                + (f'<button class="heart-btn heart-btn-label src-c-follow" data-org-id="{e["id"]}" '
+                   f'data-org-name="{esc(e["name"])}" aria-pressed="false" title="追蹤 {esc(e["name"])}">'
+                   f'{FEED_ICON["heart"]}<span class="hb-follow">追蹤</span>'
+                   f'<span class="hb-following">追蹤中</span></button>') + "</div>")
 
     def th(key, label, extra_cls="", on=False, arrow=" ↕"):
         cls = "src-th" + (f" {extra_cls}" if extra_cls else "") + (" src-th-on" if on else "")

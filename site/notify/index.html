@@ -25,6 +25,11 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 .push-guide li{margin:4px 0}
 .push-prefs{margin-top:14px;border-top:1px solid var(--color-border-subtle);padding-top:12px}
 .push-prefs-lede{font-size:.9rem;color:var(--color-text-secondary);margin:0 0 10px}
+.push-prefs .filters{position:static;background:none;backdrop-filter:none;padding:0;margin:0}
+.np-sep{border-top:1px dashed var(--color-border-subtle);padding-top:10px;margin-top:4px}
+.np-sub{opacity:.7;font-size:.82rem}
+.push-preview{margin:12px 0 0;font-size:.92rem;color:var(--color-text-secondary)}
+.push-preview b{color:var(--color-text-primary)}
 .push-input{border:1px solid var(--color-border-subtle);border-radius:999px;background:var(--color-surface);color:var(--color-text-primary);font:inherit;font-size:.88rem;padding:4px 12px;min-width:14em;flex:1}
 .push-input:focus{outline:none;border-color:var(--color-border-strong)}
 .pp-org-empty{font-size:.85rem;color:var(--color-text-muted);align-self:center}
@@ -57,7 +62,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 </header><main>
 <div class="prose notify-top">
 <h1>通知與追蹤</h1>
-<p>把竹梅裝成 App、挑你在乎的——符合條件的新活動才會通知你。在貼文或活動上按 <b>❤️</b> 追蹤單位，也會記到這裡。</p>
+<p>把竹梅裝成 App、挑你在乎的——符合條件的新活動才會通知你。在貼文或活動上按 <b>🔔</b> 追蹤單位，也會記到這裡。</p>
 <section class="push-card" id="push-card">
   <div class="push-top">
     <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></span>
@@ -76,11 +81,17 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     </ol>
   </div>
   <div class="push-prefs" id="push-prefs">
-    <p class="push-prefs-lede">挑你在乎的，其他的不吵你——<b>什麼都不選＝所有新活動都通知</b>；有選的話，學校先過濾，類型／單位／關鍵字任一命中就推。</p>
-    <div class="filter-row"><span class="label">學校</span><span id="pp-school" class="fgroup"></span></div>
-    <div class="filter-row"><span class="label">類型</span><span id="pp-cat" class="fgroup"></span></div>
-    <div class="filter-row"><span class="label">追蹤</span><span class="fgroup" id="pp-org-box"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位——用下面的名錄按 ❤️ 加入</span></span></div>
-    <div class="filter-row"><span class="label">關鍵字</span><span class="fgroup" id="pp-kw-box"><span id="pp-kws" style="display:contents"></span><input id="pp-kw" class="push-input" type="text" placeholder="像是：爵士、AI、桌遊⋯（Enter 加入）" autocomplete="off"></span></div>
+    <p class="push-prefs-lede">一條規則＝一組條件（<b>同一列選多個是「或」，不同列之間是「而且」</b>），
+    可以再排除掉不想要的。<b>任一條規則命中就通知你</b>；一條規則都沒有＝所有新活動都通知。</p>
+    <div id="np-rules"></div>
+    <p class="push-foot">
+      <button class="fchip" id="np-add"><span class="fchip-label">＋ 新增規則</span></button>
+      <span class="np-presets" id="np-presets"></span>
+    </p>
+    <div class="filters np-follow-row">
+      <div class="filter-row"><span class="label">追蹤</span><span class="fgroup" id="np-orgs-row"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位——到下面的<a href="#orgs">追蹤來源</a>按「追蹤」。追蹤的單位不受規則限制，一律通知。</span></span></div>
+    </div>
+    <p class="push-preview" id="np-preview" aria-live="polite"></p>
     <p class="push-foot">
       <button class="fchip" id="push-test" hidden><span class="fchip-label">發送測試通知</span></button>
       <button class="fchip" id="push-off" hidden><span class="fchip-label">關閉推播</span></button>
@@ -123,7 +134,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 </div>
 <section class="notify-orgs">
 <h2 id="orgs">追蹤來源</h2>
-<p>清大與陽明交大的社團、系所與校方單位都在這裡。按 ❤️ 追蹤，該單位有新活動就會通知你——
+<p>清大與陽明交大的社團、系所與校方單位都在這裡。按 🔔 追蹤，該單位有新活動就會通知你——
 <span id="src-count" aria-live="polite"></span></p>
 <section class="filters" aria-label="名錄篩選">
   <div class="filter-row"><span class="label">追蹤</span><span id="sf-follow" class="fgroup"></span>
@@ -146,13 +157,12 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   var $=function(id){return document.getElementById(id)};
   var statusEl=$("push-status"), toggle=$("push-toggle"), iosGuide=$("push-ios-guide"),
       testBtn=$("push-test"), offBtn=$("push-off"), savedEl=$("pp-saved");
-  var CATS=["演講","工作坊","表演","展覽","比賽","營隊","徵才","市集","運動","聚會","其他"];
   var supported="serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   var isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
   var standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
   var subscribed=false, saveTimer=null, savedTimer=null;
 
-  var prefs={schools:[],cats:[],orgs:[],keywords:[]};
+  var prefs={schools:[],campuses:[],orgTypes:[],reg:[],fee:[],cats:[],orgs:[],keywords:[]};
   try{var st=JSON.parse(localStorage.getItem("push-prefs")||"null"); if(st) prefs=Object.assign(prefs,st);}catch(e){}
 
   function post(url,body){
@@ -169,61 +179,9 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   function getSub(){
     return navigator.serviceWorker.register("/sw.js").then(function(reg){return reg.pushManager.getSubscription();});
   }
-
-  // ---- 偏好 UI ----
-  function chip(label,pressed,onclick,removable){
-    var b=document.createElement("button");
-    b.className="fchip"; b.type="button";
-    b.innerHTML='<span class="fchip-label"></span>';
-    b.querySelector(".fchip-label").textContent=label;
-    if(removable){var x=document.createElement("span");x.className="x";x.textContent="✕";b.appendChild(x);}
-    b.setAttribute("aria-pressed",String(!!pressed));
-    b.addEventListener("click",onclick);
-    return b;
-  }
-  function renderSchool(){
-    var host=$("pp-school");host.innerHTML="";
-    [["","清交都要"],["nthu","清大"],["nycu","陽明交大"]].forEach(function(o){
-      var cur=prefs.schools.length===1?prefs.schools[0]:"";
-      host.appendChild(chip(o[1],cur===o[0],function(){
-        prefs.schools=o[0]?[o[0]]:[]; renderSchool(); save();
-      }));
-    });
-  }
-  function renderCats(){
-    var host=$("pp-cat");host.innerHTML="";
-    CATS.forEach(function(c){
-      host.appendChild(chip(c,prefs.cats.indexOf(c)>=0,function(){
-        var i=prefs.cats.indexOf(c);
-        if(i>=0)prefs.cats.splice(i,1);else prefs.cats.push(c);
-        renderCats(); save();
-      }));
-    });
-  }
-  function renderOrgs(){
-    var host=$("pp-orgs");host.innerHTML="";
-    prefs.orgs.forEach(function(o){
-      host.appendChild(chip(o.name,true,function(){
-        // 交給 chumeiFollow 統一處理（會同步下方名錄的愛心與伺服器偏好）
-        if(window.chumeiFollow) window.chumeiFollow.toggle(o.id,o.name);
-      },true));
-    });
-    var empty=$("pp-org-empty");
-    if(empty) empty.hidden = prefs.orgs.length>0;
-  }
-  // 下方名錄按愛心 → 重新讀 localStorage 並更新這裡的 chips
-  window.addEventListener("chumei-follow-change",function(){
-    try{var s=JSON.parse(localStorage.getItem("push-prefs")||"null"); if(s) prefs.orgs=s.orgs||[];}catch(e){}
-    renderOrgs();
-  });
-  function renderKws(){
-    var host=$("pp-kws");host.innerHTML="";
-    prefs.keywords.forEach(function(k,i){
-      host.appendChild(chip(k,true,function(){prefs.keywords.splice(i,1);renderKws();save();},true));
-    });
-  }
   function save(){
     try{localStorage.setItem("push-prefs",JSON.stringify(prefs));}catch(e){}
+    if(window.chumeiFollow) window.chumeiFollow.refresh();
     if(!subscribed)return;
     clearTimeout(saveTimer);
     saveTimer=setTimeout(function(){
@@ -237,21 +195,288 @@ button.btn.btn-primary{background:var(--color-action-primary)}
       }).catch(function(){});
     },600);
   }
+  // 條件維度：標籤與值和 /events/ 篩選一致
+  var DIMS = [
+    { k:"schools",  label:"學校", not:false,
+      opts:[["nthu","清大"],["nycu","陽明交大"]],
+      get:function(e){ return e.school==="both"?["nthu","nycu"]:[e.school]; } },
+    { k:"campuses", label:"校區", not:true,
+      opts:[["nthu-main","清大校本部"],["nthu-nanda","清大南大"],["nycu-guangfu","交大光復"],
+            ["nycu-boai","交大博愛"],["nycu-yangming","陽明校區"],["online","線上"],["other","其他地點"]],
+      get:function(e){ return [e.campus||"other"]; } },
+    { k:"orgTypes", label:"主辦", not:true,
+      opts:[["official","校方"],["department","系所"],["club","社團"],["external","校外"]],
+      get:function(e){ return [e.organizer_type||""]; } },
+    { k:"cats",     label:"類型", not:true, fromData:true,
+      get:function(e){ return [e.category||"其他"]; } },
+    { k:"reg",      label:"報名", not:true,
+      opts:[["required","需報名"],["free","自由入場"]],
+      get:function(e){ return [e.reg||""]; } },
+    { k:"fee",      label:"費用", not:true,
+      opts:[["free","免費"],["paid","付費"]],
+      get:function(e){ return [e.fee||""]; } }
+  ];
+  var DIM = {}; DIMS.forEach(function(d){ DIM[d.k]=d; });
+  var KW_SUGGEST=["迎新","社課","成發","講座","營隊","免費","報名","實習","獎學金","志工",
+                  "交換","影展","音樂會","攝影","桌遊","手作","AI","半導體","電競","路跑"];
+  var PRESETS=[
+    { n:"交大藝文（不含付費）", r:{schools:["nycu"],cats:["表演","展覽"],not:{fee:["paid"]}} },
+    { n:"清大演講",            r:{schools:["nthu"],cats:["演講"]} },
+    { n:"免費工作坊",          r:{cats:["工作坊"],fee:["free"]} },
+    { n:"社團活動（免報名）",  r:{orgTypes:["club"],not:{reg:["required"]}} },
+    { n:"徵才與實習",          r:{cats:["徵才"],keywords:["實習"]} }
+  ];
 
-  // ---- 關鍵字 ----
-  var kwInput=$("pp-kw");
-  function addKw(){
-    var v=kwInput.value.trim();
-    if(!v)return;
-    if(prefs.keywords.indexOf(v)<0)prefs.keywords.push(v);
-    kwInput.value="";renderKws();save();
+  var upcoming=[];
+  function emptyRule(){ return {schools:[],campuses:[],orgTypes:[],cats:[],reg:[],fee:[],keywords:[],
+                                not:{campuses:[],orgTypes:[],cats:[],reg:[],fee:[],keywords:[]}}; }
+  function normRule(r){
+    var out=emptyRule();
+    Object.keys(out).forEach(function(k){
+      if(k==="not") return;
+      if(Array.isArray(r[k])) out[k]=r[k].slice();
+    });
+    if(r.not) Object.keys(out.not).forEach(function(k){ if(Array.isArray(r.not[k])) out.not[k]=r.not[k].slice(); });
+    return out;
   }
-  kwInput.addEventListener("keydown",function(ev){
-    if(ev.key==="Enter"){ev.preventDefault();addKw();}
-  });
-  kwInput.addEventListener("blur",addKw);
+  if(!Array.isArray(prefs.rules)) prefs.rules=[];
+  prefs.rules=prefs.rules.map(normRule);
 
-  renderSchool();renderCats();renderOrgs();renderKws();
+  // ---- 比對（與 push_common.rule_matches 對應） ----
+  function hay(e){ return ((e.title||"")+" "+(e.summary||"")+" "+(e.description||"")+" "+
+                           (e.organizer||"")+" "+(e.venue||"")).toLowerCase(); }
+  function ruleMatch(e,r){
+    for(var i=0;i<DIMS.length;i++){
+      var d=DIMS[i], want=r[d.k]||[];
+      if(want.length && !d.get(e).some(function(v){return want.indexOf(v)>=0;})) return false;
+    }
+    if((r.keywords||[]).length){
+      var h=hay(e);
+      if(!r.keywords.some(function(k){return h.indexOf(k.toLowerCase())>=0;})) return false;
+    }
+    var n=r.not||{};
+    for(var j=0;j<DIMS.length;j++){
+      var d2=DIMS[j], bad=n[d2.k]||[];
+      if(bad.length && d2.get(e).some(function(v){return bad.indexOf(v)>=0;})) return false;
+    }
+    if((n.keywords||[]).length){
+      var h2=hay(e);
+      if(n.keywords.some(function(k){return h2.indexOf(k.toLowerCase())>=0;})) return false;
+    }
+    return true;
+  }
+  function orgHit(e){ return (prefs.orgs||[]).some(function(o){return String(o.id)===String(e.org_id);}); }
+  function anyMatch(e){
+    if(!(prefs.rules||[]).length && !(prefs.orgs||[]).length) return true;
+    if(orgHit(e)) return true;
+    return (prefs.rules||[]).some(function(r){return ruleMatch(e,r);});
+  }
+
+  // ---- 站上標準 chip ----
+  function fchip(label,pressed,count,onclick,removable){
+    var b=document.createElement("button");
+    b.className="fchip"; b.type="button";
+    b.innerHTML='<span class="fchip-label"></span>'+(count==null?"":'<span class="fchip-count" aria-hidden="true"></span>');
+    b.querySelector(".fchip-label").textContent=label;
+    if(count!=null) b.querySelector(".fchip-count").textContent=String(count);
+    if(removable){var x=document.createElement("span");x.className="x";x.textContent="✕";b.appendChild(x);}
+    b.setAttribute("aria-pressed",String(!!pressed));
+    b.addEventListener("click",onclick);
+    return b;
+  }
+  var catOptsCache=null;
+  function catOpts(){
+    if(catOptsCache) return catOptsCache;
+    var seen={}; upcoming.forEach(function(e){seen[e.category||"其他"]=1;});
+    catOptsCache=Object.keys(seen).sort().map(function(k){return [k,k];});
+    return catOptsCache;
+  }
+  function dimOpts(d){ return d.fromData?catOpts():d.opts; }
+
+  function ruleSummary(r){
+    var parts=[];
+    DIMS.forEach(function(d){
+      var v=r[d.k]||[]; if(!v.length) return;
+      var opts=dimOpts(d), labels=v.map(function(x){
+        var hit=opts.filter(function(o){return o[0]===x;})[0]; return hit?hit[1]:x;});
+      parts.push(labels.join("／"));
+    });
+    if((r.keywords||[]).length) parts.push("「"+r.keywords.join("」「")+"」");
+    var body=parts.length?parts.join(" ＋ "):"所有活動";
+    var ex=[];
+    DIMS.forEach(function(d){
+      var v=(r.not||{})[d.k]||[]; if(!v.length) return;
+      var opts=dimOpts(d);
+      ex.push(v.map(function(x){var h=opts.filter(function(o){return o[0]===x;})[0];return h?h[1]:x;}).join("／"));
+    });
+    if(((r.not||{}).keywords||[]).length) ex.push("「"+r.not.keywords.join("」「")+"」");
+    return body+(ex.length?" − "+ex.join("／"):"");
+  }
+
+  function renderRules(){
+    var host=$("np-rules"); host.innerHTML="";
+    if(!prefs.rules.length){
+      host.innerHTML='<p class="np-empty">目前沒有規則——<b>所有新活動</b>都會通知你。'
+        +'按下面的「＋ 新增規則」或範例來縮小範圍。</p>';
+      return;
+    }
+    prefs.rules.forEach(function(r,i){
+      var sec=document.createElement("section");
+      sec.className="np-rule";
+      var n=upcoming.filter(function(e){return ruleMatch(e,r);}).length;
+      sec.innerHTML='<header class="np-rule-head">'
+        +'<span class="np-rule-no">規則 '+(i+1)+'</span>'
+        +'<span class="np-rule-sum"></span>'
+        +'<span class="np-rule-count">'+n+' 場</span>'
+        +'<button class="np-dup" title="複製這條規則">複製</button>'
+        +'<button class="np-del" title="刪除這條規則">刪除</button></header>'
+        +'<div class="filters np-rule-body"></div>';
+      sec.querySelector(".np-rule-sum").textContent=ruleSummary(r);
+      var body=sec.querySelector(".np-rule-body");
+      DIMS.forEach(function(d){
+        var row=document.createElement("div");
+        row.className="filter-row";
+        row.innerHTML='<span class="label">'+d.label+'</span>';
+        var g=document.createElement("span"); g.className="fgroup";
+        var sel=r[d.k]||[];
+        g.appendChild(fchip("不限",sel.length===0,null,function(){ r[d.k]=[]; changed(); }));
+        dimOpts(d).forEach(function(o){
+          var trial=JSON.parse(JSON.stringify(r)); trial[d.k]=[o[0]];
+          var c=upcoming.filter(function(e){return ruleMatch(e,trial);}).length;
+          g.appendChild(fchip(o[1],sel.indexOf(o[0])>=0,c,function(){
+            var cur=r[d.k]||[], j=cur.indexOf(o[0]);
+            if(j>=0)cur.splice(j,1);else cur.push(o[0]);
+            r[d.k]=cur; changed();
+          }));
+        });
+        row.appendChild(g); body.appendChild(row);
+      });
+      // 關鍵字
+      var kwRow=document.createElement("div");
+      kwRow.className="filter-row";
+      kwRow.innerHTML='<span class="label">關鍵字</span>';
+      var kg=document.createElement("span"); kg.className="fgroup";
+      (r.keywords||[]).forEach(function(k){
+        kg.appendChild(fchip(k,true,null,function(){
+          r.keywords.splice(r.keywords.indexOf(k),1); changed();
+        },true));
+      });
+      var input=document.createElement("input");
+      input.className="push-input"; input.type="text"; input.placeholder="自訂關鍵字，Enter 加入";
+      input.addEventListener("keydown",function(ev){
+        if(ev.key!=="Enter") return;
+        ev.preventDefault();
+        var v=input.value.trim(); if(!v) return;
+        r.keywords=(r.keywords||[]).concat([v]); changed();
+      });
+      kg.appendChild(input); kwRow.appendChild(kg); body.appendChild(kwRow);
+      // 建議關鍵字
+      var sugRow=document.createElement("div");
+      sugRow.className="filter-row";
+      sugRow.innerHTML='<span class="label np-sub">建議</span>';
+      var sg=document.createElement("span"); sg.className="fgroup";
+      KW_SUGGEST.filter(function(k){return (r.keywords||[]).indexOf(k)<0;}).forEach(function(k){
+        var c=upcoming.filter(function(e){return hay(e).indexOf(k.toLowerCase())>=0;}).length;
+        if(!c) return;
+        sg.appendChild(fchip("＋ "+k,false,c,function(){
+          r.keywords=(r.keywords||[]).concat([k]); changed();
+        }));
+      });
+      sugRow.appendChild(sg); body.appendChild(sugRow);
+      // 排除
+      var det=document.createElement("details");
+      det.className="np-not";
+      var exN=DIMS.reduce(function(a,d){return a+(((r.not||{})[d.k]||[]).length);},0)
+             +(((r.not||{}).keywords||[]).length);
+      det.open=exN>0;
+      det.innerHTML='<summary>排除條件'+(exN?'（'+exN+'）':'')+'</summary>';
+      DIMS.filter(function(d){return d.not;}).forEach(function(d){
+        var row=document.createElement("div");
+        row.className="filter-row";
+        row.innerHTML='<span class="label np-sub">不要 '+d.label+'</span>';
+        var g=document.createElement("span"); g.className="fgroup";
+        var sel=(r.not||{})[d.k]||[];
+        dimOpts(d).forEach(function(o){
+          g.appendChild(fchip(o[1],sel.indexOf(o[0])>=0,null,function(){
+            var cur=(r.not[d.k]||[]), j=cur.indexOf(o[0]);
+            if(j>=0)cur.splice(j,1);else cur.push(o[0]);
+            r.not[d.k]=cur; changed();
+          }));
+        });
+        row.appendChild(g); det.appendChild(row);
+      });
+      var nkRow=document.createElement("div");
+      nkRow.className="filter-row";
+      nkRow.innerHTML='<span class="label np-sub">不要關鍵字</span>';
+      var ng=document.createElement("span"); ng.className="fgroup";
+      ((r.not||{}).keywords||[]).forEach(function(k){
+        ng.appendChild(fchip(k,true,null,function(){
+          r.not.keywords.splice(r.not.keywords.indexOf(k),1); changed();
+        },true));
+      });
+      var nInput=document.createElement("input");
+      nInput.className="push-input"; nInput.type="text"; nInput.placeholder="排除關鍵字，Enter 加入";
+      nInput.addEventListener("keydown",function(ev){
+        if(ev.key!=="Enter") return;
+        ev.preventDefault();
+        var v=nInput.value.trim(); if(!v) return;
+        r.not.keywords=(r.not.keywords||[]).concat([v]); changed();
+      });
+      ng.appendChild(nInput); nkRow.appendChild(ng); det.appendChild(nkRow);
+      body.appendChild(det);
+
+      sec.querySelector(".np-del").addEventListener("click",function(){
+        prefs.rules.splice(i,1); changed();
+      });
+      sec.querySelector(".np-dup").addEventListener("click",function(){
+        prefs.rules.splice(i+1,0,normRule(JSON.parse(JSON.stringify(r)))); changed();
+      });
+      host.appendChild(sec);
+    });
+  }
+
+  function renderPresets(){
+    var host=$("np-presets"); if(!host) return;
+    host.innerHTML="";
+    PRESETS.forEach(function(pre){
+      host.appendChild(fchip(pre.n,false,null,function(){
+        prefs.rules.push(normRule(pre.r)); changed();
+      }));
+    });
+  }
+  function renderOrgs(){
+    var host=$("pp-orgs"); host.innerHTML="";
+    (prefs.orgs||[]).forEach(function(o){
+      host.appendChild(fchip(o.name,true,null,function(){
+        if(window.chumeiFollow) window.chumeiFollow.toggle(o.id,o.name);
+      },true));
+    });
+    var empty=$("pp-org-empty");
+    if(empty) empty.hidden=(prefs.orgs||[]).length>0;
+  }
+  window.addEventListener("chumei-follow-change",function(){
+    try{var s=JSON.parse(localStorage.getItem("push-prefs")||"null"); if(s) prefs.orgs=s.orgs||[];}catch(e){}
+    renderOrgs(); renderPreview();
+  });
+  function renderPreview(){
+    var el=$("np-preview"); if(!el||!upcoming.length) return;
+    var n=upcoming.filter(anyMatch).length;
+    el.innerHTML="以目前設定，即將舉行的 <b>"+upcoming.length+"</b> 場活動中有 <b>"+n+"</b> 場會通知你"
+      +(n===upcoming.length?"（等於全部）":"")+"。";
+  }
+  function renderAll(){ renderRules(); renderPresets(); renderOrgs(); renderPreview(); }
+  function changed(){ renderAll(); save(); }
+
+  $("np-add").addEventListener("click",function(){ prefs.rules.push(emptyRule()); changed(); });
+
+  fetch("/data/events.json").then(function(r){return r.json()}).then(function(d){
+    var today=new Date(); today.setHours(0,0,0,0);
+    upcoming=(d.events||[]).filter(function(e){
+      var ts=new Date(e.start_at).getTime(); return !isNaN(ts)&&ts>=today.getTime();
+    });
+    catOptsCache=null; renderAll();
+  }).catch(function(){ renderAll(); });
+  renderAll();
 
   // ---- 訂閱流程 ----
   function uiSubscribed(){
