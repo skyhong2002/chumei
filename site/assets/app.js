@@ -660,6 +660,18 @@
       // touch 事件自己接：判定為橫向時 preventDefault 搶下手勢再驅動 deck。
       function bindSwipe(deck) {
         var drag = null, snapT;
+        // 診斷開關：?swipedebug=1 會在畫面上顯示手勢接收狀況（回報用，平時零成本）
+        var dbg = null;
+        if (/[?&]swipedebug=1/.test(location.search)) {
+          dbg = document.createElement("div");
+          dbg.style.cssText = "position:fixed;left:8px;right:8px;bottom:70px;z-index:99;padding:8px 10px;" +
+            "background:#000d;color:#0f0;font:12px/1.5 monospace;border:1px solid #0f0;border-radius:8px;white-space:pre-wrap";
+          document.body.appendChild(dbg);
+          dbg.textContent = "swipe debug: 等待手勢…\ncols=" + cols.length +
+            " deckW=" + deck.clientWidth + " scrollW=" + deck.scrollWidth +
+            "\ntouch-action=" + getComputedStyle(deck.querySelector(".feed-col")).touchAction;
+        }
+        function log(s) { if (dbg) dbg.textContent = s; }
         function snapBack(delay) {
           clearTimeout(snapT);
           snapT = setTimeout(function () { deck.style.scrollSnapType = ""; }, delay);
@@ -668,6 +680,7 @@
           if (e.touches.length !== 1 || cols.length < 2) { drag = null; return; }
           var t0 = e.touches[0];
           drag = { x: t0.clientX, y: t0.clientY, left: deck.scrollLeft, t: Date.now(), on: false, dec: false };
+          if (dbg) log("touchstart @" + Math.round(t0.clientX) + "," + Math.round(t0.clientY));
         }, { passive: true });
         deck.addEventListener("touchmove", function (e) {
           if (!drag || e.touches.length !== 1) return;
@@ -679,6 +692,9 @@
             drag.on = Math.abs(dx) > Math.abs(dy);              // 橫向優勢才接手
             if (drag.on) { clearTimeout(snapT); deck.style.scrollSnapType = "none"; }
           }
+          if (dbg) log("move dx=" + Math.round(dx) + " dy=" + Math.round(dy) +
+            " horiz=" + drag.on + " cancelable=" + e.cancelable +
+            "\nscrollLeft=" + Math.round(deck.scrollLeft) + " / " + deck.scrollWidth);
           if (!drag.on) return;
           if (e.cancelable) e.preventDefault();                 // 不讓瀏覽器當成垂直捲動
           deck.scrollLeft = drag.left - dx;
