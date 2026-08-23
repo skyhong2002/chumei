@@ -960,9 +960,12 @@
 
     fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
       var entries = data.entries;
-      var state = { school: "all", status: "all", kind: "all", platform: "all", sort: "events", dir: "desc", q: "" };
+      var state = { follow: "all", school: "all", status: "all", kind: "all", platform: "all", sort: "events", dir: "desc", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
+      function followed(id) {
+        return !!(window.chumeiFollow && window.chumeiFollow.isFollowed(id));
+      }
 
       var groups = {};
       function chips(id, options, key) {
@@ -986,6 +989,8 @@
           host.appendChild(b);
         });
       }
+      // 只在 /notify/ 出現（/source/ 沒有這個容器，chips 會直接略過）
+      chips("sf-follow", [["all", "全部單位"], ["on", "只看已追蹤"]], "follow");
       chips("sf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["nycu-guangfu", "交大校區"], ["nycu-yangming", "陽明校區"]], "school");
       chips("sf-status", [["all", "全部"], ["covered", "已收錄"], ["uncovered", "尚未收錄"]], "status");
       chips("sf-kind", [["all", "全部"]].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; })), "kind");
@@ -996,9 +1001,14 @@
         search.value = state.q;
         search.addEventListener("input", function () { state.q = search.value.trim(); render(); });
       }
+      // 追蹤數會影響「只看已追蹤」的計數與清單內容
+      window.addEventListener("chumei-follow-change", function () {
+        if (groups.follow) render();
+      });
 
       function matches(e, ok, ov) {
         function v(k) { return ok === k ? ov : state[k]; }
+        if (v("follow") === "on" && !followed(e.id)) return false;
         var sch = v("school");
         if (sch === "nycu-guangfu") { if (e.school !== "nycu" || e.campus === "yangming") return false; }
         else if (sch === "nycu-yangming") { if (e.school !== "nycu" || e.campus !== "yangming") return false; }
@@ -1049,7 +1059,11 @@
           "</span>" +
           '<div class="src-links">' + (links || '<span class="src-none">尚未找到公開帳號</span>') + "</div>" +
           '<div class="src-upd" title="' + esc(e.updated || "") + '">' + fmtUpdated(e.updated) + "</div>" +
-          '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div></div>";
+          '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div>" +
+          '<button class="heart-btn src-c-follow" data-org-id="' + e.id + '" data-org-name="' + esc(e.name) +
+          '" aria-pressed="' + followed(e.id) + '" title="追蹤 ' + esc(e.name) + '">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></svg></button>' +
+          "</div>";
       }
 
       var SORTS = {
@@ -1070,7 +1084,8 @@
         return '<div class="src-head">' +
           th("id", "ID") + th("name", "名稱", "src-th-left") +
           '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
-          th("updated", "更新") + th("events", "收錄") + "</div>";
+          th("updated", "更新") + th("events", "收錄") +
+          '<span class="src-th-plain src-th-follow">追蹤</span></div>';
       }
 
       function render() {
@@ -1969,6 +1984,7 @@
     if (i >= 0) { p.orgs.splice(i, 1); followed = false; }
     else { p.orgs.push({ id: isNaN(+id) ? id : +id, name: name }); followed = true; }
     writePrefs(p); syncServer(); refresh();
+    window.dispatchEvent(new CustomEvent("chumei-follow-change", { detail: { id: id, followed: followed } }));
     return followed;
   }
   function refresh() {

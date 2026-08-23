@@ -27,11 +27,10 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 .push-prefs-lede{font-size:.9rem;color:var(--color-text-secondary);margin:0 0 10px}
 .push-input{border:1px solid var(--color-border-subtle);border-radius:999px;background:var(--color-surface);color:var(--color-text-primary);font:inherit;font-size:.88rem;padding:4px 12px;min-width:14em;flex:1}
 .push-input:focus{outline:none;border-color:var(--color-border-strong)}
-.push-sug{margin:6px 0 0 0;border:1px solid var(--color-border-subtle);border-radius:12px;overflow:hidden}
-.push-sug button{display:flex;gap:10px;align-items:center;width:100%;padding:8px 12px;border:0;background:none;color:var(--color-text-primary);font:inherit;font-size:.9rem;cursor:pointer;text-align:left}
-.push-sug button:hover{background:var(--color-surface-soft)}
-.push-sug img,.push-sug .sug-av{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:var(--color-surface-soft)}
-.push-sug .sug-school{margin-left:auto;font-size:.78rem;color:var(--color-text-muted);flex:0 0 auto}
+.pp-org-empty{font-size:.85rem;color:var(--color-text-muted);align-self:center}
+.notify-top{margin-bottom:8px}
+.notify-orgs h2,.notify-orgs>p{max-width:var(--layout-reading,720px)}
+.notify-orgs h2{font-size:1.2rem;margin-top:2em}
 .push-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 0}
 .push-card [hidden]{display:none!important}
 .push-saved{font-size:.85rem;color:var(--color-text-brand)}
@@ -55,7 +54,8 @@ button.btn.btn-primary{background:var(--color-action-primary)}
       </div>
     </details>
   </nav>
-</header><main class="prose">
+</header><main>
+<div class="prose notify-top">
 <h1>通知與追蹤</h1>
 <p>把竹梅裝成 App、挑你在乎的——符合條件的新活動才會通知你。在貼文或活動上按 <b>❤️</b> 追蹤單位，也會記到這裡。</p>
 <section class="push-card" id="push-card">
@@ -79,8 +79,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     <p class="push-prefs-lede">挑你在乎的，其他的不吵你——<b>什麼都不選＝所有新活動都通知</b>；有選的話，學校先過濾，類型／單位／關鍵字任一命中就推。</p>
     <div class="filter-row"><span class="label">學校</span><span id="pp-school" class="fgroup"></span></div>
     <div class="filter-row"><span class="label">類型</span><span id="pp-cat" class="fgroup"></span></div>
-    <div class="filter-row"><span class="label">單位</span><span class="fgroup" id="pp-org-box"><span id="pp-orgs" style="display:contents"></span><input id="pp-org-q" class="push-input" type="search" placeholder="搜尋社團／系學會／單位名稱⋯" autocomplete="off"></span></div>
-    <div class="push-sug" id="pp-org-sug" hidden></div>
+    <div class="filter-row"><span class="label">追蹤</span><span class="fgroup" id="pp-org-box"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位——用下面的名錄按 ❤️ 加入</span></span></div>
     <div class="filter-row"><span class="label">關鍵字</span><span class="fgroup" id="pp-kw-box"><span id="pp-kws" style="display:contents"></span><input id="pp-kw" class="push-input" type="text" placeholder="像是：爵士、AI、桌遊⋯（Enter 加入）" autocomplete="off"></span></div>
     <p class="push-foot">
       <button class="fchip" id="push-test" hidden><span class="fchip-label">發送測試通知</span></button>
@@ -121,8 +120,26 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     </ol>
   </div>
 </details>
+</div>
+<section class="notify-orgs">
+<h2 id="orgs">追蹤來源</h2>
+<p>清大與陽明交大的社團、系所與校方單位都在這裡。按 ❤️ 追蹤，該單位有新活動就會通知你——
+<span id="src-count" aria-live="polite"></span></p>
+<section class="filters" aria-label="名錄篩選">
+  <div class="filter-row"><span class="label">追蹤</span><span id="sf-follow" class="fgroup"></span>
+    <span class="search-hit"><input id="search" type="search" placeholder="搜尋社團、單位…" aria-label="搜尋名錄"></span></div>
+  <div class="filter-row"><span class="label">學校</span><span id="sf-school" class="fgroup"></span></div>
+  <div class="filter-row"><span class="label">類型</span><span id="sf-kind" class="fgroup"></span></div>
+  <div class="filter-row"><span class="label">狀態</span><span id="sf-status" class="fgroup"></span></div>
+  <div class="filter-row"><span class="label">平台</span><span id="sf-platform" class="fgroup"></span></div>
+</section>
+<div id="source-table" class="src-table" aria-label="機構名錄"></div>
+
+</section>
+<div class="prose">
 <h2>其他訂閱方式</h2>
 <p>Telegram 頻道、查詢 Bot、RSS 與行事曆訂閱都在<a href="/subscribe/">訂閱管道</a>。</p>
+</div>
 <script>
 (function(){
   "use strict";
@@ -185,10 +202,20 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   }
   function renderOrgs(){
     var host=$("pp-orgs");host.innerHTML="";
-    prefs.orgs.forEach(function(o,i){
-      host.appendChild(chip(o.name,true,function(){prefs.orgs.splice(i,1);renderOrgs();save();},true));
+    prefs.orgs.forEach(function(o){
+      host.appendChild(chip(o.name,true,function(){
+        // 交給 chumeiFollow 統一處理（會同步下方名錄的愛心與伺服器偏好）
+        if(window.chumeiFollow) window.chumeiFollow.toggle(o.id,o.name);
+      },true));
     });
+    var empty=$("pp-org-empty");
+    if(empty) empty.hidden = prefs.orgs.length>0;
   }
+  // 下方名錄按愛心 → 重新讀 localStorage 並更新這裡的 chips
+  window.addEventListener("chumei-follow-change",function(){
+    try{var s=JSON.parse(localStorage.getItem("push-prefs")||"null"); if(s) prefs.orgs=s.orgs||[];}catch(e){}
+    renderOrgs();
+  });
   function renderKws(){
     var host=$("pp-kws");host.innerHTML="";
     prefs.keywords.forEach(function(k,i){
@@ -210,51 +237,6 @@ button.btn.btn-primary{background:var(--color-action-primary)}
       }).catch(function(){});
     },600);
   }
-
-  // ---- 單位搜尋 ----
-  var orgIndex=null;
-  function loadOrgs(){
-    if(orgIndex)return Promise.resolve(orgIndex);
-    return fetch("/data/sources.json").then(function(r){return r.json()}).then(function(d){
-      orgIndex=(d.entries||[]).filter(function(e){return e.id!=null;});
-      return orgIndex;
-    });
-  }
-  var SCHOOL_S={nthu:"清大",nycu:"陽明交大",both:"清交"};
-  var orgQ=$("pp-org-q"), sug=$("pp-org-sug");
-  function showSug(list){
-    sug.innerHTML="";
-    if(!list.length){sug.hidden=true;return;}
-    list.forEach(function(e){
-      var b=document.createElement("button");b.type="button";
-      var av=e.avatar?'<img src="'+e.avatar+'" alt="" loading="lazy">':'<span class="sug-av"></span>';
-      b.innerHTML=av+'<span class="sug-name"></span><span class="sug-school"></span>';
-      b.querySelector(".sug-name").textContent=e.name;
-      b.querySelector(".sug-school").textContent=(SCHOOL_S[e.school]||"")+(e.events?"・"+e.events+" 場":"");
-      b.addEventListener("click",function(){
-        if(!prefs.orgs.some(function(o){return o.id===e.id;}))prefs.orgs.push({id:e.id,name:e.name});
-        orgQ.value="";sug.hidden=true;renderOrgs();save();
-      });
-      sug.appendChild(b);
-    });
-    sug.hidden=false;
-  }
-  orgQ.addEventListener("input",function(){
-    var q=orgQ.value.trim();
-    if(!q){sug.hidden=true;return;}
-    loadOrgs().then(function(list){
-      var ql=q.toLowerCase();
-      var hits=list.filter(function(e){return e.name.toLowerCase().indexOf(ql)>=0;});
-      hits.sort(function(a,b){
-        var ap=a.name.toLowerCase().indexOf(ql)===0?0:1, bp=b.name.toLowerCase().indexOf(ql)===0?0:1;
-        return ap-bp||(b.events||0)-(a.events||0);
-      });
-      showSug(hits.slice(0,8));
-    });
-  });
-  document.addEventListener("click",function(ev){
-    if(!sug.contains(ev.target)&&ev.target!==orgQ)sug.hidden=true;
-  });
 
   // ---- 關鍵字 ----
   var kwInput=$("pp-kw");

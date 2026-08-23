@@ -1502,7 +1502,8 @@ def source_table_html(entries):
                 + "</span>"
                 f'<div class="src-links">{links_html}</div>'
                 f'<div class="src-upd" title="{esc(e.get("updated") or "")}">{fmt_updated(e.get("updated"))}</div>'
-                f'<div class="src-ev">{str(e["events"]) + " 場" if e["events"] else "—"}</div></div>')
+                f'<div class="src-ev">{str(e["events"]) + " 場" if e["events"] else "—"}</div>'
+                + heart_btn(e["id"], e["name"], "src-c-follow") + "</div>")
 
     def th(key, label, extra_cls="", on=False, arrow=" ↕"):
         cls = "src-th" + (f" {extra_cls}" if extra_cls else "") + (" src-th-on" if on else "")
@@ -1510,7 +1511,8 @@ def source_table_html(entries):
 
     head = ('<div class="src-head">' + th("id", "ID") + th("name", "名稱", "src-th-left") +
             '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
-            th("updated", "更新") + th("events", "收錄", on=True, arrow=" ↓") + "</div>")
+            th("updated", "更新") + th("events", "收錄", on=True, arrow=" ↓") +
+            '<span class="src-th-plain src-th-follow">追蹤</span></div>')
     # 預設排序同 JS SORTS.events（名稱平手時 JS 用 zh-Hant localeCompare，這裡以碼位近似）
     ordered = sorted(entries, key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
     return head + "".join(row(e) for e in ordered)

@@ -696,10 +696,19 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-table { margin-top: 12px; border-top: 1px solid var(--color-border-subtle); }
 .src-row {
   display: grid;
-  grid-template-columns: 46px 284px minmax(0, 1.4fr) auto 84px 56px;
+  /* 連結欄不設上限時會吃掉標籤欄（長 handle 讓標籤被壓成直排）——給它上限並讓它換行 */
+  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 160px) 80px 54px 38px;
   gap: 10px; align-items: center;
   padding: 10px 6px; border-bottom: 1px solid var(--color-border-subtle);
 }
+.src-c-follow {
+  width: 34px; height: 34px; border: 0; border-radius: 50%; background: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--color-text-muted); justify-self: end;
+}
+.src-c-follow:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.src-c-follow svg { width: 19px; height: 19px; }
+.src-th-follow { text-align: center; }
 .src-c-name {
   display: flex; align-items: center; gap: 10px; min-width: 0;
   font-size: 0.95rem; font-weight: 600;
@@ -732,10 +741,12 @@ main.main-wide { max-width: min(1680px, 100%); }
 @media (max-width: 700px) {
   /* compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
   .src-row {
-    grid-template-columns: 1fr auto;
-    grid-template-areas: "name ev" "links upd";
+    grid-template-columns: 1fr auto 36px;
+    grid-template-areas: "name ev follow" "links upd follow";
     gap: 2px 10px; padding: 6px 2px;
   }
+  .src-c-follow { grid-area: follow; align-self: center; width: 32px; height: 32px; }
+  .src-th-follow { display: none; }
   .src-c-name { grid-area: name; font-size: 0.85rem; gap: 8px; }
   .src-c-chips { display: none; }
   .chip-m {
@@ -1180,7 +1191,7 @@ body.feed-locked .fab { bottom: 96px; }
 /* 名錄表頭（點擊排序） */
 .src-head {
   display: grid;
-  grid-template-columns: 46px 284px minmax(0, 1.4fr) auto 84px 56px;
+  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 160px) 80px 54px 38px;
   gap: 10px; align-items: center;
   padding: 6px 6px; border-bottom: 2px solid var(--color-border-strong);
   position: sticky; top: 0; z-index: 5;
