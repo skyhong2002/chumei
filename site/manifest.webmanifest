@@ -1,0 +1,22 @@
+{
+  "name": "竹梅活動觀測站",
+  "short_name": "竹梅",
+  "description": "清大 × 陽明交大校園活動自動彙整",
+  "lang": "zh-Hant-TW",
+  "start_url": "/?src=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "/assets/brand/logo-square-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/brand/logo-square-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/brand/logo-bot-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/assets/brand/logo-bot-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "活動總覽", "url": "/events/", "icons": [{ "src": "/assets/brand/logo-square-192.png", "sizes": "192x192" }] },
+    { "name": "日曆", "url": "/calendar/", "icons": [{ "src": "/assets/brand/logo-square-192.png", "sizes": "192x192" }] },
+    { "name": "訂閱通知", "url": "/subscribe/", "icons": [{ "src": "/assets/brand/logo-square-192.png", "sizes": "192x192" }] }
+  ]
+}

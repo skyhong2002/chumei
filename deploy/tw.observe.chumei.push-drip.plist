@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>tw.observe.chumei.push-drip</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/skyhong/Projects/chumei/.venv/bin/python</string>
+		<string>/Users/skyhong/Projects/chumei/scripts/publish_push.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/skyhong/Projects/chumei</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+	<key>StartInterval</key>
+	<integer>1800</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/Users/skyhong/Projects/chumei/state/push_drip.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/skyhong/Projects/chumei/state/push_drip.log</string>
+</dict>
+</plist>

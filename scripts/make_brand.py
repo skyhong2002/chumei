@@ -10,8 +10,8 @@
 
 產出（site/assets/…）：
   brand/logo-mark-{16,32,48,64,256,1024}.png   竹梅雙字（favicon 等）
-  brand/logo-square-{32,64,180,256,512,1024}.png 竹梅＋活動觀測站副標
-  brand/logo-bot-{512,1024}.png                圓形頭貼安全版（Telegram/LINE 頭貼）
+  brand/logo-square-{32,64,180,192,256,512,1024}.png 竹梅＋活動觀測站副標（192/512 兼 PWA icon）
+  brand/logo-bot-{192,512,1024}.png            圓形頭貼安全版（Telegram/LINE 頭貼；192/512 兼 PWA maskable icon）
   brand/logo-chat-{512,1024}.png               對話泡泡版（bot 識別）
   og-default.png                               1200×630 社群分享圖
 
@@ -166,8 +166,8 @@ def main():
     big = {"logo-mark": logo_mark(1024), "logo-square": logo_square(1024),
            "logo-bot": logo_bot(1024), "logo-chat": logo_chat(1024)}
     sizes = {"logo-mark": (16, 32, 48, 64, 256, 1024),
-             "logo-square": (32, 64, 180, 256, 512, 1024),
-             "logo-bot": (512, 1024), "logo-chat": (512, 1024)}
+             "logo-square": (32, 64, 180, 192, 256, 512, 1024),
+             "logo-bot": (192, 512, 1024), "logo-chat": (512, 1024)}
     for name, master in big.items():
         for s in sizes[name]:
             out = master if s == 1024 else master.resize((s, s), Image.LANCZOS)

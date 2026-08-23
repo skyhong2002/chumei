@@ -625,6 +625,9 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="竹梅活動觀測站">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-title" content="竹梅">
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="alternate" type="application/rss+xml" title="竹梅活動 RSS" href="/feeds/all.xml">
@@ -854,7 +857,8 @@ def build_sources_data(events):
                     campus = _org_campus(r["club_name"])
             entries.append({
                 "name": r["club_name"], "school": school, "kind": kind,
-                "category": re.sub(r"社團$", "", cat), "campus": campus,
+                # 名冊分冊尾碼（學術性B、體育性A⋯）對訪客沒意義，顯示前去掉
+                "category": re.sub(r"(?<=性)[AB]$", "", re.sub(r"社團$", "", cat)), "campus": campus,
                 "links": [], "events": 0, "roster": True,
             })
     # 正名：官方名冊的通用名（口琴社）換成社團的專屬名（揚鳴口琴社）
@@ -1040,9 +1044,9 @@ def org_pages(entries, events):
                  + campus_chip +
                  f'<span class="chip">{KIND_LABEL.get(ent["kind"], "")}</span>'
                  + (f'<span class="chip">{esc(ent["category"])}</span>' if ent.get("category") else ""))
-        body = [f'<article class="org-page"><div class="org-head">{avatar}<div>'
-                f'<p class="chips">{chips}</p><h1>{esc(ent["name"])}</h1>'
-                f'<div class="actions">{links}</div></div></div>']
+        body = [f'<article class="org-page"><div class="org-head">{avatar}<div class="org-head-main">'
+                f'<h1>{esc(ent["name"])}</h1><p class="chips">{chips}</p>'
+                f'<div class="actions org-links">{links}</div></div></div>']
         if not ent["links"]:
             body.append('<p class="review-note">這個單位還沒有被竹梅收錄——如果你知道它的公開社群帳號，'
                         '歡迎到<a href="/about/">回報管道</a>告訴我們。</p>')

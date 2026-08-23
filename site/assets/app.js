@@ -1637,3 +1637,12 @@
     redraw();
   }
 })();
+
+/* PWA：service worker 註冊（推播與安裝性；sw.js 不做快取）。 */
+(function () {
+  "use strict";
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  });
+})();

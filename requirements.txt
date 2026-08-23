@@ -3,3 +3,4 @@ Pillow
 playwright
 mcp
 uvicorn
+pywebpush
