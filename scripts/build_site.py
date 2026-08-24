@@ -1,6 +1,7 @@
 """組站：extraction + NYCU LIFE 結構化活動 → site/data、site/api、site/feeds、詳情頁、sitemap。"""
 
 import csv
+import hashlib
 import html
 import io
 import json
@@ -19,6 +20,7 @@ SITE = ROOT / "site"
 BASE_URL = "https://chumei.observe.tw"
 EXTRACT_DIR = ROOT / "state" / "extraction"
 POSTER_DIR = SITE / "assets" / "posters"
+VERSIONED_ASSETS = ("tokens.css", "site.css", "app.js")
 
 SCHOOL_LABEL = {"nthu": "清大", "nycu": "陽明交大", "both": "清大×交大", "external": "校外"}
 CAMPUS_LABEL = {
@@ -664,6 +666,29 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <script src="/assets/app.js"></script>
 </body>
 </html>"""
+
+
+def version_static_assets():
+    """替 HTML 內的核心 CSS/JS 加內容版本，避免手機沿用舊手勢程式。"""
+    versions = {}
+    for name in VERSIONED_ASSETS:
+        path = SITE / "assets" / name
+        versions[name] = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+
+    pattern = re.compile(
+        r"/assets/(tokens\.css|site\.css|app\.js)(?:\?v=[0-9a-f]+)?"
+    )
+    changed = 0
+    for path in SITE.rglob("*.html"):
+        source = path.read_text()
+        rendered = pattern.sub(
+            lambda match: f"/assets/{match.group(1)}?v={versions[match.group(1)]}",
+            source,
+        )
+        if rendered != source:
+            path.write_text(rendered)
+            changed += 1
+    print(f"asset versions: {changed} HTML files updated")
 
 
 def join_loc(e, sep=" ・ "):
@@ -1654,6 +1679,7 @@ def main():
     prerender_events(events)
     prerender_calendar(events)
     prerender_stories()
+    version_static_assets()
 
     urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
