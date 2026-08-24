@@ -36,6 +36,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.routing import Route
 
+from build_site import page_shell
 from chumei_lib import ROOT, load_env
 
 
@@ -362,54 +363,42 @@ def _account_html(
         subject = html.escape(user.get("subject") or "")
         card = f"""
         <div class="account-status"><span class="account-dot"></span>已使用陽明交大 OAuth 登入</div>
-        <h1>{html.escape(user.get('display_name') or 'NYCU 使用者')}</h1>
+        <h2>{html.escape(user.get('display_name') or 'NYCU 使用者')}</h2>
         <dl><div><dt>學校帳號</dt><dd>{subject}</dd></div>{f'<div><dt>Email</dt><dd>{email}</dd></div>' if email else ''}</dl>
-        <form method="post" action="/auth/logout"><button class="secondary" type="submit">登出</button></form>
+        <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
         """
     elif configured:
         card = """
         <p class="eyebrow">OAuth-only account</p>
-        <h1>登入竹梅</h1>
+        <h2>登入竹梅</h2>
         <p>使用陽明交大單一入口驗證身分。竹梅不會取得或儲存你的學校密碼。</p>
-        <a class="oauth-button" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>
+        <a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>
         <p class="privacy-note">目前只要求基本 profile，用來取得穩定帳號識別與校方 Email。</p>
         """
     else:
         card = """
         <p class="eyebrow">OAuth-only account</p>
-        <h1>登入功能設定中</h1>
+        <h2>登入功能設定中</h2>
         <p>NYCU OAuth Client 尚未完成設定，請稍後再試。</p>
-        <span class="oauth-button disabled" aria-disabled="true">使用陽明交大 OAuth 登入</span>
+        <span class="btn btn-primary account-action disabled" aria-disabled="true">使用陽明交大 OAuth 登入</span>
         """
     alert = f'<div class="account-alert">{html.escape(message)}</div>' if message else ""
-    return f"""<!doctype html>
-<html lang="zh-Hant-TW" data-theme="dark"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>{html.escape(title)}｜竹梅活動觀測站</title>
-<meta name="description" content="使用陽明交通大學 OAuth 登入竹梅。">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png">
-<link rel="stylesheet" href="/assets/tokens.css"><link rel="stylesheet" href="/assets/site.css">
-<script>try{{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}}catch(e){{}}</script>
-<style>
-body.auth-body{{padding:0;min-height:100vh;display:grid;place-items:center;background:var(--color-canvas)}}
-.account-wrap{{width:min(100%,620px);padding:28px 18px 60px}}
-.account-brand{{display:inline-flex;align-items:baseline;gap:2px;margin:0 0 28px;padding:0;text-decoration:none}}
-.account-card{{padding:clamp(24px,5vw,42px);background:var(--color-surface);border:1px solid var(--color-border-subtle);border-radius:24px;box-shadow:var(--shadow-raised)}}
-.account-card h1{{margin:4px 0 12px;font-size:clamp(1.7rem,5vw,2.35rem);line-height:1.25}}
-.account-card p{{color:var(--color-text-secondary)}}
-.eyebrow{{margin:0!important;color:var(--chumei-bamboo-text)!important;font-size:.78rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}}
-.oauth-button,.account-card button{{display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;margin-top:24px;padding:12px 18px;border:0;border-radius:14px;background:#0045f2;color:white;font:inherit;font-weight:750;cursor:pointer;text-decoration:none}}
-.oauth-button:hover{{background:#174ff0;text-decoration:none}} .oauth-button.disabled{{opacity:.48;cursor:not-allowed}}
-.account-card button.secondary{{background:var(--color-surface-soft);color:var(--color-text-primary)}}
-.privacy-note{{margin:14px 0 0;font-size:.82rem}} .account-alert{{margin-bottom:18px;padding:12px 14px;border-radius:12px;background:var(--color-danger-surface,#3b1515);color:var(--color-danger-text,#ffb4b4)}}
-.account-status{{display:flex;align-items:center;gap:8px;color:var(--color-text-secondary);font-size:.9rem}} .account-dot{{width:9px;height:9px;border-radius:50%;background:#22c55e}}
-.account-card dl{{margin:24px 0}} .account-card dl div{{padding:12px 0;border-top:1px solid var(--color-border-subtle)}} .account-card dt{{font-size:.78rem;color:var(--color-text-muted)}} .account-card dd{{margin:2px 0 0;font-weight:650;overflow-wrap:anywhere}}
-.account-back{{display:block;margin-top:18px;text-align:center;color:var(--color-text-secondary)}}
-</style></head><body class="auth-body"><main class="account-wrap">
-<a class="brand account-brand" href="/" aria-label="回到竹梅首頁"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a>
-<section class="account-card">{alert}{card}</section><a class="account-back" href="/">← 回到活動觀測站</a>
-</main></body></html>"""
+    content = f"""
+<section class="account-page">
+  <div class="hero">
+    <h1>{html.escape(title)}</h1>
+    <p>使用校方 OAuth 管理你的竹梅登入身分。</p>
+  </div>
+  {alert}
+  <section class="account-card">{card}</section>
+</section>
+"""
+    return page_shell(
+        f"{title}｜竹梅活動觀測站",
+        "使用陽明交通大學 OAuth 登入竹梅。",
+        content,
+        canonical="https://chumei.observe.tw/account/",
+    )
 
 
 def create_app(

@@ -136,6 +136,16 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 303)
         self.assertFalse(self.client.get("/auth/me").json()["authenticated"])
 
+    def test_account_page_uses_shared_site_shell(self):
+        response = self.client.get("/account/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('class="site-header"', response.text)
+        self.assertIn('class="site-nav"', response.text)
+        self.assertIn('class="account-page"', response.text)
+        self.assertIn('class="site-footer"', response.text)
+        self.assertIn('<script src="/assets/app.js"></script>', response.text)
+        self.assertNotIn('class="auth-body"', response.text)
+
     def test_unconfigured_server_is_safe(self):
         config = auth_server.AuthConfig(
             client_id="",
