@@ -747,7 +747,7 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-ev { text-align: right; font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .src-uncovered .src-ev { color: var(--color-text-muted); font-weight: 400; }
 .chip-m { display: none; }
-@media (max-width: 900px) {
+@media (max-width: 1280px) {
   /* compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
   .src-row {
     grid-template-columns: 1fr auto auto;
@@ -1231,12 +1231,12 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .src-th-on { color: var(--chumei-bamboo-text); }
 .src-th-left, .src-th-plain { text-align: left; }
 .src-th-links { text-align: right; }
-@media (max-width: 900px) {
+@media (max-width: 1280px) {
   .src-head { display: flex; gap: 6px; padding: 6px 2px; top: 54px; }
   .src-th-plain, .src-th[data-sort="id"] { display: none; }
   .src-th { text-align: left; }
 }
-@media (min-width: 701px) and (max-width: 900px) {
+@media (min-width: 701px) and (max-width: 1280px) {
   .src-head { top: 0; }
 }
 .chip-reg-req { background: var(--color-warning-surface); color: var(--color-warning-text); }
