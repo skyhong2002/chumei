@@ -84,6 +84,36 @@
     });
   })();
 
+  // ---- 桌機側欄：把常用工具拉出「更多」，手機仍維持原本底部導覽 ----
+  (function () {
+    var nav = document.querySelector(".site-nav");
+    var more = nav && nav.querySelector(".nav-more");
+    var menu = more && more.querySelector(".nav-more-menu");
+    if (!nav || !more || !menu) return;
+    var SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+    var items = [
+      {
+        href: "/notify/",
+        label: "推播與追蹤",
+        icon: '<path d="M10 5a2 2 0 0 1 4 0a7 7 0 0 1 4 6v3l2 2H4l2-2v-3a7 7 0 0 1 4-6"/><path d="M9 19a3 3 0 0 0 6 0"/>'
+      },
+      {
+        href: "/source/",
+        label: "資料來源",
+        icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'
+      }
+    ];
+    items.forEach(function (item) {
+      var a = document.createElement("a");
+      a.className = "nav-item nav-desktop-extra";
+      a.href = item.href;
+      a.innerHTML = SVG_OPEN + item.icon + '</svg><span class="nav-label">' + item.label + "</span>";
+      nav.insertBefore(a, more);
+      var duplicate = menu.querySelector('a[href="' + item.href + '"]');
+      if (duplicate) duplicate.classList.add("nav-mobile-extra");
+    });
+  })();
+
   // ---- 分享按鈕（詳情頁）：行動裝置系統分享，桌機複製連結＋LINE ----
   document.addEventListener("click", function (ev) {
     var b = ev.target.closest(".btn-share");
@@ -915,15 +945,18 @@
         clearTimeout(cfT);
         cfT = setTimeout(function () { saveCols(); updateBodies(); }, 200);
       });
-      // Threads 式加欄：右下角圓角方形 ＋，往上彈出欄位型態選單
+      // 桌機加欄入口放進左側導覽；手機沿用河道分頁列的 ＋
       var addFab = document.createElement("details");
       addFab.className = "addcol";
-      addFab.innerHTML = '<summary aria-label="新增欄位">' + SVG_OPEN + '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg></summary>' +
+      addFab.innerHTML = '<summary class="nav-item" aria-label="新增河道">' + SVG_OPEN + '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg><span class="nav-label">新增河道</span></summary>' +
         '<div class="addcol-menu"><div class="addcol-title">新增欄位</div>' +
         '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>' +
         '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button>' +
         '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div>';
-      document.body.appendChild(addFab);
+      var sidebarNav = document.querySelector(".site-nav");
+      var sidebarMore = sidebarNav && sidebarNav.querySelector(".nav-more");
+      if (sidebarNav && sidebarMore) sidebarNav.insertBefore(addFab, sidebarMore);
+      else document.body.appendChild(addFab);
       addFab.addEventListener("click", function (ev) {
         var b = ev.target.closest("button[data-add]");
         if (!b || cols.length >= 6) return;

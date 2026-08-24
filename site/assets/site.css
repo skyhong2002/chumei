@@ -143,7 +143,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 
 @media (min-width: 1080px) {
   body { padding-left: 260px; }
-  .fab { display: flex; }
+  .nav-more-menu .nav-mobile-extra { display: none; }
 }
 @media (min-width: 700px) and (max-width: 1079px) {
   body { padding-left: 76px; }
@@ -153,6 +153,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .brand-sub, .nav-label { display: none; }
   .nav-item { justify-content: center; padding: 10px 0; }
   .nav-more-menu { left: calc(100% + 10px); bottom: 0; }
+  .nav-desktop-extra { display: none; }
 }
 @media (max-width: 699px) {
   body { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
@@ -192,6 +193,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
     position: fixed; left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom));
     min-width: 0;
   }
+  .nav-desktop-extra { display: none; }
   main { padding: 4px 14px 48px; }
   .hero { padding: 16px 0 6px; }
 }
@@ -1148,11 +1150,8 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 .col-picker > summary { position: relative; }
 
-/* Threads 式加欄 FAB：右下角圓角方形 ＋，選單往上彈 */
-.addcol { display: none; position: fixed; right: 24px; bottom: 24px; z-index: 35; }
-body.feed-locked .addcol { display: block; }
-body.feed-locked .addcol[hidden] { display: none; }
-body.feed-locked .fab { bottom: 96px; }
+/* 新增河道選單：桌機入口位於側欄；手機另使用河道分頁列的 ＋ */
+.addcol { display: none; }
 .addcol summary {
   list-style: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -1183,6 +1182,23 @@ body.feed-locked .fab { bottom: 96px; }
 }
 .addcol-menu button:hover { background: var(--color-surface-soft); }
 .addcol-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
+@media (min-width: 1080px) {
+  body.feed-locked .site-nav > .addcol { display: block; position: relative; flex: 0 0 auto; }
+  body.feed-locked .site-nav > .addcol[hidden] { display: none; }
+  .site-nav > .addcol > summary {
+    justify-content: flex-start; width: 100%; height: auto; min-height: var(--layout-tap-target, 44px);
+    padding: 10px 12px; border: none; border-radius: var(--radius-md);
+    background: none; box-shadow: none; color: var(--color-text-secondary);
+    transition: background var(--motion-fast, 140ms), color var(--motion-fast, 140ms);
+  }
+  .site-nav > .addcol > summary:hover {
+    transform: none; background: var(--color-surface-soft); color: var(--color-text-primary);
+  }
+  .site-nav > .addcol[open] > summary { transform: none; }
+  .site-nav > .addcol .addcol-menu {
+    left: calc(100% + 10px); right: auto; top: 0; bottom: auto;
+  }
+}
 .dot-events { background: var(--color-category-orange-text); }
 .dot-stories { background: linear-gradient(135deg, var(--chumei-bamboo-text), var(--chumei-plum-strong)); }
 .feed-col .col-evs { margin-top: 4px; }
