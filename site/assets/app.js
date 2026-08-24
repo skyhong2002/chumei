@@ -1282,10 +1282,10 @@
               '<button class="slb-peek slb-peek-m2" data-group-shift="-2" aria-label="前兩個帳號"></button>' +
               '<button class="slb-peek slb-peek-m1" data-group-shift="-1" aria-label="上一個帳號"></button>' +
               '<button class="slb-nav slb-prev" data-group-shift="-1" aria-label="上一個帳號">‹</button>' +
-              '<div class="slb-figure"><div class="slb-progress" aria-label="這個帳號的限動進度"></div>' +
+              '<div class="slb-viewer"><div class="slb-figure"><div class="slb-progress" aria-label="這個帳號的限動進度"></div>' +
               '<div class="slb-head"></div><div class="slb-media"></div>' +
               '<button class="slb-hit slb-hit-prev" aria-label="上一則限時動態"></button>' +
-              '<button class="slb-hit slb-hit-next" aria-label="下一則限時動態"></button>' +
+              '<button class="slb-hit slb-hit-next" aria-label="下一則限時動態"></button></div>' +
               '<a class="slb-ig-link" rel="noopener" target="_blank">在 Instagram 查看 ↗</a></div>' +
               '<button class="slb-nav slb-next" data-group-shift="1" aria-label="下一個帳號">›</button>' +
               '<button class="slb-peek slb-peek-p1" data-group-shift="1" aria-label="下一個帳號"></button>' +
@@ -1500,9 +1500,7 @@
             (s.avatar ? '<img class="slb-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
             '<span class="who"><strong>' + esc(s.username) + '</strong><span class="sub">' + ago(s.taken_at) + "</span></span>" +
             '<button class="slb-pause" aria-label="暫停播放" aria-pressed="false">Ⅱ</button>';
-          lb.querySelector(".slb-media").innerHTML =
-            '<img src="' + esc(s.media) + '" alt="">' +
-            (s.is_video ? '<p class="slb-video-note">影片限動 — <a href="' + esc(s.ig_url) + '" rel="noopener" target="_blank">到 IG 觀看</a></p>' : "");
+          lb.querySelector(".slb-media").innerHTML = '<img src="' + esc(s.media) + '" alt="">';
           lb.querySelector(".slb-ig-link").href = s.ig_url;
           renderPeeks();
           startProgress();
