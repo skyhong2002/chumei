@@ -55,8 +55,10 @@ class AuthServerTests(unittest.TestCase):
             cookie_secure=False,
         )
         self.http = FakeHTTP()
+        self.store = auth_server.AuthStore(self.db_path)
         app = auth_server.create_app(
             self.config,
+            store=self.store,
             oauth_client=auth_server.NYCUOAuthClient(self.http),
         )
         self.client = TestClient(app)
@@ -145,6 +147,42 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn('class="site-footer"', response.text)
         self.assertIn('<script src="/assets/app.js"></script>', response.text)
         self.assertNotIn('class="auth-body"', response.text)
+
+    def test_login_merges_local_follows_and_counts_unique_accounts(self):
+        unauthenticated = self.client.post("/auth/follows/sync", json={"orgs": []})
+        self.assertEqual(unauthenticated.status_code, 401)
+
+        self._login()
+        merged = self.client.post(
+            "/auth/follows/sync",
+            json={
+                "orgs": [
+                    {"id": 5, "name": "清大電機系學會"},
+                    {"id": "47", "name": "陽明交大藝文中心"},
+                    {"id": 5, "name": "重複項目"},
+                    {"id": "invalid", "name": "無效"},
+                ]
+            },
+        )
+        self.assertEqual(merged.status_code, 200)
+        payload = merged.json()
+        self.assertEqual([org["id"] for org in payload["following"]], [5, 47])
+        self.assertEqual(payload["counts"], {"5": 1, "47": 1})
+        self.assertEqual(
+            payload["summary"], {"accounts": 1, "follows": 2, "organizations": 2}
+        )
+
+        repeated = self.client.put("/auth/follows/5", json={"name": "清大電機系學會"})
+        self.assertEqual(repeated.json()["counts"]["5"], 1)
+        removed = self.client.delete("/auth/follows/5")
+        self.assertNotIn("5", removed.json()["counts"])
+        self.assertEqual(removed.json()["summary"]["follows"], 1)
+
+        self.client.post("/auth/logout")
+        public = self.client.get("/auth/follows").json()
+        self.assertFalse(public["authenticated"])
+        self.assertEqual(public["following"], [])
+        self.assertEqual(public["counts"], {"47": 1})
 
     def test_unconfigured_server_is_safe(self):
         config = auth_server.AuthConfig(

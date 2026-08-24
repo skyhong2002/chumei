@@ -76,7 +76,8 @@ CHUMEI_AUTH_PUBLIC_BASE_URL=https://chumei.observe.tw
 
 服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將
 `/auth/*` 與 `/account*` 反代到該埠。帳號資料只包含 OAuth identity 與雜湊後的
-Session token，存於被 Git 忽略的 `state/auth.sqlite3`；不保存學校密碼。
+Session token，以及使用者主動追蹤的單位關聯，存於被 Git 忽略的
+`state/auth.sqlite3`；不保存學校密碼，也不公開個別帳號的追蹤名單。
 
 ## 資料回報與下架
 

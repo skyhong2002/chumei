@@ -8,6 +8,10 @@ Public routes (Caddy proxies /auth/* and /account* to this service):
   GET  /auth/nycu/start       begin Authorization Code + PKCE flow
   GET  /auth/nycu/callback    exchange code and create/login local account
   GET  /auth/me               current session
+  GET  /auth/follows          public counts plus current user's follows
+  POST /auth/follows/sync     merge browser-local follows after login
+  PUT  /auth/follows/{org_id} follow one organization
+  DELETE /auth/follows/{org_id} unfollow one organization
   POST /auth/logout           revoke local session
   GET  /auth/health           runtime/configuration status
 """
@@ -70,6 +74,33 @@ def _safe_return_to(value: str | None) -> str:
     if parsed.scheme or parsed.netloc:
         return "/account/"
     return value
+
+
+def _normalize_follow_orgs(values) -> list[dict]:
+    """Keep a bounded, deduplicated list of public organization identifiers."""
+    if not isinstance(values, list):
+        return []
+    out: list[dict] = []
+    seen: set[int] = set()
+    for value in values[:500]:
+        if isinstance(value, dict):
+            raw_id = value.get("id")
+            raw_name = value.get("name")
+        else:
+            raw_id = value
+            raw_name = ""
+        if isinstance(raw_id, bool):
+            continue
+        try:
+            org_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if org_id <= 0 or org_id > 1_000_000_000 or org_id in seen:
+            continue
+        name = str(raw_name or "").strip()[:80]
+        out.append({"id": org_id, "name": name})
+        seen.add(org_id)
+    return out
 
 
 @dataclass(frozen=True)
@@ -179,6 +210,16 @@ class AuthStore:
                 );
                 CREATE INDEX IF NOT EXISTS oauth_identities_user_id
                     ON oauth_identities(user_id);
+                CREATE TABLE IF NOT EXISTS user_org_follows (
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    org_id INTEGER NOT NULL,
+                    org_name TEXT NOT NULL DEFAULT '',
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, org_id)
+                );
+                CREATE INDEX IF NOT EXISTS user_org_follows_org_id
+                    ON user_org_follows(org_id);
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -303,6 +344,90 @@ class AuthStore:
             conn.execute(
                 "DELETE FROM sessions WHERE token_hash = ?", (_hash_token(raw_token),)
             )
+
+    def merge_user_follows(self, user_id: str, orgs: list[dict]) -> None:
+        """Union browser-local follows into a user's durable follow list."""
+        now = _now()
+        with self._connection() as conn:
+            for org in orgs:
+                conn.execute(
+                    """
+                    INSERT INTO user_org_follows(
+                        user_id, org_id, org_name, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, org_id) DO UPDATE SET
+                        org_name = CASE
+                            WHEN excluded.org_name <> '' THEN excluded.org_name
+                            ELSE user_org_follows.org_name
+                        END,
+                        updated_at = excluded.updated_at
+                    """,
+                    (user_id, org["id"], org["name"], now, now),
+                )
+
+    def set_user_follow(
+        self, user_id: str, org_id: int, org_name: str, following: bool
+    ) -> None:
+        now = _now()
+        with self._connection() as conn:
+            if following:
+                conn.execute(
+                    """
+                    INSERT INTO user_org_follows(
+                        user_id, org_id, org_name, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, org_id) DO UPDATE SET
+                        org_name = CASE
+                            WHEN excluded.org_name <> '' THEN excluded.org_name
+                            ELSE user_org_follows.org_name
+                        END,
+                        updated_at = excluded.updated_at
+                    """,
+                    (user_id, org_id, org_name, now, now),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM user_org_follows WHERE user_id = ? AND org_id = ?",
+                    (user_id, org_id),
+                )
+
+    def follow_snapshot(self, user_id: str | None = None) -> dict:
+        with self._connection() as conn:
+            following = []
+            if user_id:
+                following = [
+                    {"id": row["org_id"], "name": row["org_name"]}
+                    for row in conn.execute(
+                        "SELECT org_id, org_name FROM user_org_follows "
+                        "WHERE user_id = ? ORDER BY created_at, org_id",
+                        (user_id,),
+                    )
+                ]
+            counts = {
+                str(row["org_id"]): row["followers"]
+                for row in conn.execute(
+                    "SELECT org_id, COUNT(*) AS followers FROM user_org_follows "
+                    "GROUP BY org_id"
+                )
+            }
+            summary = conn.execute(
+                """
+                SELECT
+                    COUNT(DISTINCT user_id) AS accounts,
+                    COUNT(*) AS follows,
+                    COUNT(DISTINCT org_id) AS organizations
+                FROM user_org_follows
+                """
+            ).fetchone()
+        return {
+            "following": following,
+            "counts": counts,
+            "summary": {
+                "accounts": summary["accounts"],
+                "follows": summary["follows"],
+                "organizations": summary["organizations"],
+            },
+        }
 
 
 class NYCUOAuthClient:
@@ -495,6 +620,74 @@ def create_app(
             }
         )
 
+    def follow_payload(user: dict | None) -> dict:
+        snapshot = store.follow_snapshot(user["id"] if user else None)
+        return {
+            "ok": True,
+            "authenticated": bool(user),
+            **snapshot,
+        }
+
+    async def follows(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        return JSONResponse(follow_payload(user))
+
+    async def follows_sync(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            return JSONResponse({"ok": False, "error": "invalid json"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"ok": False, "error": "invalid json"}, status_code=400)
+        if not isinstance(body.get("orgs"), list):
+            return JSONResponse(
+                {"ok": False, "error": "orgs must be a list"}, status_code=400
+            )
+        store.merge_user_follows(user["id"], _normalize_follow_orgs(body["orgs"]))
+        return JSONResponse(follow_payload(user))
+
+    async def follow_add(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        orgs = _normalize_follow_orgs(
+            [{"id": request.path_params["org_id"], "name": body.get("name", "")}]
+        )
+        if not orgs:
+            return JSONResponse(
+                {"ok": False, "error": "invalid organization"}, status_code=400
+            )
+        org = orgs[0]
+        store.set_user_follow(user["id"], org["id"], org["name"], True)
+        return JSONResponse(follow_payload(user))
+
+    async def follow_remove(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        orgs = _normalize_follow_orgs([request.path_params["org_id"]])
+        if not orgs:
+            return JSONResponse(
+                {"ok": False, "error": "invalid organization"}, status_code=400
+            )
+        store.set_user_follow(user["id"], orgs[0]["id"], "", False)
+        return JSONResponse(follow_payload(user))
+
     async def logout(request: Request):
         raw_session = request.cookies.get(SESSION_COOKIE)
         store.delete_session(raw_session)
@@ -514,6 +707,10 @@ def create_app(
             Route("/auth/nycu/start", oauth_start, methods=["GET"]),
             Route("/auth/nycu/callback", oauth_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
+            Route("/auth/follows", follows, methods=["GET"]),
+            Route("/auth/follows/sync", follows_sync, methods=["POST"]),
+            Route("/auth/follows/{org_id:int}", follow_add, methods=["PUT"]),
+            Route("/auth/follows/{org_id:int}", follow_remove, methods=["DELETE"]),
             Route("/auth/logout", logout, methods=["POST"]),
             Route("/auth/health", health, methods=["GET"]),
         ]

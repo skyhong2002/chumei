@@ -6,6 +6,7 @@
   POST /push/subscribe    → {subscription, prefs?, migrate_from?}；新訂閱回發歡迎通知
   POST /push/unsubscribe  → {endpoint}
   POST /push/status       → {endpoint} → {subscribed, prefs}（UI 還原狀態用）
+  GET  /push/stats        → 匿名推播裝置／偏好計數
   POST /push/test         → {endpoint}；重發測試通知
 
 launchd: tw.observe.chumei.push（deploy/tw.observe.chumei.push.plist）。
@@ -105,6 +106,10 @@ async def status(request):
     return JSONResponse({"ok": True, "subscribed": True, "prefs": record["prefs"]})
 
 
+async def stats(request):
+    return JSONResponse({"ok": True, **pc.subscription_stats()})
+
+
 async def test(request):
     try:
         body = await request.json()
@@ -133,6 +138,7 @@ app = Starlette(routes=[
     Route("/push/subscribe", subscribe, methods=["POST"]),
     Route("/push/unsubscribe", unsubscribe, methods=["POST"]),
     Route("/push/status", status, methods=["POST"]),
+    Route("/push/stats", stats, methods=["GET"]),
     Route("/push/test", test, methods=["POST"]),
 ])
 

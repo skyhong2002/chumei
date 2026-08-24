@@ -2281,7 +2281,13 @@
     return (readPrefs().orgs || []).some(function (o) { return String(o.id) === String(id); });
   }
   var syncT;
-  function syncServer() {
+  var counts = {};
+  var countsReady = false;
+  var authenticated = false;
+  var followSummary = { accounts: 0, follows: 0, organizations: 0 };
+  var pushStats = null;
+
+  function syncPushServer() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     clearTimeout(syncT);
     syncT = setTimeout(function () {
@@ -2292,13 +2298,97 @@
         var p = readPrefs();
         return fetch("/push/subscribe", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subscription: sub.toJSON(), prefs: {
-            schools: p.schools || [], cats: p.cats || [], orgs: p.orgs || [], keywords: p.keywords || []
-          } })
+          body: JSON.stringify({ subscription: sub.toJSON(), prefs: p })
         });
+      }).then(function () {
+        window.dispatchEvent(new CustomEvent("chumei-follow-change", { detail: { pushSynced: true } }));
       }).catch(function () {});
     }, 500);
   }
+
+  function numberOrZero(value) {
+    value = Number(value);
+    return isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+  }
+
+  function renderNotifyStats() {
+    var pushCard = document.getElementById("push-card");
+    if (!pushCard || !countsReady) return;
+    var section = document.getElementById("notify-community-stats");
+    if (!section) {
+      section = document.createElement("section");
+      section.id = "notify-community-stats";
+      section.className = "notify-community-stats";
+      pushCard.parentNode.insertBefore(section, pushCard.nextSibling);
+    }
+    var devices = pushStats ? numberOrZero(pushStats.devices) : "—";
+    var withOrgs = pushStats ? numberOrZero(pushStats.withOrganizations) : "—";
+    var withRules = pushStats ? numberOrZero(pushStats.withRules) : "—";
+    section.innerHTML =
+      '<h2>推播使用計數</h2>' +
+      '<div class="notify-stat-grid">' +
+        '<div><strong>' + devices + '</strong><span>啟用推播裝置</span></div>' +
+        '<div><strong>' + withOrgs + '</strong><span>追蹤單位的裝置</span></div>' +
+        '<div><strong>' + withRules + '</strong><span>使用自訂規則</span></div>' +
+        '<div><strong>' + numberOrZero(followSummary.accounts) + '</strong><span>小鈴鐺帳號</span></div>' +
+        '<div><strong>' + numberOrZero(followSummary.follows) + '</strong><span>小鈴鐺追蹤</span></div>' +
+      '</div>' +
+      '<p>只顯示匿名彙總。推播以裝置計數；小鈴鐺只計入已登入帳號，同一帳號追蹤同一單位只算一次。</p>';
+  }
+
+  function applyFollowData(data, replaceLocal) {
+    if (!data || !data.ok) return;
+    authenticated = !!data.authenticated;
+    counts = data.counts || {};
+    countsReady = true;
+    followSummary = data.summary || followSummary;
+    if (replaceLocal && authenticated && Array.isArray(data.following)) {
+      var p = readPrefs();
+      p.orgs = data.following;
+      writePrefs(p);
+      syncPushServer();
+    }
+    refresh();
+    renderNotifyStats();
+    window.dispatchEvent(new CustomEvent("chumei-follow-change", { detail: { synced: true } }));
+  }
+
+  function syncAccount() {
+    return fetch("/auth/follows", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.authenticated) {
+          applyFollowData(data, false);
+          return null;
+        }
+        authenticated = true;
+        return fetch("/auth/follows/sync", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgs: readPrefs().orgs || [] })
+        }).then(function (r) { return r.json(); }).then(function (merged) {
+          applyFollowData(merged, true);
+        }).catch(function () {
+          applyFollowData(data, false);
+        });
+      }).catch(function () {});
+  }
+
+  function updateAccountFollow(id, name, followed) {
+    if (!authenticated) return;
+    var options = {
+      method: followed ? "PUT" : "DELETE",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }
+    };
+    if (followed) options.body = JSON.stringify({ name: name });
+    fetch("/auth/follows/" + encodeURIComponent(id), options)
+      .then(function (r) { return r.json(); })
+      .then(function (data) { applyFollowData(data, true); })
+      .catch(syncAccount);
+  }
+
   function toggle(id, name) {
     var p = readPrefs();
     p.orgs = p.orgs || [];
@@ -2306,7 +2396,8 @@
     var followed;
     if (i >= 0) { p.orgs.splice(i, 1); followed = false; }
     else { p.orgs.push({ id: isNaN(+id) ? id : +id, name: name }); followed = true; }
-    writePrefs(p); syncServer(); refresh();
+    writePrefs(p); syncPushServer(); refresh();
+    updateAccountFollow(id, name, followed);
     window.dispatchEvent(new CustomEvent("chumei-follow-change", { detail: { id: id, followed: followed } }));
     return followed;
   }
@@ -2315,9 +2406,20 @@
       var followed = isFollowed(b.dataset.orgId);
       var name = b.dataset.orgName || "這個單位";
       var action = followed ? "取消追蹤 " : "追蹤 ";
+      var count = numberOrZero(counts[String(b.dataset.orgId)]);
       b.setAttribute("aria-pressed", String(followed));
-      b.setAttribute("aria-label", action + name);
-      b.setAttribute("title", action + name);
+      b.setAttribute("aria-label", action + name + (countsReady ? "，" + count + " 人追蹤" : ""));
+      b.setAttribute("title", action + name + (countsReady ? "（" + count + " 人追蹤）" : ""));
+      if (countsReady) {
+        var countEl = b.querySelector(".heart-count");
+        if (!countEl) {
+          countEl = document.createElement("span");
+          countEl.className = "heart-count";
+          countEl.setAttribute("aria-hidden", "true");
+          b.appendChild(countEl);
+        }
+        if (countEl.textContent !== String(count)) countEl.textContent = String(count);
+      }
     });
   }
   var toastT;
@@ -2346,5 +2448,18 @@
   new MutationObserver(refresh).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState !== "loading") refresh();
   else document.addEventListener("DOMContentLoaded", refresh);
-  window.chumeiFollow = { isFollowed: isFollowed, toggle: toggle, refresh: refresh, sync: syncServer };
+  window.chumeiFollow = {
+    isFollowed: isFollowed,
+    toggle: toggle,
+    refresh: refresh,
+    sync: syncPushServer,
+    count: function (id) { return numberOrZero(counts[String(id)]); }
+  };
+  syncAccount();
+  if (document.getElementById("push-card")) {
+    fetch("/push/stats").then(function (r) { return r.json(); }).then(function (data) {
+      if (data && data.ok) pushStats = data;
+      renderNotifyStats();
+    }).catch(renderNotifyStats);
+  }
 })();

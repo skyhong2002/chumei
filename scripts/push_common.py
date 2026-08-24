@@ -180,6 +180,24 @@ def get_sub(endpoint):
     return load_subs()["subs"].get(sub_key(endpoint))
 
 
+def subscription_stats():
+    """Return anonymous aggregate counters for the public notification page."""
+    records = list(load_subs().get("subs", {}).values())
+    with_orgs = 0
+    with_rules = 0
+    for record in records:
+        prefs = record.get("prefs") or {}
+        if prefs.get("orgs"):
+            with_orgs += 1
+        if prefs.get("rules"):
+            with_rules += 1
+    return {
+        "devices": len(records),
+        "withOrganizations": with_orgs,
+        "withRules": with_rules,
+    }
+
+
 # ---- 偏好比對 ----
 
 def load_org_sids(sources_path=SOURCES_PATH):

@@ -134,6 +134,21 @@ class StoreTest(unittest.TestCase):
         self.assertIsNone(pc.get_sub(self.SUB["endpoint"]))
         self.assertEqual(pc.get_sub(new_sub["endpoint"])["prefs"]["rules"][0]["keywords"], ["爵士"])
 
+    def test_subscription_stats_are_anonymous_device_counts(self):
+        pc.upsert_sub(self.SUB, prefs={})
+        pc.upsert_sub(
+            {"endpoint": "https://push.example/with-org", "keys": {"p256dh": "k2", "auth": "a2"}},
+            prefs={"orgs": [{"id": 5, "name": "電機系學會"}]},
+        )
+        pc.upsert_sub(
+            {"endpoint": "https://push.example/with-rule", "keys": {"p256dh": "k3", "auth": "a3"}},
+            prefs={"rules": [{"schools": ["nycu"]}]},
+        )
+        self.assertEqual(
+            pc.subscription_stats(),
+            {"devices": 3, "withOrganizations": 1, "withRules": 1},
+        )
+
 
 class _Sink(BaseHTTPRequestHandler):
     received = None

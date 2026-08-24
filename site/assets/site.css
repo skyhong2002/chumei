@@ -1450,9 +1450,23 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .agd-empty { color: var(--color-text-muted); font-size: 0.85rem; padding: 8px 2px; }
 
 /* ---------- 追蹤愛心 + toast ---------- */
-.heart-btn { cursor: pointer; font-family: inherit; background: none; }
+.heart-btn { position: relative; cursor: pointer; font-family: inherit; background: none; }
 .heart-btn[aria-pressed="true"] { color: var(--color-bell-on); }
 .heart-btn[aria-pressed="true"] svg { fill: currentColor; }
+.heart-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: var(--radius-pill);
+  background: var(--color-surface-soft); color: var(--color-text-secondary);
+  font-size: 0.7rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.src-c-follow .heart-count,
+.card-heart .heart-count,
+.ev-row-heart .heart-count {
+  position: absolute; top: -7px; right: -2px; z-index: 2;
+  border: 1px solid var(--color-border-subtle); background: var(--color-surface-raised);
+  color: var(--color-text-primary); box-shadow: 0 2px 8px rgb(0 0 0 / 24%);
+}
+.feed-action .heart-count { margin-left: 1px; }
 /* <button> 在 .btn 樣式下仍有瀏覽器預設灰底（同 .btn-share 的處理） */
 .btn.heart-btn { background: var(--color-surface); }
 .btn.heart-btn[aria-pressed="true"] {
@@ -1635,3 +1649,21 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .np-sub { opacity: 0.75; font-size: 0.82rem; }
 .np-presets { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .np-follow-row { position: static; background: none; backdrop-filter: none; padding: 0; margin-top: 6px; }
+.notify-community-stats {
+  margin: 14px 0; padding: 16px 18px;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+}
+.notify-community-stats h2 { margin: 0 0 10px; font-size: 1.05rem; }
+.notify-community-stats > p { margin: 10px 0 0; color: var(--color-text-muted); font-size: 0.82rem; }
+.notify-stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px;
+}
+.notify-stat-grid > div {
+  display: flex; flex-direction: column; min-width: 0; padding: 10px 12px;
+  border-radius: var(--radius-md); background: var(--color-surface-soft);
+}
+.notify-stat-grid strong {
+  font-size: 1.35rem; line-height: 1.25; font-variant-numeric: tabular-nums;
+}
+.notify-stat-grid span { color: var(--color-text-secondary); font-size: 0.78rem; }
