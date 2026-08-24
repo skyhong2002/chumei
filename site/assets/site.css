@@ -203,7 +203,8 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 
 /* ---------- IG 限時動態 ---------- */
 .story-strip {
-  display: flex; gap: 14px; overflow-x: auto; padding: 10px 2px 14px;
+  display: flex; gap: 14px; width: 100%; min-width: 0; box-sizing: border-box;
+  overflow-x: auto; padding: 10px 2px 14px;
   scrollbar-width: thin; -webkit-overflow-scrolling: touch;
 }
 .story-item {
