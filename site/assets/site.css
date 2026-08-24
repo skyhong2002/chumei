@@ -1137,11 +1137,18 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   body.feed-locked .feed-main {
     display: flex; flex-direction: column;
     height: 100dvh; padding-bottom: 10px;
-    /* Threads 式欄板：不限整體寬度，欄位均分整個視窗 */
+    /* Threads 式欄板：主區域保留全寬，河道本身再依欄數限制寬度並置中 */
     max-width: none;
   }
   body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; max-width: none; }
   body.feed-locked .post-feed.feed-wide { flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; }
+  /* 單欄／雙欄沿用 Threads 的窄河道；84px 是最右側的「新增河道」控制區。 */
+  body.feed-locked .feed-main[data-feed-cols="1"] .post-feed.feed-wide {
+    max-width: 716px;
+  }
+  body.feed-locked .feed-main[data-feed-cols="2"] .post-feed.feed-wide {
+    max-width: 1348px;
+  }
   /* Threads deck：欄寬預設上限 620 置中；欄數多到裝不下時整個欄板橫向捲動 */
   body.feed-locked .feed-cols {
     /* safe center：裝得下時置中；溢出時靠左起算，確保第一欄捲得到 */
@@ -1264,6 +1271,10 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   body.feed-locked .feed-cols.has-deck-add {
     grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 1fr)) 84px;
   }
+  body.feed-locked .feed-main[data-feed-cols="1"] .feed-cols.has-deck-add,
+  body.feed-locked .feed-main[data-feed-cols="2"] .feed-cols.has-deck-add {
+    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 620px)) 84px;
+  }
   body.feed-locked .feed-cols.cols-many.has-deck-add {
     grid-template-columns: repeat(var(--ncols), 420px) 84px;
   }
@@ -1290,6 +1301,10 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 @media (min-width: 1280px) {
   body.feed-locked .feed-cols.has-deck-add {
     grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 1fr)) 84px;
+  }
+  body.feed-locked .feed-main[data-feed-cols="1"] .feed-cols.has-deck-add,
+  body.feed-locked .feed-main[data-feed-cols="2"] .feed-cols.has-deck-add {
+    grid-template-columns: repeat(var(--ncols, 2), minmax(480px, 620px)) 84px;
   }
   body.feed-locked .feed-cols.cols-many.has-deck-add {
     grid-template-columns: repeat(var(--ncols), 420px) 84px;

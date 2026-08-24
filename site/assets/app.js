@@ -920,6 +920,8 @@
         if (fc) fc.textContent = "";
         feed.classList.toggle("feed-wide", wide);
         feed.classList.toggle("feed-pager", !wide);
+        var feedMain = feed.closest(".feed-main");
+        if (feedMain) feedMain.dataset.feedCols = String(wide ? viewCols.length : 1);
         // 欄位模式：鎖住外層捲動，只捲欄內（Threads 式）；手機為左右分頁的河道
         document.body.classList.add("feed-locked");
         // Threads deck：第 4 欄起欄寬降一階（實測 Threads 為 420px）
