@@ -904,6 +904,8 @@ main.main-wide { max-width: min(1680px, 100%); }
   .src-none { font-size: 0.72rem; }
 }
 @media (max-width: 700px) {
+  /* overflow:hidden 會讓 sticky 表頭改黏在名錄容器而非視窗，捲動時就會跟著往下跑。 */
+  .src-table { overflow: visible; }
   .src-row {
     grid-template-columns: minmax(0, 1fr) auto 36px;
     gap: 2px 8px; padding: 8px 0;
@@ -1025,11 +1027,12 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 @media (max-width: 699px) { .topbar-search { display: flex; } }
 .search-ov {
   position: fixed; inset: 0; z-index: 90;
-  background: var(--color-canvas); display: flex; flex-direction: column;
+  background: transparent; display: flex; flex-direction: column;
 }
 .search-ov-bar {
   display: flex; gap: 4px; align-items: center;
   padding: 10px 12px; border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-canvas);
 }
 .search-ov-bar input {
   flex: 1; min-width: 0; height: 40px; padding: 0 16px;
@@ -1045,6 +1048,10 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .search-ov-body {
   flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
   padding: 4px 14px calc(24px + env(safe-area-inset-bottom));
+  background: transparent; opacity: 0; visibility: hidden; pointer-events: none;
+}
+.search-ov.has-query .search-ov-body {
+  background: var(--color-canvas); opacity: 1; visibility: visible; pointer-events: auto;
 }
 .sr-sec { margin: 0; padding: 14px 2px 6px; font-size: 0.78rem; font-weight: 700; color: var(--color-text-muted); }
 .sr-org {
@@ -1078,7 +1085,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .ff-label { display: none; }
 .feed-tabs-row .feed-filters summary {
   width: 46px; min-height: 0; padding: 0; border-radius: 0; background: none;
-  border-bottom: 1.5px solid var(--color-border-subtle);
+  border-bottom: none;
 }
 .feed-filters.fon summary::after {
   content: ""; position: absolute; top: 1px; right: 4px; width: 7px; height: 7px;

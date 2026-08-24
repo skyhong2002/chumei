@@ -237,7 +237,8 @@
     function results(q) {
       var body = ov.querySelector(".search-ov-body");
       q = q.trim().toLowerCase();
-      if (!q) { body.innerHTML = '<p class="empty">搜尋社團、單位或活動名稱。</p>'; return; }
+      ov.classList.toggle("has-query", !!q);
+      if (!q) { body.innerHTML = ""; return; }
       if (!sdata) { body.innerHTML = '<p class="empty">載入中…</p>'; return; }
       var orgs = sdata.orgs.filter(function (o) { return o.name.toLowerCase().indexOf(q) !== -1; }).slice(0, 6);
       var now = Date.now();
@@ -286,7 +287,7 @@
       ov.innerHTML = '<div class="search-ov-bar">' +
         '<input type="search" placeholder="搜尋社團、單位、活動…" aria-label="全站搜尋">' +
         '<button class="search-ov-cancel">取消</button></div>' +
-        '<div class="search-ov-body"><p class="empty">搜尋社團、單位或活動名稱。</p></div>';
+        '<div class="search-ov-body"></div>';
       document.body.appendChild(ov);
       document.body.style.overflow = "hidden";
       var input = ov.querySelector("input");
@@ -294,6 +295,8 @@
       loadData().then(function () { if (ov && input.value) results(input.value); });
       input.addEventListener("input", function () {
         clearTimeout(sT);
+        ov.classList.toggle("has-query", !!input.value.trim());
+        if (!input.value.trim()) { results(""); return; }
         sT = setTimeout(function () { if (ov) results(input.value); }, 120);
       });
       ov.querySelector(".search-ov-cancel").addEventListener("click", close);
