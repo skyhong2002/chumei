@@ -368,16 +368,19 @@
 
       // 手機分頁模式：頂欄篩選＝「這一欄」的篩選；桌機沿用整體重繪
       function applyFilterToCol(key, value) {
-        var c = cols[activeCol];
+        var view = viewCols[activeCol];
+        var c = view && view.col;
         if (pagerMode() && c && c.t === "feed") {
           c[key] = value;
-          saveCols(); updateBodies(); refreshMeta();
+          if (view.source >= 0) saveCols();
+          updateBodies(); refreshMeta();
           return;
         }
         render();
       }
       function syncFilterUI() {
-        var c = cols[activeCol];
+        var view = viewCols[activeCol];
+        var c = view && view.col;
         if (!c || c.t !== "feed") return;
         ["school", "platform", "cat", "org", "q"].forEach(function (k) { state[k] = c[k]; });
         Object.keys(groups).forEach(function (k) {
@@ -467,7 +470,7 @@
       // 欄位模型：欄就是「貼文」（篩選自帶：學校/平台/類型/主辦/搜尋）或「即將活動」
       var SCHOOL_L = { all: "全部", nthu: "清大", nycu: "陽明交大", both: "兩校聯合" };
       function feedCol(school) { return { t: "feed", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
-      var cols = (function () {
+      function loadCols() {
         try {
           var s = JSON.parse(localStorage.getItem("chumei-cols") || "null");
           if (Array.isArray(s) && s.length) {
@@ -485,8 +488,17 @@
           }
         } catch (e) {}
         return [feedCol("nthu"), feedCol("nycu"), { t: "events" }];
-      })();
+      }
+      var cols = loadCols();
+      var mobileOverview = feedCol("all");
+      mobileOverview.overview = true;
+      var viewCols = [];
       function saveCols() { try { localStorage.setItem("chumei-cols", JSON.stringify(cols)); } catch (e) {} }
+      function buildViewCols(wide) {
+        var saved = cols.map(function (c, i) { return { col: c, source: i }; });
+        return wide ? saved : [{ col: mobileOverview, source: -1 }];
+      }
+      function activeView() { return viewCols[activeCol] || null; }
 
       var CARET = SVG_OPEN + '<path d="M6 9l6 6l6 -6"/></svg>';
       var ADD_RIVER_ICON = SVG_OPEN +
@@ -516,10 +528,13 @@
       function colTitle(c) {
         if (c.t === "events") return { label: "即將活動", dot: "events" };
         if (c.t === "stories") return { label: "限時動態", dot: "stories" };
-        return { label: c.school === "all" ? "貼文" : SCHOOL_L[c.school], dot: c.school === "all" ? "all" : c.school };
+        return {
+          label: c.overview ? (c.school === "all" ? "全部學校" : SCHOOL_L[c.school]) : (c.school === "all" ? "貼文" : SCHOOL_L[c.school]),
+          dot: c.school === "all" ? "all" : c.school
+        };
       }
       function colFilterActive(c) {
-        return c.t === "feed" && (c.platform !== "all" || c.cat !== "all" || c.org !== "all" || !!c.q);
+        return c.t === "feed" && (c.school !== "all" || c.platform !== "all" || c.cat !== "all" || c.org !== "all" || !!c.q);
       }
       function menuRow(label, key, opts, cur) {
         return '<div class="filter-row"><span class="label">' + label + '</span><span class="fgroup">' +
@@ -528,27 +543,28 @@
               '<span class="fchip-label">' + esc(o[1]) + "</span></button>";
           }).join("") + "</span></div>";
       }
-      function colMenu(c) {
+      function colMenu(c, sourceIdx) {
         var inner = c.t !== "feed" ? "" :
           '<input class="cf-q" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋這一欄" value="' + esc(c.q) + '">' +
-          menuRow("學校", "school", SCHOOL_OPTS, c.school) +
+          (sourceIdx < 0 ? "" : menuRow("學校", "school", SCHOOL_OPTS, c.school)) +
           menuRow("平台", "platform", PLAT_OPTS, c.platform) +
           menuRow("類型", "cat", CAT_OPTS, c.cat) +
           menuRow("主辦", "org", ORG_OPTS, c.org);
         return '<div class="col-picker-menu col-menu-filters">' + inner +
-          (cols.length > 1 ? '<button class="col-remove">移除這一欄</button>' : "") + "</div>";
+          (sourceIdx >= 0 && cols.length > 1 ? '<button class="col-remove">移除這一欄</button>' : "") + "</div>";
       }
-      function computeBuckets() {
+      function computeBuckets(views) {
         // 兩校聯合貼文在「校別」貼文欄只出現一次（輪流分配）；其餘欄各自照篩選
-        var buckets = cols.map(function () { return []; });
+        var activeCols = views.map(function (view) { return view.col; });
+        var buckets = activeCols.map(function () { return []; });
         var evs = null, schoolIdx = [];
-        cols.forEach(function (c, i) {
+        activeCols.forEach(function (c, i) {
           if (c.t === "feed" && (c.school === "nthu" || c.school === "nycu")) schoolIdx.push(i);
           if (c.t === "events" && !evs) evs = upcomingEvents();
         });
         var rr = 0;
         posts.forEach(function (p) {
-          cols.forEach(function (c, i) {
+          activeCols.forEach(function (c, i) {
             if (c.t !== "feed") return;
             if (c.school === "nthu" || c.school === "nycu") {
               if (p.school === c.school && matches(p, c)) buckets[i].push(p);
@@ -557,13 +573,13 @@
           if (p.school === "both" && schoolIdx.length) {
             for (var t = 0; t < schoolIdx.length; t++) {
               var i2 = schoolIdx[(rr + t) % schoolIdx.length];
-              if (matches(p, Object.assign({}, cols[i2], { school: "all" }))) {
+              if (matches(p, Object.assign({}, activeCols[i2], { school: "all" }))) {
                 buckets[i2].push(p); rr++; break;
               }
             }
           }
         });
-        cols.forEach(function (c, i) {
+        activeCols.forEach(function (c, i) {
           if (c.t === "events") buckets[i] = evs || [];
           if (c.t === "stories") buckets[i] = storyShare.data ? storyShare.data.flat : [];
         });
@@ -618,19 +634,20 @@
         if (c.t === "stories") return storyCards(list) + moreBtn(list, " 則");
         return (list.slice(0, shown).map(row).join("") || '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list, " 則");
       }
-      function colHtml(i, c, list) {
+      function colHtml(i, c, list, sourceIdx) {
         var tt = colTitle(c);
         var picker = '<details class="col-picker' + (colFilterActive(c) ? " fon" : "") + '"><summary aria-label="這一欄的內容與篩選">' +
           '<span class="feed-col-dot dot-' + tt.dot + '"></span><h2>' + tt.label + '</h2><span class="caret">' + CARET + "</span></summary>" +
-          colMenu(c) + "</details>";
-        return '<section class="feed-col" data-idx="' + i + '"><header class="feed-col-head">' + picker +
+          colMenu(c, sourceIdx) + "</details>";
+        return '<section class="feed-col" data-idx="' + i + '" data-source-idx="' + sourceIdx + '"><header class="feed-col-head">' + picker +
           '<span class="result-count">' + list.length + (c.t === "events" ? " 場" : " 則") + "</span></header>" +
           '<div class="col-body">' + colBody(c, list) + "</div></section>";
       }
       // 調整欄內篩選時只更新內容，不重建選單（維持選單開啟）
       function updateBodies() {
-        var buckets = computeBuckets();
-        cols.forEach(function (c, i) {
+        var buckets = computeBuckets(viewCols);
+        viewCols.forEach(function (view, i) {
+          var c = view.col;
           var el = feed.querySelector('.feed-col[data-idx="' + i + '"]');
           if (!el) return;
           el.querySelector(".col-body").innerHTML = colBody(c, buckets[i]);
@@ -642,7 +659,7 @@
           el.querySelector(".col-picker").classList.toggle("fon", colFilterActive(c));
         });
       }
-      // 分頁指示列（手機）：圓點跳欄＋新增欄位
+      // 分頁指示列保留給多欄版面；手機固定只有單一「全部學校」河道。
       var pagerBar = null;
       function ensurePagerBar() {
         if (pagerBar) return pagerBar;
@@ -652,33 +669,21 @@
         pagerBar.addEventListener("click", function (ev) {
           var dot = ev.target.closest("[data-goto]");
           if (dot) { goToCol(+dot.dataset.goto, true); return; }
-          var add = ev.target.closest("button[data-add]");
-          if (!add || cols.length >= 6) return;
-          cols.push(add.dataset.add === "feed" ? feedCol("all") : { t: add.dataset.add });
-          saveCols();
-          pagerBar.querySelector("details.pager-add").open = false;
-          activeCol = cols.length - 1;
-          render(true);
-          goToCol(activeCol, true);
         });
         return pagerBar;
       }
       function renderPagerBar(wide) {
         var bar = ensurePagerBar();
-        bar.hidden = wide || cols.length < 1;
+        bar.hidden = wide || viewCols.length < 2;
         if (bar.hidden) return;
-        var dots = cols.map(function (c, i) {
+        var dots = viewCols.map(function (view, i) {
+          var c = view.col;
           var tt = colTitle(c);
           return '<button class="pdot' + (i === activeCol ? " on" : "") + '" data-goto="' + i +
             '" aria-label="' + esc(tt.label) + '" aria-current="' + (i === activeCol) + '">' +
             '<span class="feed-col-dot dot-' + tt.dot + '"></span></button>';
         }).join("");
-        bar.innerHTML = '<div class="pager-dots">' + dots + "</div>" +
-          (cols.length < 6
-            ? '<details class="pager-add"><summary aria-label="新增河道">' + SVG_OPEN +
-              '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg></summary>' +
-              addColMenu() + '</details>'
-            : "");
+        bar.innerHTML = '<div class="pager-dots">' + dots + "</div>";
       }
       function updatePagerActive() {
         if (!pagerBar || pagerBar.hidden) return;
@@ -714,7 +719,7 @@
           dbg.style.cssText = "position:fixed;left:8px;right:8px;bottom:70px;z-index:99;padding:8px 10px;" +
             "background:#000d;color:#0f0;font:12px/1.5 monospace;border:1px solid #0f0;border-radius:8px;white-space:pre-wrap";
           document.body.appendChild(dbg);
-          dbg.textContent = "swipe debug: 等待手勢…\ncols=" + cols.length +
+          dbg.textContent = "swipe debug: 等待手勢…\ncols=" + viewCols.length +
             " deckW=" + deck.clientWidth + " scrollW=" + deck.scrollWidth +
             "\ntouch-action=" + getComputedStyle(deck.querySelector(".feed-col")).touchAction;
         }
@@ -724,7 +729,7 @@
           snapT = setTimeout(function () { deck.style.scrollSnapType = ""; }, delay);
         }
         deck.addEventListener("touchstart", function (e) {
-          if (e.touches.length !== 1 || cols.length < 2) { drag = null; return; }
+          if (e.touches.length !== 1 || viewCols.length < 2) { drag = null; return; }
           var t0 = e.touches[0];
           drag = { x: t0.clientX, y: t0.clientY, left: deck.scrollLeft, t: Date.now(), on: false, dec: false };
           if (dbg) log("touchstart @" + Math.round(t0.clientX) + "," + Math.round(t0.clientY));
@@ -859,7 +864,7 @@
           clearTimeout(pagerT);
           pagerT = setTimeout(function () {
             var i = Math.round(deck.scrollLeft / Math.max(1, deck.clientWidth));
-            if (i === activeCol || i < 0 || i >= cols.length) return;
+            if (i === activeCol || i < 0 || i >= viewCols.length) return;
             activeCol = i;
             var colEl = deck.querySelectorAll(".feed-col")[i];
             document.body.classList.toggle("strip-away", !!colEl && colEl.scrollTop > 40);
@@ -870,7 +875,8 @@
       // 篩選鈕狀態、各選項計數、網址參數
       function refreshMeta() {
         var wide = !pagerMode();
-        var cur = cols[activeCol];
+        var current = activeView();
+        var cur = current && current.col;
         var ff = document.querySelector(".feed-filters");
         if (ff) {
           // 桌機：篩選在各欄選單；手機：只有貼文欄能篩
@@ -898,17 +904,19 @@
         if (!more) shown = 30;
         var fc = document.getElementById("feed-count");
         var wide = window.innerWidth >= 1080;
-        if (activeCol >= cols.length) activeCol = Math.max(0, cols.length - 1);
+        viewCols = buildViewCols(wide);
+        if (activeCol >= viewCols.length) activeCol = Math.max(0, viewCols.length - 1);
         // 網址帶篩選參數時，套用到第一個貼文欄（深連結）
         if (seededFromUrl) {
           seededFromUrl = false;
-          var ci = cols.findIndex(function (c) { return c.t === "feed"; });
+          var ci = wide ? viewCols.findIndex(function (view) { return view.col.t === "feed"; }) : 0;
           if (ci >= 0) {
-            ["school", "platform", "cat", "org", "q"].forEach(function (k) { cols[ci][k] = state[k]; });
-            activeCol = ci; saveCols();
+            ["school", "platform", "cat", "org", "q"].forEach(function (k) { viewCols[ci].col[k] = state[k]; });
+            activeCol = ci;
+            if (viewCols[ci].source >= 0) saveCols();
           }
         }
-        var buckets = computeBuckets();
+        var buckets = computeBuckets(viewCols);
         if (fc) fc.textContent = "";
         feed.classList.toggle("feed-wide", wide);
         feed.classList.toggle("feed-pager", !wide);
@@ -916,10 +924,10 @@
         document.body.classList.add("feed-locked");
         // Threads deck：第 4 欄起欄寬降一階（實測 Threads 為 420px）
         var canAdd = wide && cols.length < 6;
-        feed.innerHTML = '<div class="feed-cols' + (wide && cols.length > 3 ? " cols-many" : "") +
+        feed.innerHTML = '<div class="feed-cols' + (wide && viewCols.length > 3 ? " cols-many" : "") +
           (canAdd ? " has-deck-add" : "") +
-          '" style="--ncols:' + cols.length + '">' +
-          cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") +
+          '" style="--ncols:' + viewCols.length + '">' +
+          viewCols.map(function (view, i) { return colHtml(i, view.col, buckets[i], view.source); }).join("") +
           (canAdd ? deckAddHtml() : "") + "</div>";
         if (!wide) { bindPager(); syncFilterUI(); }
         else { bindDeckNav(feed.querySelector(".feed-cols")); }
@@ -949,16 +957,21 @@
         var chip = ev.target.closest(".col-picker-menu .fchip[data-ck]");
         if (chip) {
           var idx = +chip.closest(".feed-col").dataset.idx;
-          cols[idx][chip.dataset.ck] = chip.dataset.cv;
+          var view = viewCols[idx];
+          if (!view) return;
+          view.col[chip.dataset.ck] = chip.dataset.cv;
           chip.closest(".fgroup").querySelectorAll(".fchip").forEach(function (x) {
             x.setAttribute("aria-pressed", String(x === chip));
           });
-          saveCols(); updateBodies();
+          if (view.source >= 0) saveCols();
+          updateBodies();
           return;
         }
         var rm = ev.target.closest(".col-picker-menu .col-remove");
         if (rm) {
-          cols.splice(+rm.closest(".feed-col").dataset.idx, 1);
+          var sourceIdx = +rm.closest(".feed-col").dataset.sourceIdx;
+          if (sourceIdx < 0) return;
+          cols.splice(sourceIdx, 1);
           saveCols(); render(true);
         }
       });
@@ -968,14 +981,27 @@
         var q = ev.target.closest(".cf-q");
         if (!q) return;
         var idx = +q.closest(".feed-col").dataset.idx;
-        cols[idx].q = q.value.trim();
+        var view = viewCols[idx];
+        if (!view) return;
+        view.col.q = q.value.trim();
         clearTimeout(cfT);
-        cfT = setTimeout(function () { saveCols(); updateBodies(); }, 200);
+        cfT = setTimeout(function () {
+          if (view.source >= 0) saveCols();
+          updateBodies();
+        }, 200);
       });
       var resizeT;
+      var wasWide = window.innerWidth >= 1080;
       window.addEventListener("resize", function () {
         clearTimeout(resizeT);
-        resizeT = setTimeout(function () { render(true); }, 200);
+        resizeT = setTimeout(function () {
+          var wide = window.innerWidth >= 1080;
+          if (wide !== wasWide) {
+            wasWide = wide;
+            activeCol = 0;
+          }
+          render(true);
+        }, 200);
       });
       var feedEvById = {};
       posts.forEach(function (p) { p.events.forEach(function (e) { feedEvById[e.id] = e; }); });

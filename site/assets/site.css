@@ -1184,7 +1184,6 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   }
   .deck-add {
     position: relative; align-self: stretch; min-width: 84px; z-index: 20;
-    border-left: 1px solid var(--color-border-subtle);
   }
   .deck-add > summary {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
