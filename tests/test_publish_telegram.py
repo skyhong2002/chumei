@@ -94,16 +94,16 @@ class PublisherTests(unittest.TestCase):
         text = telegram.format_event(event(extraction={"needs_review": True}))
         self.assertIn("以原始公告為準", text)
 
-    def test_long_original_text_is_fully_split(self):
+    def test_long_original_text_is_truncated_in_single_message(self):
         original = ("第一段 " * 800) + "最後一句"
         messages = telegram.format_event_messages(event(original_text=original))
-        self.assertGreater(len(messages), 1)
-        rendered = "".join(messages)
+        self.assertEqual(len(messages), 1)
+        rendered = messages[0]
         self.assertIn("第一段", rendered)
-        self.assertIn("最後一句", rendered)
-        self.assertTrue(all(message.startswith("<blockquote expandable>") for message in messages[1:]))
+        self.assertNotIn("最後一句", rendered)
+        self.assertIn("全文請見原始貼文", rendered)
         self.assertNotIn("原始內文", rendered)
-        self.assertTrue(all(len(message) < 4096 for message in messages))
+        self.assertLessEqual(telegram.rendered_length(rendered), 4096)
 
     def test_send_event_uses_event_photo_and_records_each_part(self):
         client = telegram.TelegramClient("token", "@channel")
@@ -136,15 +136,16 @@ class PublisherTests(unittest.TestCase):
             "https://chumei.observe.tw/assets/fallback/event-cover.webp",
         )
 
-    def test_long_caption_keeps_photo_first_and_sends_original_as_followup(self):
+    def test_long_caption_keeps_photo_first_and_truncates_original(self):
         client = telegram.TelegramClient("token", "@channel")
         calls = []
         client.call = lambda method, payload, attempts=2: calls.append((method, payload)) or {"message_id": len(calls)}
         client.send_event(event(original_text="原始內容 " * 300))
+        self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][0], "sendPhoto")
         self.assertLessEqual(telegram.rendered_length(calls[0][1]["caption"]), 1024)
-        self.assertTrue(all(method == "sendMessage" for method, _payload in calls[1:]))
-        self.assertIn("原始內容", "".join(payload["text"] for _method, payload in calls[1:]))
+        self.assertIn("原始內容", calls[0][1]["caption"])
+        self.assertIn("全文請見原始貼文", calls[0][1]["caption"])
 
     def test_load_original_texts_uses_newest_duplicate(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -193,6 +194,9 @@ class PublisherTests(unittest.TestCase):
     def test_silent_hours(self):
         self.assertTrue(telegram.is_silent_hour(datetime(2026, 8, 21, 23, tzinfo=timezone.utc)))
         self.assertFalse(telegram.is_silent_hour(datetime(2026, 8, 21, 12, tzinfo=timezone.utc)))
+        self.assertFalse(telegram.is_silent_hour(datetime(2026, 8, 21, 16, tzinfo=timezone.utc)))
+        self.assertTrue(telegram.is_silent_hour(datetime(2026, 8, 21, 17, tzinfo=timezone.utc)))
+        self.assertFalse(telegram.is_silent_hour(datetime(2026, 8, 22, 0, tzinfo=timezone.utc)))
 
     def test_atomic_state_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:

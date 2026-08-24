@@ -374,6 +374,8 @@ def format_post_messages(group, first_limit=4096):
 
 def is_silent_hour(now=None):
     now = now or datetime.now(TZ_TAIPEI)
+    if now.tzinfo is not None:
+        now = now.astimezone(TZ_TAIPEI)
     return 1 <= now.hour < 8
 
 
