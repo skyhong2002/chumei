@@ -219,6 +219,9 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
 }
 .account-action { margin-top: 18px; font: inherit; cursor: pointer; }
+.account-card button.account-action {
+  appearance: none; background: var(--color-surface); color: var(--color-text-primary);
+}
 .account-action.disabled { opacity: 0.48; cursor: not-allowed; }
 .privacy-note { margin: 14px 0 0; font-size: 0.82rem; }
 .account-alert {
