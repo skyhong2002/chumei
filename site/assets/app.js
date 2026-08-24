@@ -1254,27 +1254,60 @@
           });
         }
 
-        var lb = null, cur = 0, swipe = null;
+        var lb = null, groupCur = 0, storyCur = 0, swipe = null;
+        var storyDuration = 6500, storyElapsed = 0, storyStarted = 0, storyFrame = 0;
+        var storyPaused = false, storyManualPause = false, storyHolding = false;
         var storyWheel = { x: 0, y: 0, last: 0, handled: false };
+        var grouped = order.map(function (u) { return groups[u]; });
+        function flatPosition(i) {
+          var seen = 0;
+          for (var g = 0; g < grouped.length; g++) {
+            if (i < seen + grouped[g].length) return { group: g, story: i - seen };
+            seen += grouped[g].length;
+          }
+          return { group: 0, story: 0 };
+        }
         function openLightbox(i) {
-          cur = i;
+          var pos = flatPosition(Math.max(0, Math.min(flat.length - 1, i)));
+          groupCur = pos.group;
+          storyCur = pos.story;
           if (!lb) {
             lb = document.createElement("div");
             lb.className = "story-lightbox";
-            lb.innerHTML = '<button class="slb-close" aria-label="關閉">×</button>' +
-              '<div class="slb-figure"><div class="slb-head"></div><div class="slb-media"></div>' +
-              '<button class="slb-nav slb-prev" aria-label="上一則">‹</button>' +
-              '<button class="slb-nav slb-next" aria-label="下一則">›</button></div>';
+            lb.setAttribute("role", "dialog");
+            lb.setAttribute("aria-modal", "true");
+            lb.setAttribute("aria-label", "限時動態檢視器");
+            lb.innerHTML = '<button class="slb-close" aria-label="關閉限時動態">×</button>' +
+              '<div class="slb-deck">' +
+              '<button class="slb-peek slb-peek-m2" data-group-shift="-2" aria-label="前兩個帳號"></button>' +
+              '<button class="slb-peek slb-peek-m1" data-group-shift="-1" aria-label="上一個帳號"></button>' +
+              '<button class="slb-nav slb-prev" data-group-shift="-1" aria-label="上一個帳號">‹</button>' +
+              '<div class="slb-figure"><div class="slb-progress" aria-label="這個帳號的限動進度"></div>' +
+              '<div class="slb-head"></div><div class="slb-media"></div>' +
+              '<button class="slb-hit slb-hit-prev" aria-label="上一則限時動態"></button>' +
+              '<button class="slb-hit slb-hit-next" aria-label="下一則限時動態"></button>' +
+              '<a class="slb-ig-link" rel="noopener" target="_blank">在 Instagram 查看 ↗</a></div>' +
+              '<button class="slb-nav slb-next" data-group-shift="1" aria-label="下一個帳號">›</button>' +
+              '<button class="slb-peek slb-peek-p1" data-group-shift="1" aria-label="下一個帳號"></button>' +
+              '<button class="slb-peek slb-peek-p2" data-group-shift="2" aria-label="後兩個帳號"></button>' +
+              '</div>';
             document.body.appendChild(lb);
             lb.addEventListener("click", function (ev) {
               if (ev.target === lb || ev.target.classList.contains("slb-close")) close();
-              else if (ev.target.classList.contains("slb-prev")) show(cur - 1);
-              else if (ev.target.classList.contains("slb-next")) show(cur + 1);
+              else if (ev.target.closest(".slb-pause")) togglePause();
+              else if (ev.target.closest(".slb-hit-prev")) moveStory(-1);
+              else if (ev.target.closest(".slb-hit-next")) moveStory(1);
+              else {
+                var shift = ev.target.closest("[data-group-shift]");
+                if (shift) moveAccount(parseInt(shift.dataset.groupShift, 10));
+              }
             });
             lb.addEventListener("touchstart", function (ev) {
-              if (ev.touches.length !== 1 || ev.target.closest("a, button")) { swipe = null; return; }
+              if (ev.touches.length !== 1 || ev.target.closest("a, .slb-close, .slb-pause")) { swipe = null; return; }
               var t = ev.touches[0];
-              swipe = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, decided: false, horizontal: false };
+              swipe = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, started: Date.now(), decided: false, horizontal: false };
+              storyHolding = true;
+              pauseProgress();
             }, { passive: true });
             lb.addEventListener("touchmove", function (ev) {
               if (!swipe || ev.touches.length !== 1) return;
@@ -1296,10 +1329,29 @@
               }
               var move = swipe;
               swipe = null;
-              if (move.horizontal && Math.abs(move.dx) >= 48 && Math.abs(move.dx) > Math.abs(move.dy) * 1.15)
-                show(cur + (move.dx < 0 ? 1 : -1));
+              storyHolding = false;
+              if (move.horizontal && Math.abs(move.dx) >= 48 && Math.abs(move.dx) > Math.abs(move.dy) * 1.15) {
+                if (ev.cancelable) ev.preventDefault();
+                moveAccount(move.dx < 0 ? 1 : -1);
+                return;
+              }
+              if (move.dy > 100 && Math.abs(move.dy) > Math.abs(move.dx) * 1.25) {
+                if (ev.cancelable) ev.preventDefault();
+                close();
+                return;
+              }
+              if (Math.abs(move.dx) < 12 && Math.abs(move.dy) < 12 && Date.now() - move.started < 450) {
+                if (ev.cancelable) ev.preventDefault();
+                moveStory(move.x < window.innerWidth * 0.34 ? -1 : 1);
+                return;
+              }
+              resumeProgress();
+            }, { passive: false });
+            lb.addEventListener("touchcancel", function () {
+              swipe = null;
+              storyHolding = false;
+              resumeProgress();
             }, { passive: true });
-            lb.addEventListener("touchcancel", function () { swipe = null; }, { passive: true });
             // Desktop trackpads emit horizontal wheel events instead of touch events.
             // Keep this gesture state local to the lightbox so the Threads-style river
             // underneath cannot consume it; momentum from one gesture changes one story only.
@@ -1318,34 +1370,142 @@
               ev.preventDefault();
               ev.stopPropagation();
               storyWheel.handled = true;
-              show(cur + (storyWheel.x > 0 ? 1 : -1));
+              moveStory(storyWheel.x > 0 ? 1 : -1);
             }, { passive: false });
             document.addEventListener("keydown", onKey);
+            document.addEventListener("visibilitychange", function () {
+              if (document.hidden) pauseProgress();
+              else resumeProgress();
+            });
           }
           lb.style.display = "flex";
+          document.body.classList.add("story-open");
           document.body.style.overflow = "hidden";
-          show(i);
+          showCurrent();
         }
         function onKey(ev) {
           if (!lb || lb.style.display === "none") return;
           if (ev.key === "Escape") close();
-          if (ev.key === "ArrowLeft") show(cur - 1);
-          if (ev.key === "ArrowRight") show(cur + 1);
+          if (ev.key === "ArrowLeft") moveStory(-1);
+          if (ev.key === "ArrowRight") moveStory(1);
+          if (ev.key === " ") { ev.preventDefault(); togglePause(); }
         }
         function close() {
           lb.style.display = "none";
+          document.body.classList.remove("story-open");
           document.body.style.overflow = "";
+          cancelAnimationFrame(storyFrame);
+          storyFrame = 0;
           storyWheel = { x: 0, y: 0, last: 0, handled: false };
         }
-        function show(i) {
-          cur = (i + flat.length) % flat.length;
-          var s = flat[cur];
+        function moveAccount(delta) {
+          var next = groupCur + delta;
+          if (next < 0 || next >= grouped.length) return;
+          groupCur = next;
+          storyCur = 0;
+          showCurrent();
+        }
+        function moveStory(delta, fromAuto) {
+          var nextStory = storyCur + delta;
+          if (nextStory >= 0 && nextStory < grouped[groupCur].length) {
+            storyCur = nextStory;
+            showCurrent();
+            return;
+          }
+          var nextGroup = groupCur + (delta > 0 ? 1 : -1);
+          if (nextGroup >= 0 && nextGroup < grouped.length) {
+            groupCur = nextGroup;
+            storyCur = delta > 0 ? 0 : grouped[nextGroup].length - 1;
+            showCurrent();
+          } else if (fromAuto && delta > 0) close();
+          else resumeProgress();
+        }
+        function peekHtml(groupIndex) {
+          if (groupIndex < 0 || groupIndex >= grouped.length) return "";
+          var p = grouped[groupIndex][0];
+          return '<img src="' + esc(p.media) + '" alt="">' +
+            '<span class="slb-peek-shade"></span><span class="slb-peek-meta">' +
+            (p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : "") +
+            '<strong>' + esc(p.name) + '</strong><span>' + ago(p.taken_at) + "</span></span>";
+        }
+        function renderPeeks() {
+          [-2, -1, 1, 2].forEach(function (shift) {
+            var el = lb.querySelector('[data-group-shift="' + shift + '"]');
+            if (!el || el.classList.contains("slb-nav")) return;
+            var target = groupCur + shift;
+            el.hidden = target < 0 || target >= grouped.length;
+            el.innerHTML = el.hidden ? "" : peekHtml(target);
+          });
+          lb.querySelector(".slb-prev").hidden = groupCur <= 0;
+          lb.querySelector(".slb-next").hidden = groupCur >= grouped.length - 1;
+        }
+        function updatePauseButton() {
+          var b = lb && lb.querySelector(".slb-pause");
+          if (!b) return;
+          b.textContent = storyPaused ? "▶" : "Ⅱ";
+          b.setAttribute("aria-label", storyPaused ? "繼續播放" : "暫停播放");
+          b.setAttribute("aria-pressed", storyPaused ? "true" : "false");
+        }
+        function drawProgress() {
+          var bars = lb.querySelectorAll(".slb-progress span");
+          bars.forEach(function (bar, i) {
+            var pct = i < storyCur ? 100 : (i === storyCur ? Math.min(100, storyElapsed / storyDuration * 100) : 0);
+            bar.style.setProperty("--story-progress", pct + "%");
+          });
+        }
+        function progressTick(now) {
+          if (storyPaused || !lb || lb.style.display === "none") return;
+          storyElapsed = now - storyStarted;
+          drawProgress();
+          if (storyElapsed >= storyDuration) { moveStory(1, true); return; }
+          storyFrame = requestAnimationFrame(progressTick);
+        }
+        function startProgress() {
+          cancelAnimationFrame(storyFrame);
+          storyElapsed = 0;
+          storyPaused = false;
+          storyManualPause = false;
+          storyHolding = false;
+          storyStarted = performance.now();
+          updatePauseButton();
+          drawProgress();
+          storyFrame = requestAnimationFrame(progressTick);
+        }
+        function pauseProgress() {
+          if (storyPaused) return;
+          storyElapsed = Math.min(storyDuration, performance.now() - storyStarted);
+          storyPaused = true;
+          cancelAnimationFrame(storyFrame);
+          updatePauseButton();
+          drawProgress();
+        }
+        function resumeProgress() {
+          if (!storyPaused || storyManualPause || storyHolding || document.hidden || !lb || lb.style.display === "none") return;
+          storyPaused = false;
+          storyStarted = performance.now() - storyElapsed;
+          updatePauseButton();
+          storyFrame = requestAnimationFrame(progressTick);
+        }
+        function togglePause() {
+          storyManualPause = !storyManualPause;
+          if (storyManualPause) pauseProgress();
+          else resumeProgress();
+        }
+        function showCurrent() {
+          var s = grouped[groupCur][storyCur];
+          lb.querySelector(".slb-progress").innerHTML = grouped[groupCur].map(function (_, i) {
+            return '<span aria-label="第 ' + (i + 1) + ' 則，共 ' + grouped[groupCur].length + ' 則"></span>';
+          }).join("");
           lb.querySelector(".slb-head").innerHTML =
-            '<span class="who"><strong>' + esc(s.name) + '</strong><span class="sub">@' + esc(s.username) + " ・ " + ago(s.taken_at) + "</span></span>" +
-            '<a href="' + esc(s.ig_url) + '" rel="noopener" target="_blank">在 IG 開啟 ↗</a>';
+            (s.avatar ? '<img class="slb-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
+            '<span class="who"><strong>' + esc(s.username) + '</strong><span class="sub">' + ago(s.taken_at) + "</span></span>" +
+            '<button class="slb-pause" aria-label="暫停播放" aria-pressed="false">Ⅱ</button>';
           lb.querySelector(".slb-media").innerHTML =
             '<img src="' + esc(s.media) + '" alt="">' +
             (s.is_video ? '<p class="slb-video-note">影片限動 — <a href="' + esc(s.ig_url) + '" rel="noopener" target="_blank">到 IG 觀看</a></p>' : "");
+          lb.querySelector(".slb-ig-link").href = s.ig_url;
+          renderPeeks();
+          startProgress();
         }
 
         storyShare.data = { flat: flat, ago: ago };
