@@ -262,6 +262,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .story-lightbox {
   position: fixed; inset: 0; z-index: 100; background: rgba(8,8,12,.92);
   display: flex; align-items: center; justify-content: center;
+  touch-action: pan-y; overscroll-behavior: contain;
 }
 .slb-figure { position: relative; max-height: 88vh; max-width: min(92vw, 460px); }
 .slb-figure img { max-height: 82vh; max-width: 100%; border-radius: 12px; display: block; }
@@ -1383,7 +1384,7 @@ body.feed-locked .fab { bottom: 96px; }
   /* 欄內下捲時讓出限動列的空間（回到頂端自動展開） */
   body.feed-locked .story-strip {
     transition: max-height 0.24s var(--motion-ease, ease), opacity 0.18s;
-    max-height: 260px; overflow: hidden;
+    max-height: 260px; overflow-x: auto; overflow-y: hidden;
   }
   body.feed-locked.strip-away .story-strip {
     max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;

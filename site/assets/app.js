@@ -1187,7 +1187,7 @@
           });
         }
 
-        var lb = null, cur = 0;
+        var lb = null, cur = 0, swipe = null;
         function openLightbox(i) {
           cur = i;
           if (!lb) {
@@ -1203,6 +1203,35 @@
               else if (ev.target.classList.contains("slb-prev")) show(cur - 1);
               else if (ev.target.classList.contains("slb-next")) show(cur + 1);
             });
+            lb.addEventListener("touchstart", function (ev) {
+              if (ev.touches.length !== 1 || ev.target.closest("a, button")) { swipe = null; return; }
+              var t = ev.touches[0];
+              swipe = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, decided: false, horizontal: false };
+            }, { passive: true });
+            lb.addEventListener("touchmove", function (ev) {
+              if (!swipe || ev.touches.length !== 1) return;
+              var t = ev.touches[0];
+              swipe.dx = t.clientX - swipe.x;
+              swipe.dy = t.clientY - swipe.y;
+              if (!swipe.decided) {
+                if (Math.abs(swipe.dx) < 6 && Math.abs(swipe.dy) < 6) return;
+                swipe.decided = true;
+                swipe.horizontal = Math.abs(swipe.dx) > Math.abs(swipe.dy) * 1.15;
+              }
+              if (swipe.horizontal && ev.cancelable) ev.preventDefault();
+            }, { passive: false });
+            lb.addEventListener("touchend", function (ev) {
+              if (!swipe) return;
+              if (ev.changedTouches.length) {
+                swipe.dx = ev.changedTouches[0].clientX - swipe.x;
+                swipe.dy = ev.changedTouches[0].clientY - swipe.y;
+              }
+              var move = swipe;
+              swipe = null;
+              if (move.horizontal && Math.abs(move.dx) >= 48 && Math.abs(move.dx) > Math.abs(move.dy) * 1.15)
+                show(cur + (move.dx < 0 ? 1 : -1));
+            }, { passive: true });
+            lb.addEventListener("touchcancel", function () { swipe = null; }, { passive: true });
             document.addEventListener("keydown", onKey);
           }
           lb.style.display = "flex";
