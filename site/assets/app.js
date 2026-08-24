@@ -1188,6 +1188,7 @@
         }
 
         var lb = null, cur = 0, swipe = null;
+        var storyWheel = { x: 0, y: 0, last: 0, handled: false };
         function openLightbox(i) {
           cur = i;
           if (!lb) {
@@ -1232,6 +1233,26 @@
                 show(cur + (move.dx < 0 ? 1 : -1));
             }, { passive: true });
             lb.addEventListener("touchcancel", function () { swipe = null; }, { passive: true });
+            // Desktop trackpads emit horizontal wheel events instead of touch events.
+            // Keep this gesture state local to the lightbox so the Threads-style river
+            // underneath cannot consume it; momentum from one gesture changes one story only.
+            lb.addEventListener("wheel", function (ev) {
+              var now = Date.now();
+              if (now - storyWheel.last > 180) storyWheel = { x: 0, y: 0, last: now, handled: false };
+              storyWheel.last = now;
+              storyWheel.x += ev.deltaX || (ev.shiftKey ? ev.deltaY : 0);
+              storyWheel.y += ev.shiftKey ? 0 : ev.deltaY;
+              if (storyWheel.handled) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                return;
+              }
+              if (Math.abs(storyWheel.x) < 45 || Math.abs(storyWheel.x) <= Math.abs(storyWheel.y) * 1.15) return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              storyWheel.handled = true;
+              show(cur + (storyWheel.x > 0 ? 1 : -1));
+            }, { passive: false });
             document.addEventListener("keydown", onKey);
           }
           lb.style.display = "flex";
@@ -1247,6 +1268,7 @@
         function close() {
           lb.style.display = "none";
           document.body.style.overflow = "";
+          storyWheel = { x: 0, y: 0, last: 0, handled: false };
         }
         function show(i) {
           cur = (i + flat.length) % flat.length;
