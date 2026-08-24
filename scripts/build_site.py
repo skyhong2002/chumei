@@ -241,15 +241,15 @@ def attach_geo(events, venues):
     n = 0
     for e in events:
         venue = (e.get("venue") or "").strip()
-        if e.get("campus") in ("online",):
+        campus = e.get("campus")
+        if campus in ("online",):
             continue
         hit = None
-        if venue and e.get("campus"):
-            hit = match(venue, [v for v in venues if v["campus"] == e["campus"]])
+        if venue and campus in CAMPUS_GEO:
+            # 已知實體校區時只能在該校區內配對。同名場館在不同學校／校區很常見，
+            # 缺少本校區登錄時寧可退回校區中心，也不能被另一校區唯一登錄的泛稱帶走。
+            hit = match(venue, [v for v in venues if v["campus"] == campus])
         elif venue:
-            hit = match(venue, venues)
-        # 擷取的校區可能只來自學校名；全域唯一場館登錄的實際校區優先。
-        if venue and not hit:
             hit = match(venue, venues)
             if hit and hit["campus"] in CAMPUS_LABEL and hit["campus"] != "online":
                 e["campus"] = hit["campus"]
