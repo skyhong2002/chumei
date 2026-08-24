@@ -101,6 +101,11 @@
         href: "/source/",
         label: "資料來源",
         icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'
+      },
+      {
+        href: "/account/",
+        label: "登入",
+        icon: '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>'
       }
     ];
     items.forEach(function (item) {
@@ -115,6 +120,26 @@
         duplicate.classList.add("nav-mobile-extra");
       }
     });
+    if (!menu.querySelector('a[href="/account/"]')) {
+      var accountMenu = document.createElement("a");
+      accountMenu.href = "/account/";
+      accountMenu.textContent = "登入／帳號";
+      accountMenu.className = "nav-mobile-extra";
+      var about = menu.querySelector('a[href="/about/"]');
+      var accountBefore = about || menu.querySelector("#theme-toggle");
+      if (accountBefore && accountBefore.parentNode) accountBefore.parentNode.insertBefore(accountMenu, accountBefore);
+      else menu.appendChild(accountMenu);
+    }
+    fetch("/auth/me", { credentials: "same-origin" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (data) {
+      if (!data || !data.authenticated) return;
+      document.querySelectorAll('a[href="/account/"]').forEach(function (a) {
+        var label = a.querySelector(".nav-label");
+        if (label) label.textContent = "帳號";
+        else a.textContent = "帳號";
+      });
+    }).catch(function () {});
     document.querySelectorAll('a[href="/notify/"]').forEach(function (a) {
       if ((a.textContent || "").trim() === "推播與追蹤") a.textContent = "App 通知";
       if (a.getAttribute("aria-label") === "推播與追蹤") a.setAttribute("aria-label", "App 通知");

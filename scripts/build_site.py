@@ -649,6 +649,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
         <a href="/notify/">App 通知</a>
         <a href="/subscribe/">訂閱管道</a>
         <a href="/source/">資料來源</a>
+        <a href="/account/">登入／帳號</a>
         <a href="/about/">關於竹梅</a>
         <button id="theme-toggle">切換深淺色</button>
       </div>

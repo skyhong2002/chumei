@@ -1,4 +1,5 @@
 requests
+starlette
 Pillow
 playwright
 mcp
