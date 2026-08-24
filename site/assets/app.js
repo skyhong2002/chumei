@@ -1154,7 +1154,7 @@
           '<div class="src-upd" title="' + esc(e.updated || "") + '">' + fmtUpdated(e.updated) + "</div>" +
           '<div class="src-ev">' + (e.events ? e.events + " 場" : "—") + "</div>" +
           '<button class="heart-btn heart-btn-label src-c-follow" data-org-id="' + e.id + '" data-org-name="' + esc(e.name) +
-          '" aria-pressed="' + followed(e.id) + '" title="追蹤 ' + esc(e.name) + '">' +
+          '" aria-pressed="' + followed(e.id) + '" aria-label="追蹤 ' + esc(e.name) + '" title="追蹤 ' + esc(e.name) + '">' +
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>' +
           '<span class="hb-follow">追蹤</span><span class="hb-following">追蹤中</span></button>' +
           "</div>";
@@ -2309,7 +2309,12 @@
   }
   function refresh() {
     document.querySelectorAll(".heart-btn").forEach(function (b) {
-      b.setAttribute("aria-pressed", String(isFollowed(b.dataset.orgId)));
+      var followed = isFollowed(b.dataset.orgId);
+      var name = b.dataset.orgName || "這個單位";
+      var action = followed ? "取消追蹤 " : "追蹤 ";
+      b.setAttribute("aria-pressed", String(followed));
+      b.setAttribute("aria-label", action + name);
+      b.setAttribute("title", action + name);
     });
   }
   var toastT;

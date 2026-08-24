@@ -1543,7 +1543,8 @@ def source_table_html(entries):
                 f'<div class="src-upd" title="{esc(e.get("updated") or "")}">{fmt_updated(e.get("updated"))}</div>'
                 f'<div class="src-ev">{str(e["events"]) + " 場" if e["events"] else "—"}</div>'
                 + (f'<button class="heart-btn heart-btn-label src-c-follow" data-org-id="{e["id"]}" '
-                   f'data-org-name="{esc(e["name"])}" aria-pressed="false" title="追蹤 {esc(e["name"])}">'
+                   f'data-org-name="{esc(e["name"])}" aria-pressed="false" aria-label="追蹤 {esc(e["name"])}" '
+                   f'title="追蹤 {esc(e["name"])}">'
                    f'{FEED_ICON["heart"]}<span class="hb-follow">追蹤</span>'
                    f'<span class="hb-following">追蹤中</span></button>') + "</div>")
 
