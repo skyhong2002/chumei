@@ -646,7 +646,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
     <details class="nav-more">
       <summary class="nav-item" aria-label="更多選單"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l16 0"/><path d="M4 12l16 0"/><path d="M4 18l16 0"/></svg><span class="nav-label">更多</span></summary>
       <div class="nav-more-menu">
-        <a href="/notify/">推播與追蹤</a>
+        <a href="/notify/">App 通知</a>
         <a href="/subscribe/">訂閱管道</a>
         <a href="/source/">資料來源</a>
         <a href="/about/">關於竹梅</a>
@@ -660,9 +660,9 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 </main>
 <footer class="site-footer">
   <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
-  <p><a href="/notify/">推播與追蹤</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p>
+  <p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p>
 </footer>
-<a class="fab" href="/notify/" aria-label="推播與追蹤"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
+<a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
 <script src="/assets/app.js"></script>
 </body>
 </html>"""
@@ -1553,7 +1553,7 @@ def source_table_html(entries):
     head = ('<div class="src-head">' + th("id", "ID") + th("name", "名稱", "src-th-left") +
             '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
             th("updated", "更新") + th("events", "收錄", on=True, arrow=" ↓") +
-            '<span class="src-th-plain src-th-follow">追蹤</span></div>')
+            th("follow", "追蹤", "src-th-follow") + "</div>")
     # 預設排序同 JS SORTS.events（名稱平手時 JS 用 zh-Hant localeCompare，這裡以碼位近似）
     ordered = sorted(entries, key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
     return head + "".join(row(e) for e in ordered)

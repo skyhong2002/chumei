@@ -94,7 +94,7 @@
     var items = [
       {
         href: "/notify/",
-        label: "推播與追蹤",
+        label: "App 通知",
         icon: '<path d="M10 5a2 2 0 0 1 4 0a7 7 0 0 1 4 6v3l2 2H4l2-2v-3a7 7 0 0 1 4-6"/><path d="M9 19a3 3 0 0 0 6 0"/>'
       },
       {
@@ -110,7 +110,14 @@
       a.innerHTML = SVG_OPEN + item.icon + '</svg><span class="nav-label">' + item.label + "</span>";
       nav.insertBefore(a, more);
       var duplicate = menu.querySelector('a[href="' + item.href + '"]');
-      if (duplicate) duplicate.classList.add("nav-mobile-extra");
+      if (duplicate) {
+        duplicate.textContent = item.label;
+        duplicate.classList.add("nav-mobile-extra");
+      }
+    });
+    document.querySelectorAll('a[href="/notify/"]').forEach(function (a) {
+      if ((a.textContent || "").trim() === "推播與追蹤") a.textContent = "App 通知";
+      if (a.getAttribute("aria-label") === "推播與追蹤") a.setAttribute("aria-label", "App 通知");
     });
   })();
 
@@ -1036,7 +1043,7 @@
       }
       // 追蹤數會影響「只看已追蹤」的計數與清單內容
       window.addEventListener("chumei-follow-change", function () {
-        if (groups.follow) render();
+        if (groups.follow || state.sort === "follow") render();
       });
 
       function matches(e, ok, ov) {
@@ -1103,11 +1110,12 @@
       var SORTS = {
         events: function (a, b) { return (b.events - a.events) || (b.links.length - a.links.length) || a.name.localeCompare(b.name, "zh-Hant"); },
         updated: function (a, b) { return ((b.updated || "").localeCompare(a.updated || "")) || (b.events - a.events); },
+        follow: function (a, b) { return Number(followed(b.id)) - Number(followed(a.id)) || (b.events - a.events) || a.name.localeCompare(b.name, "zh-Hant"); },
         name: function (a, b) { return a.name.localeCompare(b.name, "zh-Hant"); },
         id: function (a, b) { return a.id - b.id; }
       };
-      var SORT_DEFAULT_DIR = { events: "desc", updated: "desc", name: "asc", id: "asc" };
-      var SORT_BASE_DESC = { events: true, updated: true, name: false, id: false }; // SORTS 天然方向
+      var SORT_DEFAULT_DIR = { events: "desc", updated: "desc", follow: "desc", name: "asc", id: "asc" };
+      var SORT_BASE_DESC = { events: true, updated: true, follow: true, name: false, id: false }; // SORTS 天然方向
 
       function headHtml() {
         function th(key, label, extraCls) {
@@ -1119,7 +1127,7 @@
           th("id", "ID") + th("name", "名稱", "src-th-left") +
           '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
           th("updated", "更新") + th("events", "收錄") +
-          '<span class="src-th-plain src-th-follow">追蹤</span></div>';
+          th("follow", "追蹤", "src-th-follow") + "</div>";
       }
 
       function render() {

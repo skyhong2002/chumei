@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>通知與追蹤｜竹梅活動觀測站</title><meta name="description" content="App 推播與追蹤設定——挑學校、類型、追蹤單位、關鍵字，符合條件的新活動才通知你。"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=262512b44ecf"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
+<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App 通知｜竹梅活動觀測站</title><meta name="description" content="竹梅 App 通知設定——挑學校、類型、追蹤單位、關鍵字，符合條件的新活動才通知你。"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=262512b44ecf"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
 .sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
 .sub-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);text-decoration:none;color:var(--color-text-primary)}
@@ -34,8 +34,8 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 .push-input:focus{outline:none;border-color:var(--color-border-strong)}
 .pp-org-empty{font-size:.85rem;color:var(--color-text-muted);align-self:center}
 .notify-top{margin-bottom:8px}
-.notify-orgs h2,.notify-orgs>p{max-width:var(--layout-reading,720px)}
-.notify-orgs h2{font-size:1.2rem;margin-top:2em}
+.notify-follow-manage{margin-top:28px;padding:18px 20px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised)}
+.notify-follow-manage h2{font-size:1.2rem;margin-top:0}
 .push-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 0}
 .push-card [hidden]{display:none!important}
 .push-saved{font-size:.85rem;color:var(--color-text-brand)}
@@ -51,7 +51,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     <details class="nav-more">
       <summary class="nav-item" aria-label="更多選單"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l16 0"/><path d="M4 12l16 0"/><path d="M4 18l16 0"/></svg><span class="nav-label">更多</span></summary>
       <div class="nav-more-menu">
-        <a href="/notify/">推播與追蹤</a>
+        <a href="/notify/">App 通知</a>
         <a href="/subscribe/">訂閱管道</a>
         <a href="/source/">資料來源</a>
         <a href="/about/">關於竹梅</a>
@@ -61,13 +61,13 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   </nav>
 </header><main>
 <div class="prose notify-top">
-<h1>通知與追蹤</h1>
+<h1>App 通知</h1>
 <p>把竹梅裝成 App、挑你在乎的——符合條件的新活動才會通知你。在貼文或活動上按 <b>🔔</b> 追蹤單位，也會記到這裡。</p>
 <section class="push-card" id="push-card">
   <div class="push-top">
     <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></span>
     <span class="push-title">
-      <strong>App 推播（客製化）</strong>
+      <strong>通知條件</strong>
       <p class="push-status" id="push-status">檢查支援度⋯</p>
     </span>
     <button class="btn btn-primary" id="push-toggle" hidden>開啟推播</button>
@@ -89,7 +89,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
       <span class="np-presets" id="np-presets"></span>
     </p>
     <div class="filters np-follow-row">
-      <div class="filter-row"><span class="label">追蹤</span><span class="fgroup" id="np-orgs-row"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位——到下面的<a href="#orgs">追蹤來源</a>按「追蹤」。追蹤的單位不受規則限制，一律通知。</span></span></div>
+      <div class="filter-row"><span class="label">追蹤</span><span class="fgroup" id="np-orgs-row"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位——到<a href="/source/">資料來源</a>按「追蹤」。追蹤的單位不受規則限制，一律通知。</span></span></div>
     </div>
     <p class="push-preview" id="np-preview" aria-live="polite"></p>
     <p class="push-foot">
@@ -132,20 +132,10 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   </div>
 </details>
 </div>
-<section class="notify-orgs">
-<h2 id="orgs">追蹤來源</h2>
-<p>清大與陽明交大的社團、系所與校方單位都在這裡。按 🔔 追蹤，該單位有新活動就會通知你——
-<span id="src-count" aria-live="polite"></span></p>
-<section class="filters" aria-label="名錄篩選">
-  <div class="filter-row"><span class="label">追蹤</span><span id="sf-follow" class="fgroup"></span>
-    <span class="search-hit"><input id="search" type="search" placeholder="搜尋社團、單位…" aria-label="搜尋名錄"></span></div>
-  <div class="filter-row"><span class="label">學校</span><span id="sf-school" class="fgroup"></span></div>
-  <div class="filter-row"><span class="label">類型</span><span id="sf-kind" class="fgroup"></span></div>
-  <div class="filter-row"><span class="label">狀態</span><span id="sf-status" class="fgroup"></span></div>
-  <div class="filter-row"><span class="label">平台</span><span id="sf-platform" class="fgroup"></span></div>
-</section>
-<div id="source-table" class="src-table" aria-label="機構名錄"></div>
-
+<section class="prose notify-follow-manage" id="orgs">
+<h2>追蹤單位</h2>
+<p>新增或取消追蹤，統一到<a href="/source/">資料來源</a>操作；已追蹤的單位會顯示在上方通知條件中。</p>
+<p><a class="btn" href="/source/">前往資料來源</a></p>
 </section>
 <div class="prose">
 <h2>其他訂閱方式</h2>
@@ -555,5 +545,5 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   }).catch(function(){});
 })();
 </script>
-</main><footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/notify/">推播與追蹤</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer><a class="fab" href="/notify/" aria-label="推播與追蹤"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
-<script src="/assets/app.js?v=06973f4266d6"></script></body></html>
+</main><footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer><a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
+<script src="/assets/app.js?v=d9cc7bca6fbc"></script></body></html>
