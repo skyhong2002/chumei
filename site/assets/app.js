@@ -489,6 +489,19 @@
       function saveCols() { try { localStorage.setItem("chumei-cols", JSON.stringify(cols)); } catch (e) {} }
 
       var CARET = SVG_OPEN + '<path d="M6 9l6 6l6 -6"/></svg>';
+      var ADD_RIVER_ICON = SVG_OPEN +
+        '<path d="M4 5a2 2 0 0 1 2 -2h9a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2z"/>' +
+        '<path d="M9 3v18"/><path d="M14 12h6"/><path d="M17 9v6"/></svg>';
+      function addColMenu() {
+        return '<div class="addcol-menu"><div class="addcol-title">新增河道</div>' +
+          '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>' +
+          '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button>' +
+          '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div>';
+      }
+      function deckAddHtml() {
+        return '<details class="deck-add"><summary aria-label="新增河道">' + ADD_RIVER_ICON +
+          '</summary>' + addColMenu() + '</details>';
+      }
       function upcomingEvents() {
         var seen = {}, evs = [];
         posts.forEach(function (p) {
@@ -664,10 +677,7 @@
           (cols.length < 6
             ? '<details class="pager-add"><summary aria-label="新增河道">' + SVG_OPEN +
               '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg></summary>' +
-              '<div class="addcol-menu"><div class="addcol-title">新增河道</div>' +
-              '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>' +
-              '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button>' +
-              '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div></details>'
+              addColMenu() + '</details>'
             : "");
       }
       function updatePagerActive() {
@@ -905,17 +915,27 @@
         // 欄位模式：鎖住外層捲動，只捲欄內（Threads 式）；手機為左右分頁的河道
         document.body.classList.add("feed-locked");
         // Threads deck：第 4 欄起欄寬降一階（實測 Threads 為 420px）
+        var canAdd = wide && cols.length < 6;
         feed.innerHTML = '<div class="feed-cols' + (wide && cols.length > 3 ? " cols-many" : "") +
+          (canAdd ? " has-deck-add" : "") +
           '" style="--ncols:' + cols.length + '">' +
-          cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") + "</div>";
+          cols.map(function (c, i) { return colHtml(i, c, buckets[i]); }).join("") +
+          (canAdd ? deckAddHtml() : "") + "</div>";
         if (!wide) { bindPager(); syncFilterUI(); }
         else { bindDeckNav(feed.querySelector(".feed-cols")); }
         renderPagerBar(wide);
-        var af = document.querySelector(".addcol");
-        if (af) af.hidden = !wide || cols.length >= 6;
         refreshMeta();
       }
       feed.addEventListener("click", function (ev) {
+        var add = ev.target.closest(".deck-add button[data-add]");
+        if (add && cols.length < 6) {
+          cols.push(add.dataset.add === "feed" ? feedCol("all") : { t: add.dataset.add });
+          activeCol = cols.length - 1;
+          saveCols(); render(true);
+          var newDeck = feed.querySelector(".feed-cols");
+          if (newDeck) newDeck.scrollTo({ left: newDeck.scrollWidth, behavior: "smooth" });
+          return;
+        }
         if (ev.target.classList.contains("feed-more")) {
           shown += 30;
           var colEl = ev.target.closest(".feed-col");
@@ -951,26 +971,6 @@
         cols[idx].q = q.value.trim();
         clearTimeout(cfT);
         cfT = setTimeout(function () { saveCols(); updateBodies(); }, 200);
-      });
-      // 桌機加欄入口放進左側導覽；手機沿用河道分頁列的 ＋
-      var addFab = document.createElement("details");
-      addFab.className = "addcol";
-      addFab.innerHTML = '<summary class="nav-item" aria-label="新增河道">' + SVG_OPEN + '<path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg><span class="nav-label">新增河道</span></summary>' +
-        '<div class="addcol-menu"><div class="addcol-title">新增欄位</div>' +
-        '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>' +
-        '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button>' +
-        '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div>';
-      var sidebarNav = document.querySelector(".site-nav");
-      var sidebarMore = sidebarNav && sidebarNav.querySelector(".nav-more");
-      if (sidebarNav && sidebarMore) sidebarNav.insertBefore(addFab, sidebarMore);
-      else document.body.appendChild(addFab);
-      addFab.addEventListener("click", function (ev) {
-        var b = ev.target.closest("button[data-add]");
-        if (!b || cols.length >= 6) return;
-        cols.push(b.dataset.add === "feed" ? feedCol("all") : { t: b.dataset.add });
-        saveCols(); addFab.open = false; render(true);
-        var deck = feed.querySelector(".feed-cols");
-        if (deck) deck.scrollTo({ left: deck.scrollWidth, behavior: "smooth" });
       });
       var resizeT;
       window.addEventListener("resize", function () {

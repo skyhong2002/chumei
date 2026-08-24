@@ -697,7 +697,10 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-zero { color: var(--color-text-muted); font-weight: 400; }
 
 /* ---------- source directory table ---------- */
-.src-table { margin-top: 12px; border-top: 1px solid var(--color-border-subtle); }
+.src-table {
+  min-width: 0; max-width: 100%; overflow: hidden;
+  margin-top: 12px; border-top: 1px solid var(--color-border-subtle);
+}
 .src-row {
   display: grid;
   /* 連結欄不設上限時會吃掉標籤欄（長 handle 讓標籤被壓成直排）——給它上限並讓它換行 */
@@ -705,6 +708,7 @@ main.main-wide { max-width: min(1680px, 100%); }
   gap: 10px; align-items: center;
   padding: 10px 6px; border-bottom: 1px solid var(--color-border-subtle);
 }
+.src-row > * { min-width: 0; }
 .src-c-follow {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   height: 32px; padding: 0 12px; border-radius: var(--radius-pill); cursor: pointer;
@@ -741,13 +745,16 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-upd { text-align: right; font-size: 0.8rem; color: var(--color-text-muted); white-space: nowrap; }
 .src-row:hover { background: var(--color-surface-soft); }
 .src-uncovered .src-c-name { color: var(--color-text-secondary); font-weight: 500; }
-.src-links { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.src-link { font-size: 0.82rem; white-space: nowrap; }
+.src-links { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; overflow: hidden; }
+.src-link {
+  display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-size: 0.82rem; white-space: nowrap;
+}
 .src-none { font-size: 0.8rem; color: var(--color-text-muted); }
 .src-ev { text-align: right; font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .src-uncovered .src-ev { color: var(--color-text-muted); font-weight: 400; }
 .chip-m { display: none; }
-@media (max-width: 1280px) {
+@media (max-width: 1600px) {
   /* compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
   .src-row {
     grid-template-columns: 1fr auto auto;
@@ -1149,20 +1156,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 .col-picker > summary { position: relative; }
 
-/* 新增河道選單：桌機入口位於側欄；手機另使用河道分頁列的 ＋ */
-.addcol { display: none; }
-.addcol summary {
-  list-style: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  width: 64px; height: 56px; border-radius: var(--radius-lg);
-  background: var(--color-surface-raised); border: 1px solid var(--color-border-subtle);
-  color: var(--color-text-primary); box-shadow: var(--shadow-raised);
-  transition: transform var(--motion-fast, 140ms) var(--motion-ease);
-}
-.addcol summary::-webkit-details-marker { display: none; }
-.addcol summary:hover { transform: scale(1.06); }
-.addcol[open] summary { transform: none; }
-.addcol summary svg { width: 26px; height: 26px; }
+/* 新增河道選單：桌機放在所有河道最右側；手機沿用分頁列的 ＋ */
 .addcol-menu {
   position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 50;
   min-width: 200px; padding: 8px; display: flex; flex-direction: column; gap: 2px;
@@ -1182,20 +1176,39 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .addcol-menu button:hover { background: var(--color-surface-soft); }
 .addcol-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
 @media (min-width: 1080px) {
-  body.feed-locked .site-nav > .addcol { display: block; position: relative; flex: 0 0 auto; }
-  body.feed-locked .site-nav > .addcol[hidden] { display: none; }
-  .site-nav > .addcol > summary {
-    justify-content: flex-start; width: 100%; height: auto; min-height: var(--layout-tap-target, 44px);
-    padding: 10px 12px; border: none; border-radius: var(--radius-md);
-    background: none; box-shadow: none; color: var(--color-text-secondary);
+  body.feed-locked .feed-cols.has-deck-add {
+    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 1fr)) 84px;
+  }
+  body.feed-locked .feed-cols.cols-many.has-deck-add {
+    grid-template-columns: repeat(var(--ncols), 420px) 84px;
+  }
+  .deck-add {
+    position: relative; align-self: stretch; min-width: 84px; z-index: 20;
+    border-left: 1px solid var(--color-border-subtle);
+  }
+  .deck-add > summary {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    display: flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; list-style: none; cursor: pointer;
+    border-radius: 50%; color: var(--color-text-secondary);
     transition: background var(--motion-fast, 140ms), color var(--motion-fast, 140ms);
   }
-  .site-nav > .addcol > summary:hover {
-    transform: none; background: var(--color-surface-soft); color: var(--color-text-primary);
+  .deck-add > summary::-webkit-details-marker { display: none; }
+  .deck-add > summary:hover, .deck-add[open] > summary {
+    background: var(--color-surface-soft); color: var(--color-text-primary);
   }
-  .site-nav > .addcol[open] > summary { transform: none; }
-  .site-nav > .addcol .addcol-menu {
-    left: calc(100% + 10px); right: auto; top: 0; bottom: auto;
+  .deck-add > summary svg { width: 28px; height: 28px; }
+  .deck-add .addcol-menu {
+    right: calc(100% + 10px); left: auto; top: 50%; bottom: auto;
+    transform: translateY(-50%);
+  }
+}
+@media (min-width: 1280px) {
+  body.feed-locked .feed-cols.has-deck-add {
+    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 1fr)) 84px;
+  }
+  body.feed-locked .feed-cols.cols-many.has-deck-add {
+    grid-template-columns: repeat(var(--ncols), 420px) 84px;
   }
 }
 .dot-events { background: var(--color-category-orange-text); }
@@ -1231,12 +1244,12 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .src-th-on { color: var(--chumei-bamboo-text); }
 .src-th-left, .src-th-plain { text-align: left; }
 .src-th-links { text-align: right; }
-@media (max-width: 1280px) {
+@media (max-width: 1600px) {
   .src-head { display: flex; gap: 6px; padding: 6px 2px; top: 54px; }
   .src-th-plain, .src-th[data-sort="id"] { display: none; }
   .src-th { text-align: left; }
 }
-@media (min-width: 701px) and (max-width: 1280px) {
+@media (min-width: 701px) and (max-width: 1600px) {
   .src-head { top: 0; }
 }
 .chip-reg-req { background: var(--color-warning-surface); color: var(--color-warning-text); }
