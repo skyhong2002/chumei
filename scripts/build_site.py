@@ -1401,6 +1401,13 @@ def prerender_events(events):
         return end >= now and t <= range_end
 
     rows = [e for e in events if in_default_range(e)]
+    # 與 app.js 相同：未開始以開始時間排序，進行中則以截止時間排序。
+    def sort_time(e):
+        start = _iso_dt(e["start_at"])
+        end = _iso_dt(e.get("end_at"))
+        return end if end is not None and start <= now <= end else start
+
+    rows.sort(key=lambda e: (sort_time(e), e["start_at"], e["title"]))
     body = "".join(_ev_list_row(e) for e in rows) or \
         '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>'
     _inject_ssr(SITE / "events" / "index.html", "ssr-events", body)

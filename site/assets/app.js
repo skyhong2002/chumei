@@ -1356,6 +1356,13 @@
     return "進行中・至 " + (en.getMonth() + 1) + "/" + en.getDate() + "（" + "日一二三四五六"[en.getDay()] + "）";
   }
 
+  // 活動列表依「下一個關鍵時間」排序：尚未開始看開始時間，進行中看截止時間。
+  function eventSortTime(e, now) {
+    var starts = new Date(e.start_at).getTime();
+    var ends = e.end_at ? new Date(e.end_at).getTime() : NaN;
+    return !isNaN(ends) && starts <= now && now <= ends ? ends : starts;
+  }
+
   function todayStr() {
     var d = new Date();
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -1733,7 +1740,16 @@
 
     function render() {
       var list = bundle.events.filter(matches);
-      if (state.time === "all") list = list.slice().reverse();
+      if (state.time === "all") {
+        list = list.slice().reverse();
+      } else {
+        var now = Date.now();
+        list = list.slice().sort(function (a, b) {
+          return eventSortTime(a, now) - eventSortTime(b, now) ||
+            new Date(a.start_at) - new Date(b.start_at) ||
+            String(a.title || "").localeCompare(String(b.title || ""), "zh-Hant");
+        });
+      }
       document.getElementById("count").textContent = list.length + " 場活動";
       var listCount = document.getElementById("list-count");
       if (listCount) listCount.textContent = list.length + " 場";
