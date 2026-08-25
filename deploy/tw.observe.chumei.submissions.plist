@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>tw.observe.chumei.submissions</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/skyhong/Projects/chumei/.venv/bin/python</string>
+		<string>/Users/skyhong/Projects/chumei/scripts/process_submissions.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/skyhong/Projects/chumei</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/Users/skyhong/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/Users/skyhong/Projects/chumei/state/submissions.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/skyhong/Projects/chumei/state/submissions.log</string>
+</dict>
+</plist>

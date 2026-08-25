@@ -237,11 +237,48 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .account-card dl div { padding: 12px 0; border-top: 1px solid var(--color-border-subtle); }
 .account-card dt { font-size: 0.78rem; color: var(--color-text-muted); }
 .account-card dd { margin: 2px 0 0; font-weight: 650; overflow-wrap: anywhere; }
+.submit-card { margin-top: 18px; }
+.submit-form { display: grid; gap: 6px; margin-top: 18px; }
+.submit-label { font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px; }
+.submit-input {
+  font: inherit; width: 100%; box-sizing: border-box; padding: 10px 12px;
+  color: var(--color-text-primary); background: var(--color-canvas);
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md);
+}
+.submit-input:focus { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+.submit-form .account-action { justify-self: start; }
+.submit-notice {
+  margin: 14px 0 0; padding: 10px 12px; border-radius: var(--radius-md);
+  background: var(--color-surface-raised, rgba(255,255,255,0.06)); color: var(--color-text-primary); font-size: 0.9rem;
+}
+.submit-notice.is-error { background: var(--color-danger-surface, #3b1515); color: var(--color-danger-text, #ffb4b4); }
+.submit-list-title { margin: 28px 0 8px; font-size: 1rem; color: var(--color-text-secondary); }
+.submit-empty { margin: 0; font-size: 0.9rem; }
+.submit-list { list-style: none; margin: 0; padding: 0; }
+.submit-item { padding: 12px 0; border-top: 1px solid var(--color-border-subtle); }
+.submit-item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.submit-item-head time { font-size: 0.78rem; color: var(--color-text-muted); }
+.submit-status {
+  display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.76rem; font-weight: 700;
+  background: var(--color-surface-raised, rgba(255,255,255,0.08)); color: var(--color-text-secondary);
+}
+.submit-item.is-published .submit-status, .submit-item.is-existing .submit-status,
+.submit-item.is-accepted .submit-status { background: rgba(34,197,94,0.16); color: #4ade80; }
+.submit-item.is-rejected .submit-status, .submit-item.is-error .submit-status { background: rgba(239,68,68,0.16); color: #f87171; }
+.submit-item.is-manual .submit-status, .submit-item.is-source_suggested .submit-status { background: rgba(192,105,221,0.18); color: #d8a1ec; }
+.submit-url {
+  display: block; margin-top: 6px; font-size: 0.9rem; color: var(--color-text-primary);
+  overflow-wrap: anywhere; text-decoration: none;
+}
+.submit-url:hover { text-decoration: underline; }
+.submit-reason { margin: 4px 0 0; font-size: 0.86rem; color: var(--color-text-secondary); }
+.submit-result { margin-left: 6px; font-weight: 700; color: var(--chumei-bamboo-text); }
 @media (max-width: 699px) {
   .account-page { margin: 0; }
   .account-page .hero { padding-bottom: 14px; }
   .account-card { padding: 20px 18px; }
   .account-action { display: flex; justify-content: center; width: 100%; }
+  .submit-form .account-action { justify-self: stretch; }
 }
 
 /* ---------- IG 限時動態 ---------- */

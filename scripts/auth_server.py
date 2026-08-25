@@ -12,6 +12,8 @@ Public routes (Caddy proxies /auth/* and /account* to this service):
   POST /auth/follows/sync     merge browser-local follows after login
   PUT  /auth/follows/{org_id} follow one organization
   DELETE /auth/follows/{org_id} unfollow one organization
+  GET  /auth/submissions      current user's link reports
+  POST /auth/submissions      report a link (JSON or form; login required)
   POST /auth/logout           revoke local session
   GET  /auth/health           runtime/configuration status
 """
@@ -30,7 +32,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 import requests
 from starlette.applications import Starlette
@@ -42,6 +44,14 @@ from starlette.routing import Route
 
 from build_site import page_shell
 from chumei_lib import ROOT, load_env
+from submissions import (
+    DAILY_LIMIT,
+    MAX_NOTE_LENGTH,
+    STATUS_LABELS,
+    SubmissionStore,
+    classify_url,
+    normalize_url,
+)
 
 
 PORT = 8324
@@ -489,13 +499,76 @@ def _error_page(title: str, message: str, status_code: int = 400) -> HTMLRespons
     return HTMLResponse(body, status_code=status_code)
 
 
+SUBMIT_NOTICES = {
+    "ok": ("已收到，系統會在幾分鐘到一小時內判讀這個連結。", False),
+    "dup": ("這個連結已經有人回報過了，下面可以看到它的狀態。", False),
+    "invalid": ("看起來不是有效的網址，請貼完整的 http(s) 連結。", True),
+    "self": ("這已經是竹梅站內的頁面囉，請貼原始貼文或公告的連結。", True),
+    "limit": (f"一天最多回報 {DAILY_LIMIT} 個連結，明天再來吧。", True),
+}
+
+
+def _fmt_time(ts: int | None) -> str:
+    if not ts:
+        return ""
+    return time.strftime("%m/%d %H:%M", time.localtime(ts))
+
+
+def _submissions_html(items: list[dict], notice: str | None) -> str:
+    alert = ""
+    if notice in SUBMIT_NOTICES:
+        text, is_error = SUBMIT_NOTICES[notice]
+        alert = f'<p class="submit-notice{" is-error" if is_error else ""}" role="status">{html.escape(text)}</p>'
+    rows = []
+    for it in items:
+        status = it.get("status") or "pending"
+        label = STATUS_LABELS.get(status, status)
+        url = it["url"]
+        short = html.escape(url.replace("https://", "").replace("www.", "")[:72] + ("…" if len(url) > 80 else ""))
+        reason = html.escape(it.get("reason") or "")
+        link = ""
+        if it.get("event_url"):
+            link = f' <a class="submit-result" href="{html.escape(it["event_url"])}">查看→</a>'
+        rows.append(
+            f'<li class="submit-item is-{html.escape(status)}">'
+            f'<div class="submit-item-head"><span class="submit-status">{html.escape(label)}</span>'
+            f'<time>{_fmt_time(it.get("created_at"))}</time></div>'
+            f'<a class="submit-url" href="{html.escape(url)}" rel="noopener nofollow" target="_blank">{short}</a>'
+            + (f'<p class="submit-reason">{reason}{link}</p>' if reason or link else "")
+            + "</li>"
+        )
+    listing = (
+        f'<ul class="submit-list">{"".join(rows)}</ul>'
+        if rows
+        else '<p class="submit-empty">還沒有回報過連結。</p>'
+    )
+    return f"""
+        <p class="eyebrow">回報連結</p>
+        <h2>看到活動，貼連結給竹梅</h2>
+        <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。</p>
+        {alert}
+        <form method="post" action="/auth/submissions" class="submit-form">
+          <label class="submit-label" for="submit-url">連結</label>
+          <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="https://www.instagram.com/p/…" autocomplete="off">
+          <label class="submit-label" for="submit-note">備註（選填）</label>
+          <input id="submit-note" class="submit-input" type="text" name="note" maxlength="{MAX_NOTE_LENGTH}" placeholder="例如：主辦是清大天文社、活動在 9/20">
+          <button class="btn btn-primary account-action" type="submit">送出</button>
+        </form>
+        <h3 class="submit-list-title">我的回報</h3>
+        {listing}
+    """
+
+
 def _account_html(
     user: dict | None,
     configured: bool,
     *,
     title: str = "帳號",
     message: str | None = None,
+    submissions: list[dict] | None = None,
+    notice: str | None = None,
 ) -> str:
+    extra = ""
     if user:
         email = html.escape(user.get("email") or "")
         subject = html.escape(user.get("subject") or "")
@@ -505,13 +578,14 @@ def _account_html(
         <dl><div><dt>學校帳號</dt><dd>{subject}</dd></div>{f'<div><dt>Email</dt><dd>{email}</dd></div>' if email else ''}</dl>
         <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
         """
+        extra = f'<section class="account-card submit-card" id="submit">{_submissions_html(submissions or [], notice)}</section>'
     elif configured:
         card = """
         <p class="eyebrow">OAuth-only account</p>
         <h2>登入竹梅</h2>
         <p>使用陽明交大單一入口驗證身分。竹梅不會取得或儲存你的學校密碼。</p>
         <a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>
-        <p class="privacy-note">目前只要求基本 profile，用來取得穩定帳號識別與校方 Email。</p>
+        <p class="privacy-note">目前只要求基本 profile，用來取得穩定帳號識別與校方 Email。登入後可以把看到的活動連結回報給竹梅，系統會自動判讀收錄。</p>
         """
     else:
         card = """
@@ -529,6 +603,7 @@ def _account_html(
   </div>
   {alert}
   <section class="account-card">{card}</section>
+  {extra}
 </section>
 """
     return page_shell(
@@ -543,14 +618,82 @@ def create_app(
     config: AuthConfig | None = None,
     store: AuthStore | None = None,
     oauth_client: NYCUOAuthClient | None = None,
+    submissions: SubmissionStore | None = None,
 ) -> Starlette:
     config = config or AuthConfig.from_env()
     store = store or AuthStore(config.database_path)
     oauth_client = oauth_client or NYCUOAuthClient()
+    submissions = submissions or SubmissionStore(config.database_path)
 
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
-        return HTMLResponse(_account_html(user, config.configured))
+        items = submissions.list_for_user(user["id"]) if user else []
+        notice = request.query_params.get("submit")
+        return HTMLResponse(
+            _account_html(user, config.configured, submissions=items, notice=notice)
+        )
+
+    def submission_payload(item: dict) -> dict:
+        return {
+            "id": item["id"],
+            "url": item["url"],
+            "note": item.get("note") or "",
+            "status": item["status"],
+            "statusLabel": STATUS_LABELS.get(item["status"], item["status"]),
+            "reason": item.get("reason") or "",
+            "eventUrl": item.get("event_url"),
+            "createdAt": item["created_at"],
+            "updatedAt": item["updated_at"],
+        }
+
+    async def submissions_list(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        items = [submission_payload(i) for i in submissions.list_for_user(user["id"])]
+        return JSONResponse({"ok": True, "submissions": items, "dailyLimit": DAILY_LIMIT})
+
+    async def submissions_create(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        wants_json = "application/json" in (request.headers.get("content-type") or "")
+
+        def reply(code: str, item: dict | None = None, status_code: int = 200):
+            if wants_json:
+                body = {"ok": code in ("ok", "dup"), "code": code}
+                if item:
+                    body["submission"] = submission_payload(item)
+                return JSONResponse(body, status_code=status_code)
+            return RedirectResponse(f"/account/?submit={code}#submit", 303)
+
+        if not user:
+            if wants_json:
+                return JSONResponse(
+                    {"ok": False, "error": "authentication required"}, status_code=401
+                )
+            return RedirectResponse("/account/", 303)
+        if wants_json:
+            try:
+                body = await request.json()
+            except (json.JSONDecodeError, ValueError):
+                body = {}
+            body = body if isinstance(body, dict) else {}
+        else:
+            raw = (await request.body())[:8192].decode("utf-8", "replace")
+            body = dict(parse_qsl(raw, keep_blank_values=True))
+        url = normalize_url(str(body.get("url") or ""))
+        if not url:
+            return reply("invalid", status_code=400)
+        if classify_url(url)["kind"] == "chumei":
+            return reply("self", status_code=400)
+        existing = submissions.find_by_url(url)
+        if existing:
+            return reply("dup", existing)
+        if submissions.count_today(user["id"]) >= DAILY_LIMIT:
+            return reply("limit", status_code=429)
+        item = submissions.create(user["id"], url, str(body.get("note") or ""))
+        return reply("ok", item, status_code=201)
 
     async def oauth_start(request: Request):
         if not config.configured:
@@ -724,6 +867,8 @@ def create_app(
             Route("/auth/follows/sync", follows_sync, methods=["POST"]),
             Route("/auth/follows/{org_id:int}", follow_add, methods=["PUT"]),
             Route("/auth/follows/{org_id:int}", follow_remove, methods=["DELETE"]),
+            Route("/auth/submissions", submissions_list, methods=["GET"]),
+            Route("/auth/submissions", submissions_create, methods=["POST"]),
             Route("/auth/logout", logout, methods=["POST"]),
             Route("/auth/health", health, methods=["GET"]),
         ]

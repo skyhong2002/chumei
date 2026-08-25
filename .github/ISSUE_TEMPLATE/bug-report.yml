@@ -1,0 +1,28 @@
+name: 程式問題回報
+description: 網站、推播、機器人或資料管線的程式錯誤（活動內容相關請改用站內回報）
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        這裡只處理**程式問題**。活動想上架、資訊有誤、主辦單位要求調整或下架，請登入後到 https://chumei.observe.tw/account/ 的「回報連結」處理，系統會自動判讀收錄。
+  - type: input
+    id: where
+    attributes:
+      label: 發生在哪裡
+      placeholder: https://chumei.observe.tw/events/ 、Telegram bot、推播通知……
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      description: 做了什麼、預期看到什麼、實際看到什麼
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 裝置與瀏覽器
+      placeholder: iPhone 15 / iOS 18 Safari、macOS Chrome 127……

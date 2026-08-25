@@ -79,9 +79,23 @@ CHUMEI_AUTH_PUBLIC_BASE_URL=https://chumei.observe.tw
 Session token，以及使用者主動追蹤的單位關聯，存於被 Git 忽略的
 `state/auth.sqlite3`；不保存學校密碼，也不公開個別帳號的追蹤名單。
 
+## 連結回報（登入投稿）
+
+登入者在 `/account/` 貼活動連結（`POST /auth/submissions`，每人每日 10 筆、同連結去重），
+`scripts/process_submissions.py` 由 `deploy/tw.observe.chumei.submissions.plist` 每 15 分鐘審核一輪：
+
+1. 帳號主頁比對追蹤名錄（已追蹤→已收錄；未追蹤→寫 `state/submissions/source_suggestions.jsonl` 等人工加入）。
+2. 單篇內容先比對 inbox／`events.json`，已收錄就直接對回活動頁。
+3. 其餘抓內容（IG 走 instaloader，其他抓 og tags＋正文，文字太少就截圖）交 Codex 依
+   `scripts/submission_schema.json` 判讀：新活動→寫 `data/feeds/inbox/user_submission.jsonl` 走既有抽取／建站／去重；
+   對上既有活動→回連結；不相關→不收錄；信心不足→`state/submissions/manual_review.jsonl` 人工確認。
+
+狀態會回寫到 `submissions` 表（與帳號同一個 sqlite），使用者在帳號頁看得到進度。
+
 ## 資料回報與下架
 
-資訊有誤、想上架活動、或主辦單位希望調整內容：開 [issue](../../issues) 或來信 chumei@observe.tw。轉載之海報與貼文皆附原始連結，主辦單位要求即下架。
+活動想上架、資訊有誤、主辦單位希望調整或下架：登入後在帳號頁回報連結（見上節），或來信 chumei@observe.tw。
+GitHub [issue](../../issues) 只處理程式問題。轉載之海報與貼文皆附原始連結，主辦單位要求即下架。
 
 ## License
 
