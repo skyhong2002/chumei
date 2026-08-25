@@ -1466,6 +1466,9 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   border: 1px solid var(--color-border-subtle); background: var(--color-surface-raised);
   color: var(--color-text-primary); box-shadow: 0 2px 8px rgb(0 0 0 / 24%);
 }
+.src-c-follow .heart-count {
+  right: 0; width: max-content; max-width: none; white-space: nowrap;
+}
 .feed-action .heart-count { margin-left: 1px; }
 /* <button> 在 .btn 樣式下仍有瀏覽器預設灰底（同 .btn-share 的處理） */
 .btn.heart-btn { background: var(--color-surface); }

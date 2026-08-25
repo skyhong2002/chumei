@@ -1579,7 +1579,7 @@ def prerender_stories():
 
 
 def source_table_html(entries):
-    """/source/ SSR：完整名錄表（app.js initSources 的 headHtml()+row()，預設排序 events desc）。"""
+    """/source/ SSR：完整名錄表；追蹤數載入前暫以收錄活動數穩定排序。"""
     esc = html.escape
     now = datetime.now(TZ_TAIPEI)
     PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "website": "官網"}
@@ -1638,9 +1638,9 @@ def source_table_html(entries):
 
     head = ('<div class="src-head">' + th("id", "ID") + th("name", "名稱", "src-th-left") +
             '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
-            th("updated", "更新") + th("events", "收錄", on=True, arrow=" ↓") +
-            th("follow", "追蹤", "src-th-follow") + "</div>")
-    # 預設排序同 JS SORTS.events（名稱平手時 JS 用 zh-Hant localeCompare，這裡以碼位近似）
+            th("updated", "更新") + th("events", "收錄") +
+            th("follow", "追蹤", "src-th-follow", on=True, arrow=" ↓") + "</div>")
+    # 公開追蹤數由 /auth/follows 動態載入；載入前沿用穩定的收錄數排序，JS 隨即重排。
     ordered = sorted(entries, key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
     return head + "".join(row(e) for e in ordered)
 

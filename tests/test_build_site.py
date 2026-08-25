@@ -138,5 +138,26 @@ class PostCampusTests(unittest.TestCase):
         self.assertEqual(build_site._feed_school_label({"school": "nthu"}), "清大")
 
 
+class SourceTableTests(unittest.TestCase):
+    def test_follow_is_the_default_sort_header(self):
+        entry = {
+            "id": 1,
+            "name": "清大測試社",
+            "school": "nthu",
+            "campus": None,
+            "kind": "club",
+            "category": None,
+            "links": [],
+            "events": 0,
+            "updated": None,
+            "avatar": None,
+        }
+
+        rendered = build_site.source_table_html([entry])
+
+        self.assertIn('class="src-th src-th-follow src-th-on" data-sort="follow">追蹤 ↓</button>', rendered)
+        self.assertNotIn('data-sort="events">收錄 ↓</button>', rendered)
+
+
 if __name__ == "__main__":
     unittest.main()

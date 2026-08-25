@@ -1091,11 +1091,14 @@
 
     fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
       var entries = data.entries;
-      var state = { follow: "all", school: "all", status: "all", kind: "all", platform: "all", sort: "events", dir: "desc", q: "" };
+      var state = { follow: "all", school: "all", status: "all", kind: "all", platform: "all", sort: "follow", dir: "desc", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
       function followed(id) {
         return !!(window.chumeiFollow && window.chumeiFollow.isFollowed(id));
+      }
+      function followCount(id) {
+        return window.chumeiFollow ? window.chumeiFollow.count(id) : 0;
       }
 
       var groups = {};
@@ -1201,7 +1204,7 @@
       var SORTS = {
         events: function (a, b) { return (b.events - a.events) || (b.links.length - a.links.length) || a.name.localeCompare(b.name, "zh-Hant"); },
         updated: function (a, b) { return ((b.updated || "").localeCompare(a.updated || "")) || (b.events - a.events); },
-        follow: function (a, b) { return Number(followed(b.id)) - Number(followed(a.id)) || (b.events - a.events) || a.name.localeCompare(b.name, "zh-Hant"); },
+        follow: function (a, b) { return (followCount(b.id) - followCount(a.id)) || (b.events - a.events) || a.name.localeCompare(b.name, "zh-Hant"); },
         name: function (a, b) { return a.name.localeCompare(b.name, "zh-Hant"); },
         id: function (a, b) { return a.id - b.id; }
       };
@@ -1228,7 +1231,7 @@
             if (b) b.querySelector(".fchip-count").textContent = String(entries.filter(function (e) { return matches(e, key, opt[0]); }).length);
           });
         });
-        var list = entries.filter(function (e) { return matches(e); }).sort(SORTS[state.sort] || SORTS.events);
+        var list = entries.filter(function (e) { return matches(e); }).sort(SORTS[state.sort] || SORTS.follow);
         var natural = SORT_BASE_DESC[state.sort] ? "desc" : "asc";
         if (state.dir !== natural) list.reverse();
         document.getElementById("src-count").textContent = "目前列出 " + list.length + " 個單位。";
@@ -1236,7 +1239,7 @@
         var qs = new URLSearchParams();
         Object.keys(state).forEach(function (k) {
           if (!state[k] || state[k] === "all") return;
-          if (k === "sort" && state.sort === "events") return;
+          if (k === "sort" && state.sort === "follow") return;
           if (k === "dir" && state.dir === (SORT_DEFAULT_DIR[state.sort] || "desc")) return;
           qs.set(k, state[k]);
         });
