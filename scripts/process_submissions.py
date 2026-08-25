@@ -105,6 +105,28 @@ def load_tracked_handles():
     return handles
 
 
+def load_org_index():
+    """source_id → 名錄 id（site/data/sources.json 的 sids），帳號類回報用來回單位頁連結。"""
+    path = ROOT / "site" / "data" / "sources.json"
+    if not path.exists():
+        return {}
+    out = {}
+    for entry in json.loads(path.read_text()).get("entries", []):
+        for sid in entry.get("sids") or []:
+            out.setdefault(sid, entry["id"])
+    return out
+
+
+def source_id_for(info):
+    prefix = {"instagram": "ig", "facebook": "fb", "threads": "threads", "twitter": "twitter"}.get(info["platform"])
+    return f"{prefix}_{info['handle']}" if prefix and info.get("handle") else None
+
+
+def org_url(orgs, info):
+    org_id = orgs.get(source_id_for(info) or "")
+    return f"/org/{org_id}/" if org_id else None
+
+
 def event_url(event_id):
     return f"/event/{event_id}/"
 
@@ -355,7 +377,8 @@ def process_one(store, sub, ctx, dry_run=False):
     if info["kind"] in ("ig_profile", "fb_page", "threads_profile", "x_profile"):
         tracked = handles.get(info["platform"], set())
         if info["handle"] in tracked:
-            return finish("existing", "這個帳號已經在竹梅的追蹤清單裡，新貼文會自動收錄。")
+            return finish("existing", "這個帳號已經在竹梅的追蹤清單裡，新貼文會自動收錄。",
+                          event_url=org_url(ctx["orgs"], info))
         if not dry_run:
             _append_jsonl(SOURCE_SUGGESTIONS, {"ts": now_iso(), "submission": sub["id"], "url": url,
                                                "platform": info["platform"], "handle": info["handle"],
@@ -371,7 +394,8 @@ def process_one(store, sub, ctx, dry_run=False):
         if key[0] == SOURCE_ID:
             pass  # 前一次回報寫進 inbox 但還沒建站，往下走正常流程會再次 dedupe
         else:
-            return finish("not_event", "這則內容竹梅之前已經看過，但沒有辨識出有明確時間的活動。")
+            return finish("not_event", "這則內容竹梅之前已經看過，但沒有辨識出有明確時間的活動。",
+                          event_url=f"/org/{ctx['orgs'][key[0]]}/" if key[0] in ctx["orgs"] else None)
 
     # 抓內容 → Codex 判讀
     try:
@@ -478,7 +502,7 @@ def main():
     else:
         todo = store.list_by_status(["pending"], limit=args.limit)
     ctx = {"events": load_events_index(), "inbox": load_inbox_index(), "handles": load_tracked_handles(),
-           "env": env, "needs_extract": False}
+           "orgs": load_org_index(), "env": env, "needs_extract": False}
     print(f"{len(todo)} submissions to process")
     for sub in todo:
         print(f"- {sub['id']} {sub['url']}")

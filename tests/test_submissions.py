@@ -190,6 +190,7 @@ class ProcessTests(unittest.TestCase):
             "events": self.index,
             "inbox": ({"https://www.instagram.com/p/OLD/": ("rsshub", "OLD")}, {"OLD": ("rsshub", "OLD")}),
             "handles": {"instagram": {"nthu_sa"}, "facebook": set(), "threads": set(), "twitter": set()},
+            "orgs": {"ig_nthu_sa": 42, "rsshub": 7},
             "env": {},
             "needs_extract": False,
         }
@@ -205,7 +206,8 @@ class ProcessTests(unittest.TestCase):
 
     def test_tracked_profile_and_untracked_profile(self):
         with mock.patch.object(process_submissions, "SOURCE_SUGGESTIONS", Path(self.tempdir.name) / "s.jsonl"):
-            self.assertEqual(self._run("https://www.instagram.com/nthu_sa/")["status"], "existing")
+            tracked = self._run("https://www.instagram.com/nthu_sa/")
+            self.assertEqual((tracked["status"], tracked["event_url"]), ("existing", "/org/42/"))
             got = self._run("https://www.instagram.com/newclub/")
             self.assertEqual(got["status"], "source_suggested")
             self.assertIn("newclub", (Path(self.tempdir.name) / "s.jsonl").read_text())
