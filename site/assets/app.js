@@ -2322,18 +2322,10 @@
       pushCard.parentNode.insertBefore(section, pushCard.nextSibling);
     }
     var devices = pushStats ? numberOrZero(pushStats.devices) : "—";
-    var withOrgs = pushStats ? numberOrZero(pushStats.withOrganizations) : "—";
-    var withRules = pushStats ? numberOrZero(pushStats.withRules) : "—";
     section.innerHTML =
-      '<h2>推播使用計數</h2>' +
-      '<div class="notify-stat-grid">' +
-        '<div><strong>' + devices + '</strong><span>啟用推播裝置</span></div>' +
-        '<div><strong>' + withOrgs + '</strong><span>追蹤單位的裝置</span></div>' +
-        '<div><strong>' + withRules + '</strong><span>使用自訂規則</span></div>' +
-        '<div><strong>' + numberOrZero(followSummary.accounts) + '</strong><span>小鈴鐺帳號</span></div>' +
-        '<div><strong>' + numberOrZero(followSummary.follows) + '</strong><span>小鈴鐺追蹤</span></div>' +
-      '</div>' +
-      '<p>只顯示匿名彙總。推播以裝置計數；小鈴鐺只計入已登入帳號，同一帳號追蹤同一單位只算一次。</p>';
+      '<span><strong>' + devices + '</strong> 個裝置開啟推播</span>' +
+      '<span><strong>' + numberOrZero(followSummary.follows) + '</strong> 筆登入帳號追蹤</span>' +
+      '<small>匿名彙總，不顯示個人或追蹤名單。</small>';
   }
 
   function applyFollowData(data, replaceLocal) {

@@ -48,6 +48,29 @@ class RuleTest(unittest.TestCase):
     def test_no_rules_matches_everything(self):
         self.assertTrue(self.match({}))
 
+    def test_notification_modes(self):
+        followed = {"orgs": [{"id": 5, "name": "電機系學會"}]}
+        self.assertTrue(self.match({**followed, "mode": "following"}))
+        self.assertFalse(
+            self.match(
+                {**followed, "mode": "following"},
+                event(source={"source_id": "other"}),
+            )
+        )
+        self.assertTrue(
+            self.match(
+                {**followed, "mode": "all"},
+                event(source={"source_id": "other"}),
+            )
+        )
+        custom = {**followed, "mode": "custom", "rules": [{"cats": ["表演"]}]}
+        self.assertTrue(self.match(custom, event(category="表演", source={"source_id": "other"})))
+        self.assertFalse(self.match(custom, event(category="展覽", source={"source_id": "other"})))
+
+    def test_empty_following_and_custom_modes_match_nothing(self):
+        self.assertFalse(self.match({"mode": "following"}))
+        self.assertFalse(self.match({"mode": "custom"}))
+
     def test_dimensions_are_and_within_a_rule(self):
         rule = {"schools": ["nthu"], "cats": ["演講"]}
         self.assertTrue(self.match({"rules": [rule]}))
@@ -96,10 +119,15 @@ class RuleTest(unittest.TestCase):
 
     def test_legacy_flat_prefs_become_one_rule(self):
         prefs = pc.normalize_prefs({"schools": ["nthu"], "cats": ["演講"]})
+        self.assertEqual(prefs["mode"], "custom")
         self.assertEqual(len(prefs["rules"]), 1)
         self.assertEqual(prefs["rules"][0]["schools"], ["nthu"])
         self.assertTrue(pc.event_matches(event(), prefs, ORG_SIDS))
         self.assertFalse(pc.event_matches(event(school="nycu"), prefs, ORG_SIDS))
+
+    def test_legacy_orgs_derive_following_mode(self):
+        prefs = pc.normalize_prefs({"orgs": [{"id": 5, "name": "電機系學會"}]})
+        self.assertEqual(prefs["mode"], "following")
 
 
 class StoreTest(unittest.TestCase):

@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App 通知｜竹梅活動觀測站</title><meta name="description" content="竹梅 App 通知設定——挑學校、類型、追蹤單位、關鍵字，符合條件的新活動才通知你。"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=acf8224afe7a"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
+<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App 通知｜竹梅活動觀測站</title><meta name="description" content="竹梅 App 通知設定——挑學校、類型、追蹤單位、關鍵字，符合條件的新活動才通知你。"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=44bbc3411b80"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
 .sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
 .sub-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);text-decoration:none;color:var(--color-text-primary)}
@@ -11,9 +11,10 @@
 .sub-note{font-size:.9rem;color:var(--color-text-muted)}
 .sub-combo{margin:10px 0}
 .sub-combo>summary{cursor:pointer;color:var(--color-text-secondary)}
-.push-card{border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);padding:16px 18px;margin:14px 0}
+.push-card,.notify-settings-card{border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);padding:18px 20px;margin:14px 0}
 .push-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.push-top .icon{background:linear-gradient(135deg,#8E24AA 0%,#2462FF 100%)}
+.push-top .icon{width:44px;height:44px;border-radius:13px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#8E24AA 0%,#2462FF 100%)}
+.push-top .icon svg{width:26px;height:26px}
 .push-title{flex:1;min-width:200px}
 .push-title strong{display:block;line-height:1.35}
 .push-status{margin:3px 0 0;font-size:.9rem;color:var(--color-text-secondary)}
@@ -25,22 +26,42 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 .push-guide li{margin:4px 0}
 .push-prefs{margin-top:14px;border-top:1px solid var(--color-border-subtle);padding-top:12px}
 .push-prefs-lede{font-size:.9rem;color:var(--color-text-secondary);margin:0 0 10px}
-.push-prefs .filters{position:static;background:none;backdrop-filter:none;padding:0;margin:0}
+.push-prefs .filters,.notify-settings-card .filters{position:static;background:none;backdrop-filter:none;padding:0;margin:0}
 .np-sep{border-top:1px dashed var(--color-border-subtle);padding-top:10px;margin-top:4px}
 .np-sub{opacity:.7;font-size:.82rem}
-.push-preview{margin:12px 0 0;font-size:.92rem;color:var(--color-text-secondary)}
-.push-preview b{color:var(--color-text-primary)}
+.push-preview{margin:14px 0 0;padding:11px 13px;border-radius:12px;background:var(--color-surface-soft);font-size:.92rem;color:var(--color-text-secondary)}
+.push-preview b{color:var(--color-text-primary);font-size:1.05em}
 .push-input{border:1px solid var(--color-border-subtle);border-radius:999px;background:var(--color-surface);color:var(--color-text-primary);font:inherit;font-size:.88rem;padding:4px 12px;min-width:14em;flex:1}
 .push-input:focus{outline:none;border-color:var(--color-border-strong)}
 .pp-org-empty{font-size:.85rem;color:var(--color-text-muted);align-self:center}
 .notify-top{margin-bottom:8px}
-.notify-follow-manage{margin-top:28px;padding:18px 20px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised)}
-.notify-follow-manage h2{font-size:1.2rem;margin-top:0}
 .push-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 0}
 .push-card [hidden]{display:none!important}
 .push-saved{font-size:.85rem;color:var(--color-text-brand)}
 .fchip .x{margin-left:6px;opacity:.6}
-@media(max-width:640px){.push-top .btn{width:100%;justify-content:center}}
+.notify-settings-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+.notify-settings-head h2{font-size:1.2rem;margin:0}
+.notify-mode-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0;padding:0;border:0}
+.notify-mode{position:relative;display:flex;align-items:flex-start;gap:9px;min-width:0;padding:13px 14px;border:1px solid var(--color-border-subtle);border-radius:13px;background:var(--color-surface);cursor:pointer}
+.notify-mode:has(input:checked){border-color:var(--color-action-primary);box-shadow:inset 0 0 0 1px var(--color-action-primary);background:var(--color-surface-soft)}
+.notify-mode input{margin:3px 0 0;accent-color:var(--color-action-primary)}
+.notify-mode strong,.notify-mode small{display:block}
+.notify-mode strong{font-size:.92rem;line-height:1.35}
+.notify-mode small{margin-top:3px;color:var(--color-text-muted);font-size:.78rem;line-height:1.4}
+.notify-recommended{display:inline-block;margin-left:4px;color:var(--color-text-brand);font-size:.72rem;font-weight:600}
+.notify-follow-block{margin-top:14px;padding-top:14px;border-top:1px solid var(--color-border-subtle)}
+.notify-follow-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
+.notify-follow-head h3{margin:0;font-size:1rem}
+.notify-follow-head a{font-size:.84rem}
+.notify-follow-block .filter-row{padding:0}
+.notify-advanced{margin-top:14px;border-top:1px solid var(--color-border-subtle);padding-top:12px}
+.notify-advanced>summary{cursor:pointer;font-weight:650;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.notify-advanced>summary::-webkit-details-marker{display:none}
+.notify-advanced>summary::after{content:'＋';font-size:1.1rem;color:var(--color-text-muted)}
+.notify-advanced[open]>summary::after{content:'−'}
+.notify-advanced-lede{font-size:.86rem;color:var(--color-text-secondary);margin:10px 0}
+.notify-presets-label{display:block;margin:12px 0 7px;font-size:.82rem;color:var(--color-text-muted)}
+@media(max-width:720px){.notify-mode-list{grid-template-columns:1fr}.notify-mode{padding:12px}.push-card,.notify-settings-card{padding:16px}.push-top .btn{width:100%;justify-content:center}.notify-follow-head{align-items:center}}
 </style></head><body><header class="site-header">
   <a class="brand" href="/" aria-label="竹梅活動觀測站"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a>
   <nav class="site-nav" aria-label="主導覽">
@@ -62,12 +83,12 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 </header><main>
 <div class="prose notify-top">
 <h1>App 通知</h1>
-<p>把竹梅裝成 App、挑你在乎的——符合條件的新活動才會通知你。在貼文或活動上按 <b>🔔</b> 追蹤單位，也會記到這裡。</p>
+<p>只通知你在意的新活動。先選通知範圍，再開啟推播；設定會自動儲存。</p>
 <section class="push-card" id="push-card">
   <div class="push-top">
     <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></span>
     <span class="push-title">
-      <strong>通知條件</strong>
+      <strong id="push-state-title">檢查通知狀態⋯</strong>
       <p class="push-status" id="push-status">檢查支援度⋯</p>
     </span>
     <button class="btn btn-primary" id="push-toggle" hidden>開啟推播</button>
@@ -80,24 +101,36 @@ button.btn.btn-primary{background:var(--color-action-primary)}
       <li>從<b>主畫面的竹梅圖示</b>打開，回到這一頁按「開啟推播」</li>
     </ol>
   </div>
-  <div class="push-prefs" id="push-prefs">
-    <p class="push-prefs-lede">一條規則＝一組條件（<b>同一列選多個是「或」，不同列之間是「而且」</b>），
-    可以再排除掉不想要的。<b>任一條規則命中就通知你</b>；一條規則都沒有＝所有新活動都通知。</p>
-    <div id="np-rules"></div>
-    <p class="push-foot">
-      <button class="fchip" id="np-add"><span class="fchip-label">＋ 新增規則</span></button>
-      <span class="np-presets" id="np-presets"></span>
-    </p>
+  <p class="push-preview" id="np-preview" aria-live="polite">正在計算符合的活動⋯</p>
+  <p class="push-foot">
+    <button class="fchip" id="push-test" hidden><span class="fchip-label">發送測試通知</span></button>
+    <button class="fchip" id="push-off" hidden><span class="fchip-label">關閉推播</span></button>
+  </p>
+</section>
+<section class="notify-settings-card" aria-labelledby="notify-settings-title">
+  <header class="notify-settings-head">
+    <h2 id="notify-settings-title">你想收到什麼？</h2>
+    <span class="push-saved" id="pp-saved" hidden>設定已儲存 ✓</span>
+  </header>
+  <fieldset class="notify-mode-list" aria-label="通知範圍">
+    <label class="notify-mode"><input type="radio" name="notify-mode" value="following"><span><strong>只看追蹤單位 <span class="notify-recommended">推薦</span></strong><small>只通知你按過小鈴鐺的單位</small></span></label>
+    <label class="notify-mode"><input type="radio" name="notify-mode" value="all"><span><strong>所有新活動</strong><small>每筆新收錄活動都通知</small></span></label>
+    <label class="notify-mode"><input type="radio" name="notify-mode" value="custom"><span><strong>追蹤＋自訂條件</strong><small>追蹤單位之外，再加入主題條件</small></span></label>
+  </fieldset>
+  <section class="notify-follow-block" aria-labelledby="notify-follow-title">
+    <header class="notify-follow-head"><h3 id="notify-follow-title">追蹤的單位 <span id="notify-follow-count"></span></h3><a href="/source/">＋ 新增追蹤單位</a></header>
     <div class="filters np-follow-row">
-      <div class="filter-row"><span class="label">追蹤</span><span class="fgroup" id="np-orgs-row"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位——到<a href="/source/">資料來源</a>按「追蹤」。追蹤的單位不受規則限制，一律通知。</span></span></div>
+      <div class="filter-row"><span class="fgroup" id="np-orgs-row"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位。到資料來源按小鈴鐺即可加入。</span></span></div>
     </div>
-    <p class="push-preview" id="np-preview" aria-live="polite"></p>
-    <p class="push-foot">
-      <button class="fchip" id="push-test" hidden><span class="fchip-label">發送測試通知</span></button>
-      <button class="fchip" id="push-off" hidden><span class="fchip-label">關閉推播</span></button>
-      <span class="push-saved" id="pp-saved" hidden>偏好已儲存 ✓</span>
-    </p>
-  </div>
+  </section>
+  <details class="notify-advanced" id="notify-advanced">
+    <summary><span>進階條件</span><span id="np-rule-total">尚未新增</span></summary>
+    <p class="notify-advanced-lede">一張條件卡內，同一列選多個是「或」，不同列之間是「而且」。任一張卡符合就通知；追蹤單位仍會固定通知。</p>
+    <div id="np-rules"></div>
+    <span class="notify-presets-label">快速加入範例</span>
+    <p class="push-foot"><span class="np-presets" id="np-presets"></span></p>
+    <p class="push-foot"><button class="fchip" id="np-add"><span class="fchip-label">＋ 新增空白條件</span></button></p>
+  </details>
 </section>
 <details class="sub-combo"><summary>📖 安裝與推播教學（iPhone 必看）</summary>
   <div class="push-guide" style="border-style:solid">
@@ -132,11 +165,6 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   </div>
 </details>
 </div>
-<section class="prose notify-follow-manage" id="orgs">
-<h2>追蹤單位</h2>
-<p>新增或取消追蹤，統一到<a href="/source/">資料來源</a>操作；已追蹤的單位會顯示在上方通知條件中。</p>
-<p><a class="btn" href="/source/">前往資料來源</a></p>
-</section>
 <div class="prose">
 <h2>其他訂閱方式</h2>
 <p>Telegram 頻道、查詢 Bot、RSS 與行事曆訂閱都在<a href="/subscribe/">訂閱管道</a>。</p>
@@ -145,7 +173,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 (function(){
   "use strict";
   var $=function(id){return document.getElementById(id)};
-  var statusEl=$("push-status"), toggle=$("push-toggle"), iosGuide=$("push-ios-guide"),
+  var statusEl=$("push-status"), stateTitle=$("push-state-title"), toggle=$("push-toggle"), iosGuide=$("push-ios-guide"),
       testBtn=$("push-test"), offBtn=$("push-off"), savedEl=$("pp-saved");
   var supported="serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   var isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
@@ -231,6 +259,9 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   }
   if(!Array.isArray(prefs.rules)) prefs.rules=[];
   prefs.rules=prefs.rules.map(normRule);
+  if(["all","following","custom"].indexOf(prefs.mode)<0){
+    prefs.mode=prefs.rules.length?"custom":((prefs.orgs||[]).length?"following":"all");
+  }
 
   // ---- 比對（與 push_common.rule_matches 對應） ----
   function hay(e){ return ((e.title||"")+" "+(e.summary||"")+" "+(e.description||"")+" "+
@@ -257,7 +288,8 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   }
   function orgHit(e){ return (prefs.orgs||[]).some(function(o){return String(o.id)===String(e.org_id);}); }
   function anyMatch(e){
-    if(!(prefs.rules||[]).length && !(prefs.orgs||[]).length) return true;
+    if(prefs.mode==="all") return true;
+    if(prefs.mode==="following") return orgHit(e);
     if(orgHit(e)) return true;
     return (prefs.rules||[]).some(function(r){return ruleMatch(e,r);});
   }
@@ -306,8 +338,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   function renderRules(){
     var host=$("np-rules"); host.innerHTML="";
     if(!prefs.rules.length){
-      host.innerHTML='<p class="np-empty">目前沒有規則——<b>所有新活動</b>都會通知你。'
-        +'按下面的「＋ 新增規則」或範例來縮小範圍。</p>';
+      host.innerHTML='<p class="np-empty">尚未加入自訂條件。你可以從範例開始，或新增一張空白條件卡。</p>';
       return;
     }
     prefs.rules.forEach(function(r,i){
@@ -430,7 +461,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     host.innerHTML="";
     PRESETS.forEach(function(pre){
       host.appendChild(fchip(pre.n,false,null,function(){
-        prefs.rules.push(normRule(pre.r)); changed();
+        prefs.mode="custom"; prefs.rules.push(normRule(pre.r)); $("notify-advanced").open=true; changed();
       }));
     });
   }
@@ -443,39 +474,61 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     });
     var empty=$("pp-org-empty");
     if(empty) empty.hidden=(prefs.orgs||[]).length>0;
+    var count=$("notify-follow-count");
+    if(count) count.textContent="（"+(prefs.orgs||[]).length+"）";
   }
   window.addEventListener("chumei-follow-change",function(){
     try{var s=JSON.parse(localStorage.getItem("push-prefs")||"null"); if(s) prefs.orgs=s.orgs||[];}catch(e){}
     renderOrgs(); renderPreview();
   });
-  function renderPreview(){
-    var el=$("np-preview"); if(!el||!upcoming.length) return;
-    var n=upcoming.filter(anyMatch).length;
-    el.innerHTML="以目前設定，即將舉行的 <b>"+upcoming.length+"</b> 場活動中有 <b>"+n+"</b> 場會通知你"
-      +(n===upcoming.length?"（等於全部）":"")+"。";
+  function renderMode(){
+    document.querySelectorAll('input[name="notify-mode"]').forEach(function(input){
+      input.checked=input.value===prefs.mode;
+    });
+    var total=$("np-rule-total");
+    if(total) total.textContent=prefs.rules.length?(prefs.rules.length+" 組"):"尚未新增";
   }
-  function renderAll(){ renderRules(); renderPresets(); renderOrgs(); renderPreview(); }
+  function renderPreview(){
+    var el=$("np-preview"); if(!el) return;
+    if(!eventsLoaded){ el.textContent="正在計算符合的活動⋯"; return; }
+    var n=upcoming.filter(anyMatch).length;
+    var label=prefs.mode==="all"?"所有新活動":(prefs.mode==="following"?"追蹤單位":"追蹤單位與自訂條件");
+    el.innerHTML="目前選擇「<b>"+label+"</b>」：即將舉行的 <b>"+upcoming.length+"</b> 場活動中，約有 <b>"+n+"</b> 場符合。"
+      +(prefs.mode==="following"&&!(prefs.orgs||[]).length?" 先新增追蹤單位，才會收到通知。":"");
+  }
+  function renderAll(){ renderMode(); renderRules(); renderPresets(); renderOrgs(); renderPreview(); }
   function changed(){ renderAll(); save(); }
 
-  $("np-add").addEventListener("click",function(){ prefs.rules.push(emptyRule()); changed(); });
+  document.querySelectorAll('input[name="notify-mode"]').forEach(function(input){
+    input.addEventListener("change",function(){
+      if(!input.checked) return;
+      prefs.mode=input.value;
+      if(prefs.mode==="custom") $("notify-advanced").open=true;
+      changed();
+    });
+  });
+  $("np-add").addEventListener("click",function(){ prefs.mode="custom"; prefs.rules.push(emptyRule()); $("notify-advanced").open=true; changed(); });
 
+  var eventsLoaded=false;
   fetch("/data/events.json").then(function(r){return r.json()}).then(function(d){
     var today=new Date(); today.setHours(0,0,0,0);
     upcoming=(d.events||[]).filter(function(e){
       var ts=new Date(e.start_at).getTime(); return !isNaN(ts)&&ts>=today.getTime();
     });
-    catOptsCache=null; renderAll();
-  }).catch(function(){ renderAll(); });
+    eventsLoaded=true; catOptsCache=null; renderAll();
+  }).catch(function(){ eventsLoaded=true; renderAll(); });
   renderAll();
 
   // ---- 訂閱流程 ----
   function uiSubscribed(){
     subscribed=true;
+    stateTitle.textContent="推播已開啟";
     setStatus("推播已開啟──偏好改了會自動儲存。",true);
     toggle.hidden=true;testBtn.hidden=false;offBtn.hidden=false;
   }
   function uiUnsubscribed(){
     subscribed=false;
+    stateTitle.textContent="推播尚未開啟";
     setStatus("開啟後，只有符合你條件的新活動會通知你。");
     toggle.hidden=false;toggle.textContent="開啟推播";toggle.disabled=false;
     testBtn.hidden=true;offBtn.hidden=true;
@@ -525,6 +578,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 
   // ---- 初始狀態 ----
   if(!supported){
+    stateTitle.textContent="目前無法開啟推播";
     if(isIOS&&!standalone){
       setStatus("iPhone／iPad 要先把竹梅加入主畫面才能開推播——照下面三步驟做。");
       iosGuide.hidden=false;
@@ -538,7 +592,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     if(!sub)return;
     return post("/push/status",{endpoint:sub.endpoint}).then(function(res){
       if(res.ok&&res.subscribed){
-        if(res.prefs){prefs=Object.assign(prefs,res.prefs);renderSchool();renderCats();renderOrgs();renderKws();}
+        if(res.prefs){prefs=Object.assign(prefs,res.prefs);prefs.rules=(prefs.rules||[]).map(normRule);renderAll();}
         uiSubscribed();
       }
     });
@@ -546,4 +600,4 @@ button.btn.btn-primary{background:var(--color-action-primary)}
 })();
 </script>
 </main><footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer><a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
-<script src="/assets/app.js?v=9ebc1351d8cd"></script></body></html>
+<script src="/assets/app.js?v=91089711a321"></script></body></html>

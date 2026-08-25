@@ -1650,20 +1650,10 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .np-presets { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .np-follow-row { position: static; background: none; backdrop-filter: none; padding: 0; margin-top: 6px; }
 .notify-community-stats {
-  margin: 14px 0; padding: 16px 18px;
-  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg);
-  background: var(--color-surface-raised);
+  display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap;
+  margin: 12px 0 16px; padding: 4px 2px;
+  color: var(--color-text-secondary); font-size: 0.84rem;
 }
-.notify-community-stats h2 { margin: 0 0 10px; font-size: 1.05rem; }
-.notify-community-stats > p { margin: 10px 0 0; color: var(--color-text-muted); font-size: 0.82rem; }
-.notify-stat-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px;
-}
-.notify-stat-grid > div {
-  display: flex; flex-direction: column; min-width: 0; padding: 10px 12px;
-  border-radius: var(--radius-md); background: var(--color-surface-soft);
-}
-.notify-stat-grid strong {
-  font-size: 1.35rem; line-height: 1.25; font-variant-numeric: tabular-nums;
-}
-.notify-stat-grid span { color: var(--color-text-secondary); font-size: 0.78rem; }
+.notify-community-stats span { white-space: nowrap; }
+.notify-community-stats strong { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.notify-community-stats small { color: var(--color-text-muted); font-size: 0.78rem; }

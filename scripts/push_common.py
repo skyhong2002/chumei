@@ -141,7 +141,12 @@ def normalize_prefs(raw):
         legacy = normalize_rule(raw)
         if not rule_is_empty(legacy):
             rules = [legacy]
-    return {"orgs": _orgs(raw.get("orgs")), "rules": rules}
+    orgs = _orgs(raw.get("orgs"))
+    mode = raw.get("mode")
+    if mode not in {"all", "following", "custom"}:
+        # 舊訂閱沒有 mode：依原本條件推導，維持既有通知範圍。
+        mode = "custom" if rules else ("following" if orgs else "all")
+    return {"mode": mode, "orgs": orgs, "rules": rules}
 
 
 def upsert_sub(subscription, prefs=None, migrate_from=None, ua=""):
@@ -260,13 +265,17 @@ def rule_matches(event, rule, org_sids=None):
 
 
 def event_matches(event, prefs, org_sids):
-    """任一規則命中即推；追蹤的單位自成一條規則。都沒設＝全收。"""
+    """依通知模式判斷；custom 為追蹤單位或任一規則命中。"""
     prefs = prefs or {}
     orgs = prefs.get("orgs") or []
     rules = prefs.get("rules") or []
-    if not orgs and not rules:
+    mode = prefs.get("mode")
+    if mode == "all" or mode not in {"following", "custom"}:
         return True
-    if orgs and _org_hit(event, orgs, org_sids or {}):
+    org_hit = bool(orgs and _org_hit(event, orgs, org_sids or {}))
+    if mode == "following":
+        return org_hit
+    if org_hit:
         return True
     return any(rule_matches(event, r, org_sids) for r in rules)
 
