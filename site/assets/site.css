@@ -257,7 +257,9 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .submit-list { list-style: none; margin: 0; padding: 0; }
 .submit-item { padding: 12px 0; border-top: 1px solid var(--color-border-subtle); }
 .submit-item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.submit-item-head time { font-size: 0.78rem; color: var(--color-text-muted); }
+.submit-item-head time { font-size: 0.78rem; color: var(--color-text-muted); margin-left: auto; }
+.submit-mine { font-size: 0.76rem; color: var(--chumei-bamboo-text); font-weight: 700; }
+.submit-note { margin: 4px 0 0; font-size: 0.84rem; color: var(--color-text-muted); }
 .submit-status {
   display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.76rem; font-weight: 700;
   background: var(--color-surface-raised, rgba(255,255,255,0.08)); color: var(--color-text-secondary);

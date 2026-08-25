@@ -237,6 +237,14 @@ class SubmissionStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_recent(self, limit: int = 50) -> list[dict]:
+        """所有人的回報，公開狀態頁用（呼叫端負責隱藏 user_id／note）。"""
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM submissions ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def list_by_status(self, statuses, limit: int = 20) -> list[dict]:
         marks = ",".join("?" for _ in statuses)
         with self._connection() as conn:

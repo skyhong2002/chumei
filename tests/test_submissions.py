@@ -112,7 +112,9 @@ class SubmissionApiTests(unittest.TestCase):
     def test_requires_login(self):
         r = self.client.post("/auth/submissions", json={"url": "https://www.instagram.com/p/A/"})
         self.assertEqual(r.status_code, 401)
-        self.assertEqual(self.client.get("/auth/submissions").status_code, 401)
+        public = self.client.get("/auth/submissions")
+        self.assertEqual(public.status_code, 200)
+        self.assertFalse(public.json()["authenticated"])
 
     def test_json_create_dedupe_and_limit(self):
         self._login()
@@ -133,6 +135,14 @@ class SubmissionApiTests(unittest.TestCase):
         self.assertEqual(limited.status_code, 429)
         listed = self.client.get("/auth/submissions").json()
         self.assertEqual(len(listed["submissions"]), submissions.DAILY_LIMIT)
+        self.assertTrue(all(s["mine"] for s in listed["submissions"]))
+        first = next(s for s in listed["submissions"] if s["url"] == "https://www.instagram.com/p/AbC/")
+        self.assertEqual(first["note"], "清大天文社")
+        self.client.post("/auth/logout")
+        public = self.client.get("/auth/submissions").json()
+        self.assertEqual(len(public["submissions"]), submissions.DAILY_LIMIT)
+        self.assertFalse(any(s["mine"] for s in public["submissions"]))
+        self.assertFalse(any("note" in s for s in public["submissions"]))
 
     def test_form_post_redirects_and_account_page_lists(self):
         self._login()
@@ -149,10 +159,20 @@ class SubmissionApiTests(unittest.TestCase):
         self.assertIn("facebook.com/nthu.tw/posts/9", page.text)
         self.assertIn("待處理", page.text)
         self.assertIn("已收到", page.text)
+        self.assertIn("你回報的", page.text)
+        self.assertIn("備註：hi", page.text)
 
-    def test_logged_out_account_page_has_no_form(self):
+    def test_logged_out_account_page_shows_public_statuses_without_form(self):
+        self._login()
+        self.client.post("/auth/submissions", json={"url": "https://example.org/pub", "note": "secret"})
+        self.client.post("/auth/logout")
         page = self.client.get("/account/")
-        self.assertNotIn('submit-card" id="submit"', page.text)
+        self.assertIn('submit-card" id="submit"', page.text)
+        self.assertIn("example.org/pub", page.text)
+        self.assertNotIn('name="url"', page.text)
+        self.assertNotIn("你回報的", page.text)
+        self.assertNotIn("secret", page.text)
+        self.assertIn("登入後回報連結", page.text)
 
 
 class ProcessTests(unittest.TestCase):

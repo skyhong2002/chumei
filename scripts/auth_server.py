@@ -514,7 +514,7 @@ def _fmt_time(ts: int | None) -> str:
     return time.strftime("%m/%d %H:%M", time.localtime(ts))
 
 
-def _submissions_html(items: list[dict], notice: str | None) -> str:
+def _submissions_html(items: list[dict], notice: str | None, user_id: str | None, configured: bool) -> str:
     alert = ""
     if notice in SUBMIT_NOTICES:
         text, is_error = SUBMIT_NOTICES[notice]
@@ -526,35 +526,47 @@ def _submissions_html(items: list[dict], notice: str | None) -> str:
         url = it["url"]
         short = html.escape(url.replace("https://", "").replace("www.", "")[:72] + ("…" if len(url) > 80 else ""))
         reason = html.escape(it.get("reason") or "")
+        mine = user_id and it.get("user_id") == user_id
         link = ""
         if it.get("event_url"):
             link = f' <a class="submit-result" href="{html.escape(it["event_url"])}">查看→</a>'
+        note = ""
+        if mine and it.get("note"):
+            note = f'<p class="submit-note">備註：{html.escape(it["note"])}</p>'
         rows.append(
-            f'<li class="submit-item is-{html.escape(status)}">'
+            f'<li class="submit-item is-{html.escape(status)}{" is-mine" if mine else ""}">'
             f'<div class="submit-item-head"><span class="submit-status">{html.escape(label)}</span>'
-            f'<time>{_fmt_time(it.get("created_at"))}</time></div>'
+            + ('<span class="submit-mine">你回報的</span>' if mine else "")
+            + f'<time>{_fmt_time(it.get("created_at"))}</time></div>'
             f'<a class="submit-url" href="{html.escape(url)}" rel="noopener nofollow" target="_blank">{short}</a>'
             + (f'<p class="submit-reason">{reason}{link}</p>' if reason or link else "")
-            + "</li>"
+            + note + "</li>"
         )
     listing = (
         f'<ul class="submit-list">{"".join(rows)}</ul>'
         if rows
-        else '<p class="submit-empty">還沒有回報過連結。</p>'
+        else '<p class="submit-empty">還沒有人回報過連結。</p>'
     )
-    return f"""
-        <p class="eyebrow">回報連結</p>
-        <h2>看到活動，貼連結給竹梅</h2>
-        <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。</p>
-        {alert}
+    if user_id:
+        form = f"""
         <form method="post" action="/auth/submissions" class="submit-form">
           <label class="submit-label" for="submit-url">連結</label>
           <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="https://www.instagram.com/p/…" autocomplete="off">
-          <label class="submit-label" for="submit-note">備註（選填）</label>
+          <label class="submit-label" for="submit-note">備註（選填，只有你和站長看得到）</label>
           <input id="submit-note" class="submit-input" type="text" name="note" maxlength="{MAX_NOTE_LENGTH}" placeholder="例如：主辦是清大天文社、活動在 9/20">
           <button class="btn btn-primary account-action" type="submit">送出</button>
-        </form>
-        <h3 class="submit-list-title">我的回報</h3>
+        </form>"""
+    elif configured:
+        form = '<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to=/account/%23submit">登入後回報連結</a>'
+    else:
+        form = ""
+    return f"""
+        <p class="eyebrow">回報連結</p>
+        <h2>看到活動，貼連結給竹梅</h2>
+        <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。每個連結的處理狀態都公開在下面。</p>
+        {alert}
+        {form}
+        <h3 class="submit-list-title">最近的回報</h3>
         {listing}
     """
 
@@ -578,7 +590,6 @@ def _account_html(
         <dl><div><dt>學校帳號</dt><dd>{subject}</dd></div>{f'<div><dt>Email</dt><dd>{email}</dd></div>' if email else ''}</dl>
         <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
         """
-        extra = f'<section class="account-card submit-card" id="submit">{_submissions_html(submissions or [], notice)}</section>'
     elif configured:
         card = """
         <p class="eyebrow">OAuth-only account</p>
@@ -594,6 +605,12 @@ def _account_html(
         <p>NYCU OAuth Client 尚未完成設定，請稍後再試。</p>
         <span class="btn btn-primary account-action disabled" aria-disabled="true">使用陽明交大 OAuth 登入</span>
         """
+    if submissions is not None:
+        extra = (
+            '<section class="account-card submit-card" id="submit">'
+            + _submissions_html(submissions, notice, user["id"] if user else None, configured)
+            + "</section>"
+        )
     alert = f'<div class="account-alert">{html.escape(message)}</div>' if message else ""
     content = f"""
 <section class="account-page">
@@ -627,33 +644,37 @@ def create_app(
 
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
-        items = submissions.list_for_user(user["id"]) if user else []
         notice = request.query_params.get("submit")
         return HTMLResponse(
-            _account_html(user, config.configured, submissions=items, notice=notice)
+            _account_html(
+                user, config.configured, submissions=submissions.list_recent(), notice=notice
+            )
         )
 
-    def submission_payload(item: dict) -> dict:
-        return {
+    def submission_payload(item: dict, user: dict | None) -> dict:
+        """公開欄位；備註與「是不是我回報的」只給本人。"""
+        mine = bool(user) and item.get("user_id") == user["id"]
+        payload = {
             "id": item["id"],
             "url": item["url"],
-            "note": item.get("note") or "",
             "status": item["status"],
             "statusLabel": STATUS_LABELS.get(item["status"], item["status"]),
             "reason": item.get("reason") or "",
             "eventUrl": item.get("event_url"),
             "createdAt": item["created_at"],
             "updatedAt": item["updated_at"],
+            "mine": mine,
         }
+        if mine:
+            payload["note"] = item.get("note") or ""
+        return payload
 
     async def submissions_list(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
-        if not user:
-            return JSONResponse(
-                {"ok": False, "error": "authentication required"}, status_code=401
-            )
-        items = [submission_payload(i) for i in submissions.list_for_user(user["id"])]
-        return JSONResponse({"ok": True, "submissions": items, "dailyLimit": DAILY_LIMIT})
+        items = [submission_payload(i, user) for i in submissions.list_recent()]
+        return JSONResponse(
+            {"ok": True, "authenticated": bool(user), "submissions": items, "dailyLimit": DAILY_LIMIT}
+        )
 
     async def submissions_create(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
@@ -663,7 +684,7 @@ def create_app(
             if wants_json:
                 body = {"ok": code in ("ok", "dup"), "code": code}
                 if item:
-                    body["submission"] = submission_payload(item)
+                    body["submission"] = submission_payload(item, user)
                 return JSONResponse(body, status_code=status_code)
             return RedirectResponse(f"/account/?submit={code}#submit", 303)
 
