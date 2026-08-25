@@ -479,6 +479,13 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   background: color-mix(in srgb, var(--color-action-on-primary) 22%, transparent);
   color: var(--color-action-on-primary);
 }
+.fgroup .fchip[hidden] { display: none; }
+.filter-expand {
+  min-height: 32px; padding: 0 8px; border: 0; background: none;
+  color: var(--color-text-brand); font: inherit; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; border-radius: var(--radius-sm, 8px);
+}
+.filter-expand:hover { background: var(--color-surface-soft); }
 .search-hit {
   flex: 1 1 220px; min-width: 180px; max-width: 280px; min-height: 32px;
   display: flex; align-items: center; cursor: text;

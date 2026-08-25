@@ -1091,7 +1091,7 @@
 
     fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
       var entries = data.entries;
-      var state = { follow: "all", school: "all", status: "all", kind: "all", platform: "all", sort: "follow", dir: "desc", q: "" };
+      var state = { follow: "all", school: "all", status: "all", kind: "all", tag: "all", platform: "all", sort: "follow", dir: "desc", q: "" };
       var params = new URLSearchParams(location.search);
       Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
       function followed(id) {
@@ -1123,11 +1123,38 @@
           host.appendChild(b);
         });
       }
+      function expandableChips(id, key, limit) {
+        var host = document.getElementById(id);
+        if (!host) return;
+        var buttons = Array.prototype.slice.call(host.querySelectorAll(".fchip"));
+        if (buttons.length <= limit) return;
+        var activeIndex = buttons.findIndex(function (b) { return b.dataset.value === state[key]; });
+        var expanded = activeIndex >= limit;
+        var toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "filter-expand";
+        toggle.setAttribute("aria-controls", id);
+        function draw() {
+          buttons.forEach(function (b, i) { b.hidden = !expanded && i >= limit; });
+          toggle.setAttribute("aria-expanded", String(expanded));
+          toggle.textContent = expanded ? "收合" : "展開全部（還有 " + (buttons.length - limit) + " 個）";
+        }
+        toggle.addEventListener("click", function () { expanded = !expanded; draw(); });
+        host.appendChild(toggle);
+        draw();
+      }
       // 只在 /notify/ 出現（/source/ 沒有這個容器，chips 會直接略過）
       chips("sf-follow", [["all", "全部單位"], ["on", "只看已追蹤"]], "follow");
       chips("sf-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["nycu-guangfu", "交大校區"], ["nycu-yangming", "陽明校區"]], "school");
       chips("sf-status", [["all", "全部"], ["covered", "已收錄"], ["uncovered", "尚未收錄"]], "status");
       chips("sf-kind", [["all", "全部"]].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; })), "kind");
+      var tagTotals = {};
+      entries.forEach(function (e) { if (e.category) tagTotals[e.category] = (tagTotals[e.category] || 0) + 1; });
+      var tagOptions = [["all", "全部"]].concat(Object.keys(tagTotals).sort(function (a, b) {
+        return (tagTotals[b] - tagTotals[a]) || a.localeCompare(b, "zh-Hant");
+      }).map(function (tag) { return [tag, tag]; }));
+      chips("sf-tag", tagOptions, "tag");
+      expandableChips("sf-tag", "tag", 8);
       chips("sf-platform", [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["x", "X"]], "platform");
 
       var search = document.getElementById("search");
@@ -1150,6 +1177,7 @@
         if (v("status") === "covered" && !e.links.length) return false;
         if (v("status") === "uncovered" && e.links.length) return false;
         if (v("kind") !== "all" && e.kind !== v("kind")) return false;
+        if (v("tag") !== "all" && e.category !== v("tag")) return false;
         if (v("platform") !== "all" && !e.links.some(function (l) { return l.platform === v("platform"); })) return false;
         if (state.q) {
           var hay = (e.name + " " + (e.category || "") + " " + e.links.map(function (l) { return l.label; }).join(" ")).toLowerCase();
