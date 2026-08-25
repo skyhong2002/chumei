@@ -2367,6 +2367,26 @@
       }).catch(function () {});
   }
 
+  function refreshLocalFollowNames() {
+    var p = readPrefs();
+    if (!Array.isArray(p.orgs) || !p.orgs.length) return Promise.resolve();
+    return fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
+      var names = {};
+      (data.entries || []).forEach(function (entry) { names[String(entry.id)] = entry.name; });
+      var changed = false;
+      p.orgs.forEach(function (org) {
+        var current = names[String(org.id)];
+        if (current && current !== org.name) { org.name = current; changed = true; }
+      });
+      if (changed) {
+        writePrefs(p);
+        syncPushServer();
+        refresh();
+        window.dispatchEvent(new CustomEvent("chumei-follow-change", { detail: { namesRefreshed: true } }));
+      }
+    }).catch(function () {});
+  }
+
   function updateAccountFollow(id, name, followed) {
     if (!authenticated) return;
     var options = {
@@ -2447,7 +2467,7 @@
     sync: syncPushServer,
     count: function (id) { return numberOrZero(counts[String(id)]); }
   };
-  syncAccount();
+  refreshLocalFollowNames().then(syncAccount, syncAccount);
   if (document.getElementById("push-card")) {
     fetch("/push/stats").then(function (r) { return r.json(); }).then(function (data) {
       if (data && data.ok) pushStats = data;

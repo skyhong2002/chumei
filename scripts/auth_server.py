@@ -166,10 +166,22 @@ def _keychain_value(service: str) -> str:
 
 
 class AuthStore:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, directory_path: Path | None = None):
         self.path = Path(path)
+        self.directory_path = Path(directory_path) if directory_path else ROOT / "site" / "data" / "sources.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
+
+    def _directory_names(self) -> dict[int, str]:
+        try:
+            payload = json.loads(self.directory_path.read_text())
+            return {
+                int(entry["id"]): str(entry["name"])
+                for entry in payload.get("entries", [])
+                if entry.get("id") is not None and entry.get("name")
+            }
+        except (OSError, ValueError, TypeError):
+            return {}
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=10)
@@ -392,11 +404,12 @@ class AuthStore:
                 )
 
     def follow_snapshot(self, user_id: str | None = None) -> dict:
+        directory_names = self._directory_names()
         with self._connection() as conn:
             following = []
             if user_id:
                 following = [
-                    {"id": row["org_id"], "name": row["org_name"]}
+                    {"id": row["org_id"], "name": directory_names.get(row["org_id"], row["org_name"])}
                     for row in conn.execute(
                         "SELECT org_id, org_name FROM user_org_follows "
                         "WHERE user_id = ? ORDER BY created_at, org_id",

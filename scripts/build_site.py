@@ -7,6 +7,7 @@ import io
 import json
 import re
 import sys
+from collections import Counter
 from datetime import datetime, date, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -720,7 +721,7 @@ def detail_page(e, org=None, org_sections=(), alt_posts=()):
     rows = [
         ("時間", fmt_dt(st, e.get("all_day")) + (f" – {fmt_dt(en, e.get('all_day'))}" if en else "")),
         ("地點", loc or "詳見原始貼文"),
-        ("主辦", (f'<a href="/org/{org[0]}/">{esc(e.get("organizer"))}</a>（{ORG_LABEL.get(e.get("organizer_type"), "")}）'
+        ("主辦", (f'<a href="/org/{org[0]}/">{esc(org[1])}</a>（{ORG_LABEL.get(e.get("organizer_type"), "")}）'
                  if org else f"{esc(e.get('organizer'))}（{ORG_LABEL.get(e.get('organizer_type'), '')}）")),
         ("類型", e.get("category")),
         ("報名", {"required": "需事先報名", "free": "自由入場，免報名"}.get(e.get("reg"))),
@@ -833,6 +834,28 @@ def _org_campus(text):
     if i_gf != -1:
         return "guangfu"
     return None
+
+
+def org_display_name(name, school, campus=None):
+    """依名錄校別產生一致的公開名稱，避免同名單位無法辨識。
+
+    NYCU 的學生組織以校區區分「交大／陽明」；校區不明的校級單位使用
+    「陽明交大」。原始名稱會由 build_sources_data 保存在 base_name。
+    """
+    raw = str(name or "").strip()
+    if not raw or school not in {"nthu", "nycu", "both"}:
+        return raw
+    if school == "nycu":
+        prefix = "陽明" if campus == "yangming" else "交大" if campus == "guangfu" else "陽明交大"
+        pattern = r"^(?:(?:國立)?(?:陽明交通大學|交通大學|陽明大學)|陽明交大|交大|陽明|NYCU|NCTU)\s*"
+    elif school == "nthu":
+        prefix = "清大"
+        pattern = r"^(?:(?:國立)?清華大學|清大|NTHU)\s*"
+    else:
+        prefix = "清交"
+        pattern = r"^(?:清大(?:×|x|X|與|、)?交大|清交|清大×交大)\s*"
+    body = re.sub(pattern, "", raw, count=1, flags=re.I).strip()
+    return prefix + body
 
 
 def _org_sim(a, b):
@@ -1015,6 +1038,29 @@ def build_sources_data(events):
                 break
     n_av = sum(1 for e in entries if e.get("avatar"))
     print(f"avatars: {n_av}/{sum(1 for e in entries if e['links'])} covered entries")
+    # ID 與來源歸戶使用原始名稱；配對完成後才統一公開顯示名稱。
+    renamed = 0
+    for e in entries:
+        base_name = e["name"]
+        display_name = org_display_name(base_name, e["school"], e.get("campus"))
+        e["base_name"] = base_name
+        if display_name != base_name:
+            e["name"] = display_name
+            renamed += 1
+    expected_prefix = {
+        ("nthu", None): "清大",
+        ("nycu", "guangfu"): "交大",
+        ("nycu", "yangming"): "陽明",
+        ("nycu", None): "陽明交大",
+        ("both", None): "清交",
+    }
+    bad = [e for e in entries
+           if expected_prefix.get((e["school"], e.get("campus")))
+           and not e["name"].startswith(expected_prefix[(e["school"], e.get("campus"))])]
+    duplicate_names = {name for name, n in Counter(e["name"] for e in entries).items() if n > 1}
+    if bad or duplicate_names:
+        raise ValueError(f"organization display-name audit failed: bad={len(bad)}, duplicates={sorted(duplicate_names)}")
+    print(f"organization display names: {renamed}/{len(entries)} prefixed or normalized")
     (SITE / "data").mkdir(parents=True, exist_ok=True)
     (SITE / "data" / "sources.json").write_text(json.dumps({
         "generated_at": now_iso(), "entries": entries,
@@ -1192,6 +1238,7 @@ def build_posts_data(events, sid_to_entry=None):
     for key, evs in groups.items():
         it = inbox.get(key)
         sid, pid = key
+        directory_entry = (sid_to_entry or {}).get(sid) or {}
         lead = evs[0]
         if it is None:  # NYCU LIFE API 等結構化來源沒有貼文原文
             it = {"source_name": lead.get("organizer"), "platform": lead["source"]["platform"],
@@ -1219,7 +1266,7 @@ def build_posts_data(events, sid_to_entry=None):
             posted = min(lead.get("first_seen") or now, now)
         posts.append({
             "source_id": sid, "post_id": pid,
-            "source_name": it.get("source_name"), "platform": it.get("platform"),
+            "source_name": directory_entry.get("name") or it.get("source_name"), "platform": it.get("platform"),
             "school": it.get("school") or lead.get("school"),
             "url": it.get("url"), "posted_at": posted,
             "org_type": it.get("org_type") or lead.get("organizer_type"),

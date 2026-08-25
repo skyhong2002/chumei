@@ -68,5 +68,36 @@ class AttachGeoTests(unittest.TestCase):
         self.assertEqual(event["geo"]["name"], "總圖書館")
 
 
+class OrgDisplayNameTests(unittest.TestCase):
+    def test_school_and_campus_prefixes(self):
+        self.assertEqual(build_site.org_display_name("口琴社", "nthu"), "清大口琴社")
+        self.assertEqual(
+            build_site.org_display_name("竹韻口琴社", "nycu", "guangfu"),
+            "交大竹韻口琴社",
+        )
+        self.assertEqual(
+            build_site.org_display_name("揚鳴口琴社", "nycu", "yangming"),
+            "陽明揚鳴口琴社",
+        )
+
+    def test_offices_and_full_school_names_are_normalized(self):
+        self.assertEqual(build_site.org_display_name("教務處", "nthu"), "清大教務處")
+        self.assertEqual(
+            build_site.org_display_name("國立陽明交通大學皮藝社", "nycu", "yangming"),
+            "陽明皮藝社",
+        )
+        self.assertEqual(
+            build_site.org_display_name("陽明交大圖書館", "nycu"),
+            "陽明交大圖書館",
+        )
+
+    def test_joint_and_external_names(self):
+        self.assertEqual(
+            build_site.org_display_name("清大交大聯合柔道社", "both"),
+            "清交聯合柔道社",
+        )
+        self.assertEqual(build_site.org_display_name("新竹市文化局", "external"), "新竹市文化局")
+
+
 if __name__ == "__main__":
     unittest.main()

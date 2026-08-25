@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sqlite3
 import sys
 import tempfile
@@ -47,6 +48,7 @@ class AuthServerTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tempdir.name) / "auth.sqlite3"
+        self.directory_path = Path(self.tempdir.name) / "sources.json"
         self.config = auth_server.AuthConfig(
             client_id="client-id",
             client_secret="client-secret",
@@ -55,7 +57,7 @@ class AuthServerTests(unittest.TestCase):
             cookie_secure=False,
         )
         self.http = FakeHTTP()
-        self.store = auth_server.AuthStore(self.db_path)
+        self.store = auth_server.AuthStore(self.db_path, self.directory_path)
         app = auth_server.create_app(
             self.config,
             store=self.store,
@@ -183,6 +185,18 @@ class AuthServerTests(unittest.TestCase):
         self.assertFalse(public["authenticated"])
         self.assertEqual(public["following"], [])
         self.assertEqual(public["counts"], {"47": 1})
+
+    def test_follow_names_use_current_directory_display_name(self):
+        self.directory_path.write_text(
+            json.dumps({"entries": [{"id": 5, "name": "交大電機系學會"}]}),
+            encoding="utf-8",
+        )
+        self._login()
+        response = self.client.post(
+            "/auth/follows/sync",
+            json={"orgs": [{"id": 5, "name": "電機系學會"}]},
+        )
+        self.assertEqual(response.json()["following"], [{"id": 5, "name": "交大電機系學會"}])
 
     def test_unconfigured_server_is_safe(self):
         config = auth_server.AuthConfig(
