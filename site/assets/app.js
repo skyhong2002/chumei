@@ -187,6 +187,43 @@
         if (!d.contains(e.target)) d.open = false;
       });
     });
+    // 欄位篩選面板：欄是捲動容器（overflow-x:clip / overflow-y:auto），
+    // 絕對定位的面板會被裁掉 → 改用 fixed 並依 summary 位置擺放、夾回視窗內。
+    (function () {
+      var openMenu = null, openSummary = null;
+      function place() {
+        if (!openMenu || !openSummary) return;
+        var r = openSummary.getBoundingClientRect();
+        var w = openMenu.offsetWidth;
+        var left = Math.min(Math.max(12, r.left), Math.max(12, window.innerWidth - w - 12));
+        openMenu.style.position = "fixed";
+        openMenu.style.left = left + "px";
+        openMenu.style.top = Math.round(r.bottom + 6) + "px";
+        openMenu.style.maxHeight = Math.max(200, window.innerHeight - r.bottom - 24) + "px";
+        openMenu.style.overflowY = "auto";
+      }
+      function clear(menu) {
+        if (!menu) return;
+        menu.style.position = menu.style.left = menu.style.top = "";
+        menu.style.maxHeight = menu.style.overflowY = "";
+      }
+      document.addEventListener("toggle", function (e) {
+        var d = e.target;
+        if (!d || !d.classList || !d.classList.contains("col-picker")) return;
+        if (!d.open) {
+          if (d.querySelector(".col-picker-menu") === openMenu) { clear(openMenu); openMenu = openSummary = null; }
+          return;
+        }
+        clear(openMenu);
+        openMenu = d.querySelector(".col-picker-menu");
+        openSummary = d.querySelector("summary");
+        place();
+      }, true);
+      window.addEventListener("resize", place);
+      // 欄內捲動時跟著移動（面板錨在欄頭上）
+      document.addEventListener("scroll", place, true);
+    })();
+
     // 篩選 popover 打開時夾回可視範圍：錨點靠左時右對齊的面板會伸進固定左欄／視窗外
     document.addEventListener("toggle", function (e) {
       var d = e.target;
@@ -215,6 +252,19 @@
     btn.setAttribute("aria-label", "搜尋");
     btn.innerHTML = SVGO + '<path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>';
     header.appendChild(btn);
+    // 桌機/平板：側欄導覽也要有搜尋入口（手機用右上角的 🔍）
+    var navSearch = null;
+    var nav = header.querySelector(".site-nav");
+    if (nav) {
+      navSearch = document.createElement("button");
+      navSearch.className = "nav-item nav-search";
+      navSearch.setAttribute("aria-label", "搜尋");
+      navSearch.innerHTML = SVGO + '<path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>' +
+        '<span class="nav-label">搜尋</span>';
+      var firstMore = nav.querySelector(".nav-more");
+      if (firstMore) nav.insertBefore(navSearch, firstMore);
+      else nav.appendChild(navSearch);
+    }
 
     var sdata = null, ov = null, sT;
     function loadData() {
@@ -280,7 +330,7 @@
       ov.remove(); ov = null;
       document.body.style.overflow = "";
     }
-    btn.addEventListener("click", function () {
+    function openSearch() {
       if (ov) return;
       ov = document.createElement("div");
       ov.className = "search-ov";
@@ -301,6 +351,15 @@
       });
       ov.querySelector(".search-ov-cancel").addEventListener("click", close);
       input.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    }
+    btn.addEventListener("click", openSearch);
+    if (navSearch) navSearch.addEventListener("click", openSearch);
+    // 桌機常用快捷：⌘K / Ctrl+K
+    document.addEventListener("keydown", function (e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        openSearch();
+      }
     });
   })();
 

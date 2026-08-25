@@ -1746,3 +1746,29 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 .btn.going-btn .going-count { margin-left: 7px; }
 .going-badge { font-size: 0.8rem; color: var(--color-success-text); font-weight: 600; }
+
+/* 側欄搜尋入口（桌機/平板；手機用頂欄右上的 🔍） */
+.nav-search {
+  border: none; background: none; cursor: pointer; font-family: inherit;
+  font-size: inherit; text-align: left; width: 100%;
+}
+@media (max-width: 699px) { .nav-search { display: none; } }
+
+/* 桌機/平板全域搜尋：改成置中對話框（手機維持全螢幕） */
+@media (min-width: 700px) {
+  .search-ov { background: rgb(0 0 0 / 55%); padding: 12vh 16px 16px; align-items: center; }
+  .search-ov-bar {
+    width: min(640px, 100%); border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-bottom: none;
+    padding: 12px 14px;
+  }
+  .search-ov-body {
+    width: min(640px, 100%); flex: 0 1 auto; max-height: min(60vh, 520px);
+    border: 1px solid var(--color-border-subtle); border-top: none;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    padding: 4px 14px 14px;
+  }
+  .search-ov:not(.has-query) .search-ov-bar {
+    border-radius: var(--radius-lg); border-bottom: 1px solid var(--color-border-subtle);
+  }
+}
