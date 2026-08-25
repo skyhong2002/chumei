@@ -570,10 +570,10 @@ def event_ics(e):
                 lines.append(f"DTEND;TZID=Asia/Taipei:{en:%Y%m%dT%H%M%S}")
             except ValueError:
                 pass
-    loc = join_loc(e, " ")
+    loc = calendar_location(e)
     lines += [
         f"SUMMARY:{ics_escape(e['title'])}",
-        f"DESCRIPTION:{ics_escape((e.get('summary') or '') + '\n' + BASE_URL + '/event/' + e['id'] + '/')}",
+        f"DESCRIPTION:{ics_escape(calendar_details(e))}",
         f"LOCATION:{ics_escape(loc)}" if loc else None,
         f"URL:{BASE_URL}/event/{e['id']}/",
         "END:VEVENT",
@@ -701,6 +701,66 @@ def join_loc(e, sep=" ・ "):
     return sep.join(parts)
 
 
+CAL_CITY = {
+    "nthu-main": "新竹市", "nthu-nanda": "新竹市",
+    "nycu-guangfu": "新竹市", "nycu-boai": "新竹市", "nycu-yangming": "臺北市",
+}
+
+
+def _one_line(text, limit):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def calendar_location(e):
+    """日曆的地點欄：逗號分隔（Google／Apple 才定位得到），必要時補校區與城市。"""
+    venue = " ".join((e.get("venue") or "").split())
+    campus_key = e.get("campus") or ""
+    if campus_key == "online":
+        return venue or "線上"
+    # 場地本身已是完整地址就別再加東西
+    if venue and any(token in venue for token in ("市", "縣", "路", "街", "號")):
+        return venue
+    campus = CAMPUS_LABEL.get(campus_key, "") if campus_key not in ("", "other") else ""
+    if venue and campus:
+        if campus in venue:
+            campus = ""      # 場地字串已含校區（「交大光復校區 圖書館」）
+        elif venue in campus or venue.endswith("校區"):
+            venue = ""       # 「交大校區」這種泛稱，校區標籤更精確
+    parts = [p for p in (venue, campus) if p]
+    city = CAL_CITY.get(campus_key, "")
+    if city and city not in "".join(parts):
+        parts.append(city)
+    return ", ".join(dict.fromkeys(parts))
+
+
+def calendar_details(e):
+    """日曆的說明欄：內文摘要＋主辦／報名／費用＋活動頁與原始貼文。"""
+    lines = []
+    text = e.get("description") or e.get("summary") or ""
+    if text:
+        lines += [_one_line(text, 800), ""]
+    if e.get("organizer"):
+        lines.append(f"主辦：{_one_line(e['organizer'], 120)}")
+    fee = e.get("fee")
+    if e.get("price"):
+        lines.append(f"費用：{_one_line(e['price'], 80)}")
+    elif fee == "free":
+        lines.append("費用：免費")
+    if e.get("reg") == "free":
+        lines.append("報名：自由入場")
+    if e.get("registration_url"):
+        lines.append(f"報名：{e['registration_url']}")
+    if e.get("registration_deadline"):
+        lines.append(f"報名截止：{e['registration_deadline'][:10]}")
+    src_url = (e.get("source") or {}).get("url")
+    if src_url:
+        lines.append(f"原始貼文：{src_url}")
+    lines += ["", f"活動頁：{BASE_URL}/event/{e['id']}/",
+              "（竹梅活動觀測站自動彙整，內容以主辦單位公告為準）"]
+    return "\n".join(lines).strip()
+
+
 def detail_page(e, org=None, org_sections=(), alt_posts=()):
     st, en = e.get("start_at"), e.get("end_at")
     loc = join_loc(e)
@@ -708,13 +768,16 @@ def detail_page(e, org=None, org_sections=(), alt_posts=()):
     try:
         d1 = datetime.fromisoformat(st)
         if e.get("all_day"):
-            dates = f"{d1:%Y%m%d}/{d1:%Y%m%d}"
+            # Google 的全日結束日是 exclusive，單日活動要 +1 天才會落在當天
+            last = datetime.fromisoformat(en) if en else d1
+            dates = f"{d1:%Y%m%d}/{last + timedelta(days=1):%Y%m%d}"
         else:
-            d2 = datetime.fromisoformat(en) if en else d1
+            # 沒有結束時間就預設 1 小時，零長度的行程在日曆上很難讀
+            d2 = datetime.fromisoformat(en) if en else d1 + timedelta(hours=1)
             dates = f"{d1:%Y%m%dT%H%M%S}/{d2:%Y%m%dT%H%M%S}"
         gcal = ("https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + requests.utils.quote(e["title"])
-                + f"&dates={dates}&ctz=Asia/Taipei&location=" + requests.utils.quote(loc)
-                + "&details=" + requests.utils.quote(f"{BASE_URL}/event/{e['id']}/"))
+                + f"&dates={dates}&ctz=Asia/Taipei&location=" + requests.utils.quote(calendar_location(e))
+                + "&details=" + requests.utils.quote(calendar_details(e)))
     except (TypeError, ValueError):
         pass
 
