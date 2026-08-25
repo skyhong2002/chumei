@@ -60,6 +60,8 @@ Telegram publisher 由 `CHUMEI_TELEGRAM_ENABLED=true` 啟用。Token 與頻道 I
 .venv/bin/python scripts/publish_telegram.py --dry-run
 ```
 
+Instagram 抓取有兩個後端（`CHUMEI_IG_BACKEND` 或 `fetch_instagram.py --backend`）：`rsshub`（本機 RSSHub 網頁端點）與 `instaloader`（同一組 IG cookie 走 app 端點 `feed/user/<id>`，user id 快取在 `state/ig_userids.json`）；預設 `auto` 先走 RSSHub、失敗自動退到 instaloader。`--dry-run` 只印貼文不寫入。
+
 首次正常執行會把現有近期活動記為 baseline，不會洗版。此後每輪 pipeline 最多推送 10 則貼文；22:00–07:59 自動靜音。
 
 ## NYCU OAuth 帳號
