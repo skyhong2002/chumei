@@ -1295,7 +1295,6 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   display: flex; align-items: center; gap: 10px;
   padding: 12px 2px 10px; background: var(--color-canvas);
 }
-.feed-col-head .result-count { margin-left: auto; }
 .feed-col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dot-nthu { background: var(--chumei-plum-strong); }
 .dot-nycu { background: var(--color-action-primary); }
@@ -1771,4 +1770,10 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   .search-ov:not(.has-query) .search-ov-bar {
     border-radius: var(--radius-lg); border-bottom: 1px solid var(--color-border-subtle);
   }
+}
+
+/* 手機分頁河道：欄頭的欄位選單與左上角的篩選鈕重複，隱藏欄頭。
+   多欄時仍保留（要靠標題分辨是哪一條河道、也才有「移除這一欄」入口）。 */
+@media (max-width: 1079px) {
+  .post-feed.feed-pager.single-col .feed-col-head { display: none; }
 }

@@ -508,13 +508,18 @@
         return true;
       }
 
+      // 分鐘 → 小時 → 天 → 週；超過一個月直接寫日期（跨年補上年份）
       function ago(iso) {
-        var ms = Math.max(0, Date.now() - new Date(iso).getTime());
-        var h = ms / 36e5;
+        var d = new Date(iso);
+        var h = Math.max(0, Date.now() - d.getTime()) / 36e5;
         if (h < 1) return Math.max(1, Math.round(h * 60)) + " 分鐘前";
         if (h < 24) return Math.round(h) + " 小時前";
-        var d = new Date(iso);
-        return (d.getMonth() + 1) + "/" + d.getDate();
+        var days = Math.floor(h / 24);
+        if (days < 7) return days + " 天前";
+        if (days < 30) return Math.floor(days / 7) + " 週前";
+        var now = new Date();
+        return (d.getFullYear() !== now.getFullYear() ? d.getFullYear() + "/" : "") +
+          (d.getMonth() + 1) + "/" + d.getDate();
       }
 
       var SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
@@ -707,8 +712,8 @@
         });
         return buckets;
       }
-      function moreBtn(list, unit) {
-        return list.length > shown ? '<button class="fchip feed-more">載入更多（還有 ' + (list.length - shown) + unit + "）</button>" : "";
+      function moreBtn(list) {
+        return list.length > shown ? '<button class="fchip feed-more">載入更多</button>' : "";
       }
       // 即將活動：日期分組的議程卡（時間｜標題｜校區・地點・類型），重用日曆頁樣式
       function evAgenda(list) {
@@ -751,10 +756,10 @@
       }
       function colBody(c, list) {
         if (c.t === "events") {
-          return (list.length ? evAgenda(list) : '<p class="empty">近期沒有活動。</p>') + moreBtn(list, " 場");
+          return (list.length ? evAgenda(list) : '<p class="empty">近期沒有活動。</p>') + moreBtn(list);
         }
-        if (c.t === "stories") return storyCards(list) + moreBtn(list, " 則");
-        return (list.slice(0, shown).map(row).join("") || '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list, " 則");
+        if (c.t === "stories") return storyCards(list) + moreBtn(list);
+        return (list.slice(0, shown).map(row).join("") || '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list);
       }
       function colHtml(i, c, list, sourceIdx) {
         var tt = colTitle(c);
@@ -762,7 +767,7 @@
           '<span class="feed-col-dot dot-' + tt.dot + '"></span><h2>' + tt.label + '</h2><span class="caret">' + CARET + "</span></summary>" +
           colMenu(c, sourceIdx) + "</details>";
         return '<section class="feed-col" data-idx="' + i + '" data-source-idx="' + sourceIdx + '"><header class="feed-col-head">' + picker +
-          '<span class="result-count">' + list.length + (c.t === "events" ? " 場" : " 則") + "</span></header>" +
+          "</header>" +
           '<div class="col-body">' + colBody(c, list) + "</div></section>";
       }
       // 調整欄內篩選時只更新內容，不重建選單（維持選單開啟）
@@ -773,7 +778,6 @@
           var el = feed.querySelector('.feed-col[data-idx="' + i + '"]');
           if (!el) return;
           el.querySelector(".col-body").innerHTML = colBody(c, buckets[i]);
-          el.querySelector(".result-count").textContent = buckets[i].length + (c.t === "events" ? " 場" : " 則");
           var tt = colTitle(c);
           var sm = el.querySelector(".col-picker > summary");
           sm.querySelector(".feed-col-dot").className = "feed-col-dot dot-" + tt.dot;
@@ -1042,6 +1046,7 @@
         if (fc) fc.textContent = "";
         feed.classList.toggle("feed-wide", wide);
         feed.classList.toggle("feed-pager", !wide);
+        feed.classList.toggle("single-col", viewCols.length < 2);
         var feedMain = feed.closest(".feed-main");
         if (feedMain) feedMain.dataset.feedCols = String(wide ? viewCols.length : 1);
         // 欄位模式：鎖住外層捲動，只捲欄內（Threads 式）；手機為左右分頁的河道

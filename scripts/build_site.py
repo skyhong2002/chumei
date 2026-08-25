@@ -1364,8 +1364,14 @@ def _feed_ago(iso, now):
         return f"{max(1, round(h * 60))} 分鐘前"
     if h < 24:
         return f"{round(h)} 小時前"
+    days = int(h // 24)
+    if days < 7:
+        return f"{days} 天前"
+    if days < 30:
+        return f"{days // 7} 週前"
     d = dt.astimezone(TZ_TAIPEI)
-    return f"{d.month}/{d.day}"
+    prefix = f"{d.year}/" if d.year != now.astimezone(TZ_TAIPEI).year else ""
+    return f"{prefix}{d.month}/{d.day}"
 
 
 def _feed_ev_chip(e):
@@ -1440,7 +1446,7 @@ def prerender_feed(posts, shown=30):
     now = datetime.now(TZ_TAIPEI)
     body = "".join(_feed_row(p, now) for p in posts[:shown]) or '<p class="empty">尚無貼文。</p>'
     if len(posts) > shown:
-        body += f'<button class="fchip feed-more">載入更多（還有 {len(posts) - shown} 則）</button>'
+        body += '<button class="fchip feed-more">載入更多</button>'
     _inject_ssr(SITE / "index.html", "ssr-feed", body)
     print(f"prerender: {min(shown, len(posts))} posts into index.html")
 
