@@ -99,5 +99,44 @@ class OrgDisplayNameTests(unittest.TestCase):
         self.assertEqual(build_site.org_display_name("新竹市文化局", "external"), "新竹市文化局")
 
 
+class PostCampusTests(unittest.TestCase):
+    def test_directory_campus_wins_over_event_venue(self):
+        self.assertEqual(
+            build_site.post_campus(
+                {"campus": "guangfu", "name": "交大竹韻口琴社"},
+                [{"campus": "nycu-yangming"}],
+            ),
+            "guangfu",
+        )
+
+    def test_school_wide_source_uses_unambiguous_event_campus(self):
+        self.assertEqual(
+            build_site.post_campus(
+                {"campus": None, "name": "陽明交大圖書館"},
+                [{"campus": "nycu-yangming"}, {"campus": "online"}],
+            ),
+            "yangming",
+        )
+
+    def test_mixed_school_wide_source_stays_unassigned(self):
+        self.assertIsNone(
+            build_site.post_campus(
+                {"campus": None, "name": "陽明交大圖書館"},
+                [{"campus": "nycu-guangfu"}, {"campus": "nycu-yangming"}],
+            )
+        )
+
+    def test_feed_label_uses_nycu_campus(self):
+        self.assertEqual(
+            build_site._feed_school_label({"school": "nycu", "campus": "guangfu"}),
+            "交大",
+        )
+        self.assertEqual(
+            build_site._feed_school_label({"school": "nycu", "campus": "yangming"}),
+            "陽明",
+        )
+        self.assertEqual(build_site._feed_school_label({"school": "nthu"}), "清大")
+
+
 if __name__ == "__main__":
     unittest.main()

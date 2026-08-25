@@ -1222,6 +1222,32 @@ def source_page(events, entries):
     return org_pages(entries, events)
 
 
+def post_campus(directory_entry, events):
+    """Return the NYCU campus used to split the homepage feed.
+
+    A source directory assignment is stronger than an event venue: a Guangfu
+    club holding an event at Yangming is still a Guangfu-campus organization.
+    School-wide sources fall back to the event campus when it is unambiguous.
+    """
+    directory_entry = directory_entry or {}
+    campus = directory_entry.get("campus")
+    if campus in {"guangfu", "yangming"}:
+        return campus
+
+    observed = set()
+    for event in events:
+        event_campus = event.get("campus")
+        if event_campus == "nycu-yangming":
+            observed.add("yangming")
+        elif event_campus in {"nycu-guangfu", "nycu-boai"}:
+            observed.add("guangfu")
+    if len(observed) == 1:
+        return observed.pop()
+
+    inferred = _org_campus(directory_entry.get("base_name") or directory_entry.get("name") or "")
+    return inferred if inferred in {"guangfu", "yangming"} else None
+
+
 def build_posts_data(events, sid_to_entry=None):
     """貼文河道 site/data/posts.json：每則含活動的來源貼文＋其抽出的活動。"""
     from chumei_lib import iter_inbox, AVATAR_DIR
@@ -1264,10 +1290,12 @@ def build_posts_data(events, sid_to_entry=None):
         now = now_iso()
         if not posted or posted > now:
             posted = min(lead.get("first_seen") or now, now)
+        post_school = it.get("school") or lead.get("school")
         posts.append({
             "source_id": sid, "post_id": pid,
             "source_name": directory_entry.get("name") or it.get("source_name"), "platform": it.get("platform"),
-            "school": it.get("school") or lead.get("school"),
+            "school": post_school,
+            "campus": post_campus(directory_entry, evs) if post_school == "nycu" else None,
             "url": it.get("url"), "posted_at": posted,
             "org_type": it.get("org_type") or lead.get("organizer_type"),
             "text": text[:500] + ("…" if len(text) > 500 else ""),
@@ -1340,6 +1368,15 @@ def _feed_ev_chip(e):
             f'<span class="feed-ev-date">{esc(when)}</span><span class="feed-ev-title">{esc(e["title"])}</span></a>')
 
 
+def _feed_school_label(post):
+    if post.get("school") == "nycu":
+        if post.get("campus") == "guangfu":
+            return "交大"
+        if post.get("campus") == "yangming":
+            return "陽明"
+    return SCHOOL_LABEL.get(post.get("school") or "", "")
+
+
 def _feed_row(p, now):
     esc = html.escape
     if p.get("avatar"):
@@ -1350,7 +1387,7 @@ def _feed_row(p, now):
     org_href = f'/org/{p["org_id"]}/' if p.get("org_id") else None
     avatar_el = (f'<a class="feed-org-link" href="{org_href}" aria-label="{esc(p.get("source_name") or "")} 的單位頁">{avatar}</a>'
                  if org_href else avatar)
-    school_label = SCHOOL_LABEL.get(p.get("school") or "", "")
+    school_label = _feed_school_label(p)
     plat = FEED_PLAT.get(p.get("platform"), p.get("platform"))
     menu_items = ((f'<a href="{esc(p["url"])}" target="_blank" rel="noopener">查看原文（{esc(plat)}）↗</a>' if p.get("url") else "") +
                   (f'<a href="{org_href}">單位頁面</a>' if org_href else ""))

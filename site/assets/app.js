@@ -376,7 +376,10 @@
           host.appendChild(b);
         });
       }
-      var SCHOOL_OPTS = [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]];
+      var SCHOOL_OPTS = [["all", "全部"], ["nycu-guangfu", "交大"], ["nthu", "清大"], ["nycu-yangming", "陽明"]];
+      // 舊網址仍可開啟；「陽明交大」預設落在交大欄，「兩校聯合」回到全部。
+      if (state.school === "nycu") state.school = "nycu-guangfu";
+      if (state.school === "both") state.school = "all";
       var PLAT_OPTS = [["all", "全部"], ["instagram", "IG"], ["facebook", "FB"], ["threads", "Threads"], ["bulletin", "公告"]];
       var ORG_OPTS = [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]];
       var feedCats = {};
@@ -419,8 +422,22 @@
         if (search && document.activeElement !== search) search.value = state.q;
       }
 
+      function postSchool(p) {
+        if (p.school !== "nycu") return p.school;
+        if (p.campus === "yangming" || p.campus === "guangfu") return "nycu-" + p.campus;
+        var seenYangming = false, seenGuangfu = false;
+        (p.events || []).forEach(function (e) {
+          if (e.campus === "nycu-yangming") seenYangming = true;
+          if (e.campus === "nycu-guangfu" || e.campus === "nycu-boai") seenGuangfu = true;
+        });
+        if (seenYangming && !seenGuangfu) return "nycu-yangming";
+        if (seenGuangfu && !seenYangming) return "nycu-guangfu";
+        // 無明確校區的舊資料，以單位名稱判斷；仍無法判定時沿用交大河道。
+        if (/^陽明(?!交大)/.test(p.source_name || "")) return "nycu-yangming";
+        return "nycu-guangfu";
+      }
       function matches(p, f) {
-        if (f.school && f.school !== "all" && p.school !== f.school && !(f.school !== "both" && p.school === "both")) return false;
+        if (f.school && f.school !== "all" && p.school !== "both" && postSchool(p) !== f.school) return false;
         if (f.platform && f.platform !== "all" && p.platform !== f.platform) return false;
         if (f.cat && f.cat !== "all" && !p.events.some(function (e) { return (e.category || "其他") === f.cat; })) return false;
         if (f.org && f.org !== "all" && p.org_type !== f.org) return false;
@@ -467,7 +484,9 @@
         var avatarEl = orgHref
           ? '<a class="feed-org-link" href="' + orgHref + '" aria-label="' + esc(p.source_name || "") + ' 的單位頁">' + avatar + "</a>"
           : avatar;
-        var schoolLabel = (data.labels.school || {})[p.school] || "";
+        var schoolLabel = p.school === "nycu" && p.campus === "guangfu" ? "交大"
+          : p.school === "nycu" && p.campus === "yangming" ? "陽明"
+          : (data.labels.school || {})[p.school] || "";
         var menuItems =
           (p.url ? '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">查看原文（' + esc(PLAT[p.platform] || p.platform) + "）↗</a>" : "") +
           (orgHref ? '<a href="' + orgHref + '">單位頁面</a>' : "");
@@ -496,17 +515,33 @@
 
       var shown = 30;
       // 欄位模型：欄就是「貼文」（篩選自帶：學校/平台/類型/主辦/搜尋）或「即將活動」
-      var SCHOOL_L = { all: "全部", nthu: "清大", nycu: "陽明交大", both: "兩校聯合" };
+      var SCHOOL_L = { all: "全部", "nycu-guangfu": "交大", nthu: "清大", "nycu-yangming": "陽明" };
       function feedCol(school) { return { t: "feed", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
+      function defaultCols() { return [feedCol("nycu-guangfu"), feedCol("nthu"), feedCol("nycu-yangming")]; }
+      function isLegacyDefaultFeed(c, school) {
+        return c && c.t === "feed" && c.school === school &&
+          (c.platform || "all") === "all" && (c.cat || "all") === "all" &&
+          (c.org || "all") === "all" && !(c.q || "");
+      }
       function loadCols() {
         try {
           var s = JSON.parse(localStorage.getItem("chumei-cols") || "null");
           if (Array.isArray(s) && s.length) {
+            var legacyDefault = s.length === 3 &&
+              ((s[0] === "nthu" && s[1] === "nycu" && s[2] === "events") ||
+               (isLegacyDefaultFeed(s[0], "nthu") && isLegacyDefaultFeed(s[1], "nycu") &&
+                s[2] && s[2].t === "events"));
+            if (legacyDefault) return defaultCols();
             var out = s.map(function (c) {
-              if (typeof c === "string") return c === "events" ? { t: "events" } : (SCHOOL_L[c] ? feedCol(c) : null); // 舊格式遷移
+              if (typeof c === "string") {
+                if (c === "events") return { t: "events" };
+                if (c === "nycu") return feedCol("nycu-guangfu");
+                if (c === "both") return feedCol("all");
+                return SCHOOL_L[c] ? feedCol(c) : null;
+              }
               if (c && (c.t === "events" || c.t === "stories")) return { t: c.t };
               if (c && c.t === "feed") return {
-                t: "feed", school: SCHOOL_L[c.school] ? c.school : "all",
+                t: "feed", school: c.school === "nycu" ? "nycu-guangfu" : c.school === "both" ? "all" : (SCHOOL_L[c.school] ? c.school : "all"),
                 platform: c.platform || "all", cat: c.cat || "all",
                 org: c.org || "all", q: typeof c.q === "string" ? c.q : ""
               };
@@ -515,7 +550,7 @@
             if (out.length) return out;
           }
         } catch (e) {}
-        return [feedCol("nthu"), feedCol("nycu"), { t: "events" }];
+        return defaultCols();
       }
       var cols = loadCols();
       var mobileOverview = feedCol("all");
@@ -558,7 +593,7 @@
         if (c.t === "stories") return { label: "限時動態", dot: "stories" };
         return {
           label: c.overview ? (c.school === "all" ? "全部學校" : SCHOOL_L[c.school]) : (c.school === "all" ? "貼文" : SCHOOL_L[c.school]),
-          dot: c.school === "all" ? "all" : c.school
+          dot: c.school === "all" ? "all" : c.school.indexOf("nycu-") === 0 ? "nycu" : c.school
         };
       }
       function colFilterActive(c) {
@@ -582,20 +617,20 @@
           (sourceIdx >= 0 && cols.length > 1 ? '<button class="col-remove">移除這一欄</button>' : "") + "</div>";
       }
       function computeBuckets(views) {
-        // 兩校聯合貼文在「校別」貼文欄只出現一次（輪流分配）；其餘欄各自照篩選
+        // 跨校貼文在校別欄只出現一次（輪流分配）；其餘貼文依交大／清大／陽明分流。
         var activeCols = views.map(function (view) { return view.col; });
         var buckets = activeCols.map(function () { return []; });
         var evs = null, schoolIdx = [];
         activeCols.forEach(function (c, i) {
-          if (c.t === "feed" && (c.school === "nthu" || c.school === "nycu")) schoolIdx.push(i);
+          if (c.t === "feed" && (c.school === "nthu" || c.school === "nycu-guangfu" || c.school === "nycu-yangming")) schoolIdx.push(i);
           if (c.t === "events" && !evs) evs = upcomingEvents();
         });
         var rr = 0;
         posts.forEach(function (p) {
           activeCols.forEach(function (c, i) {
             if (c.t !== "feed") return;
-            if (c.school === "nthu" || c.school === "nycu") {
-              if (p.school === c.school && matches(p, c)) buckets[i].push(p);
+            if (c.school === "nthu" || c.school === "nycu-guangfu" || c.school === "nycu-yangming") {
+              if (p.school !== "both" && matches(p, c)) buckets[i].push(p);
             } else if (matches(p, c)) buckets[i].push(p);
           });
           if (p.school === "both" && schoolIdx.length) {
