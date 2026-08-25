@@ -762,6 +762,13 @@ def detail_page(e, org=None, org_sections=(), alt_posts=()):
         (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">在地圖上看</a>'
          if e.get("geo") else None),
         # 原始貼文統一列在資訊列（含帳號／平台／日期），不另設按鈕
+        (f'<button class="btn going-btn going-btn-label" data-event-id="{e["id"]}" aria-pressed="false" '
+         f'title="標記我要去">'
+         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+         'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+         '<path d="M5 12l5 5l9 -9"/></svg>'
+         '<span class="gb-go">我要去</span><span class="gb-going">要去了</span>'
+         '<span class="going-count" hidden></span></button>'),
         f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
         (f'<button class="btn heart-btn heart-btn-label" data-org-id="{org[0]}" data-org-name="{esc(org[1])}" '
          f'aria-pressed="false" title="追蹤 {esc(org[1])}">{FEED_ICON["heart"]}'

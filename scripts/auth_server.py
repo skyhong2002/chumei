@@ -24,6 +24,7 @@ import base64
 import hashlib
 import html
 import json
+import re
 import secrets
 import sqlite3
 import subprocess
@@ -59,6 +60,7 @@ NYCU_AUTHORIZE_URL = "https://id.nycu.edu.tw/o/authorize/"
 NYCU_TOKEN_URL = "https://id.nycu.edu.tw/o/token/"
 NYCU_PROFILE_URL = "https://id.nycu.edu.tw/api/profile/"
 SESSION_COOKIE = "chumei_session"
+EVENT_ID_RE = re.compile(r"evt_[0-9a-f]{6,32}")
 OAUTH_STATE_COOKIE = "chumei_oauth_state"
 SESSION_AGE_SECONDS = 30 * 24 * 60 * 60
 OAUTH_STATE_AGE_SECONDS = 10 * 60
@@ -242,6 +244,14 @@ class AuthStore:
                 );
                 CREATE INDEX IF NOT EXISTS user_org_follows_org_id
                     ON user_org_follows(org_id);
+                CREATE TABLE IF NOT EXISTS user_event_going (
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    event_id TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, event_id)
+                );
+                CREATE INDEX IF NOT EXISTS user_event_going_event_id
+                    ON user_event_going(event_id);
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -449,6 +459,60 @@ class AuthStore:
                 "accounts": summary["accounts"],
                 "follows": summary["follows"],
                 "organizations": summary["organizations"],
+            },
+        }
+
+    def set_user_event(self, user_id: str, event_id: str, going: bool) -> None:
+        """標記／取消「我要去」。"""
+        with self._connection() as conn:
+            if going:
+                conn.execute(
+                    "INSERT INTO user_event_going(user_id, event_id, created_at) "
+                    "VALUES (?, ?, ?) ON CONFLICT(user_id, event_id) DO NOTHING",
+                    (user_id, event_id, _now()),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM user_event_going WHERE user_id = ? AND event_id = ?",
+                    (user_id, event_id),
+                )
+
+    def event_snapshot(self, user_id: str | None = None) -> dict:
+        """公開的每場活動參加人數＋目前使用者標記過的場次。"""
+        with self._connection() as conn:
+            going = []
+            if user_id:
+                going = [
+                    row["event_id"]
+                    for row in conn.execute(
+                        "SELECT event_id FROM user_event_going "
+                        "WHERE user_id = ? ORDER BY created_at, event_id",
+                        (user_id,),
+                    )
+                ]
+            counts = {
+                row["event_id"]: row["people"]
+                for row in conn.execute(
+                    "SELECT event_id, COUNT(*) AS people FROM user_event_going "
+                    "GROUP BY event_id"
+                )
+            }
+            summary = conn.execute(
+                """
+                SELECT
+                    COUNT(DISTINCT user_id) AS accounts,
+                    COUNT(*) AS marks,
+                    COUNT(DISTINCT event_id) AS events
+                FROM user_event_going
+                """
+            ).fetchone()
+        return {
+            "going": going,
+            "counts": counts,
+            "summary": {
+                "accounts": summary["accounts"],
+                "marks": summary["marks"],
+                "events": summary["events"],
             },
         }
 
@@ -809,6 +873,30 @@ def create_app(
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         return JSONResponse(follow_payload(user))
 
+    def event_payload(user: dict | None) -> dict:
+        snapshot = store.event_snapshot(user["id"] if user else None)
+        return {"ok": True, "authenticated": bool(user), **snapshot}
+
+    def _event_id(request: Request) -> str:
+        return str(request.path_params.get("event_id") or "")[:64]
+
+    async def events_going(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        return JSONResponse(event_payload(user))
+
+    async def event_going_set(request: Request):
+        """PUT＝我要去、DELETE＝取消；計數綁帳號，一人一場只算一次。"""
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        event_id = _event_id(request)
+        if not EVENT_ID_RE.fullmatch(event_id):
+            return JSONResponse({"ok": False, "error": "invalid event id"}, status_code=400)
+        store.set_user_event(user["id"], event_id, request.method == "PUT")
+        return JSONResponse(event_payload(user))
+
     async def follows_sync(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         if not user:
@@ -885,6 +973,8 @@ def create_app(
             Route("/auth/nycu/callback", oauth_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
             Route("/auth/follows", follows, methods=["GET"]),
+            Route("/auth/events", events_going, methods=["GET"]),
+            Route("/auth/events/{event_id}", event_going_set, methods=["PUT", "DELETE"]),
             Route("/auth/follows/sync", follows_sync, methods=["POST"]),
             Route("/auth/follows/{org_id:int}", follow_add, methods=["PUT"]),
             Route("/auth/follows/{org_id:int}", follow_remove, methods=["DELETE"]),

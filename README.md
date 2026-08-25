@@ -18,6 +18,7 @@
 - **機構名錄** [/source/](https://chumei.observe.tw/source/)：470+ 單位，每單位有專頁（活動、收錄貼文、例行時段）
 - **Web Push 推播**（PWA）：網站可安裝成 App（manifest + service worker），[/notify/](https://chumei.observe.tw/notify/) 可挑學校 × 類型 × 追蹤單位 × 關鍵字，新活動命中才通知；iOS 16.4+ 需先加入主畫面
 - **追蹤（🔔）**：貼文、活動卡／列、活動詳情頁按鈴鐺即追蹤該單位，該單位的新活動一律通知（未開推播也會先記著）
+- **我要去（✓）**：登入後可標記要參加哪些活動，人數公開顯示在活動卡／列／詳情頁；[/events/](https://chumei.observe.tw/events/) 可切「熱門」排序，看大家都往哪裡去
 - [Telegram 頻道](https://t.me/chumei_events)、RSS、ICS 行事曆訂閱（學校 × 類型／校區／主辦的組合訂閱）、JSON API
 - **查詢 bot**：私訊 [@chumei_events_bot](https://t.me/chumei_events_bot) 一句話查活動（「這週末 清大」「熱舞社」…）；LINE 版共用同一核心（`bot_core.py`），待官方帳號金鑰後啟用
 - **MCP server**（`https://chumei.observe.tw/mcp`，Streamable HTTP）：讓 Claude／ChatGPT 等 AI 助理直接搜活動、查名錄、組訂閱網址（接入方式見[訂閱頁](https://chumei.observe.tw/subscribe/)）

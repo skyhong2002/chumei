@@ -1692,7 +1692,7 @@
   // ---- 活動河道 ----
   function initList(bundle) {
     var labels = bundle.labels;
-    var state = { time: "7d", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
+    var state = { sort: "time", time: "7d", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
 
     var params = new URLSearchParams(location.search);
     ["time", "school", "campus", "cat", "org", "reg", "fee", "q"].forEach(function (k) {
@@ -1714,6 +1714,7 @@
     var rangeStart = new Date();
 
     var chipGroups = {};
+    buildChips("f-sort", [["time", "時間"], ["going", "熱門"]], "sort");
     buildChips("f-time", [
       ["24h", "24 小時"], ["3d", "3 天"], ["7d", "7 天"], ["30d", "1 個月"],
       ["upcoming", "未來全部"], ["all", "全部"]
@@ -1838,7 +1839,9 @@
         ? '<button class="heart-btn ev-row-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" title="追蹤 ' + esc(e.org_name || e.organizer || "") + '">' +
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></button>'
         : "";
-      return '<div class="ev-row-wrap">' + rowHeart + '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
+      var rowGoing = '<button class="going-btn ev-row-going" data-event-id="' + esc(e.id) + '" aria-pressed="false" title="標記我要去">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l9 -9"/></svg><span class="going-count" hidden></span></button>';
+      return '<div class="ev-row-wrap">' + rowGoing + rowHeart + '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
         '<span class="evr-main"><span class="evr-when">' + esc(when) +
         (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">自由入場</span>' : "") +
         (e.fee === "free" ? '<span class="chip chip-fee-free">免費</span>' : e.fee === "paid" ? '<span class="chip chip-fee-paid">$</span>' : "") +
@@ -1873,7 +1876,10 @@
         : "";
       return '<div class="card">' + heart + '<a class="card-link" href="/event/' + e.id + '/">' +
         '<div class="card-media">' + media +
-        badge + "</div>" +
+        badge +
+        '<button class="going-btn card-going" data-event-id="' + esc(e.id) + '" aria-pressed="false" title="標記我要去">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l9 -9"/></svg><span class="going-count" hidden></span></button>' +
+        "</div>" +
         '<div class="card-body">' +
         '<p class="chips"><span class="chip chip-' + esc(e.school) + '">' + esc(labels.school[e.school] || e.school) + "</span>" +
         '<span class="chip">' + esc(e.category || "其他") + "</span>" +
@@ -2059,9 +2065,19 @@
       history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
     }
 
+    window.addEventListener("chumei-going-change", function () {
+      if (state.sort === "going") render();
+    });
     function render() {
       var list = bundle.events.filter(matches);
-      if (state.time === "all") {
+      if (state.sort === "going") {
+        // 熱門＝竹梅使用者標記「我要去」的人數；同分照時間近的優先
+        var go = window.chumeiGoing;
+        list = list.slice().sort(function (a, b) {
+          var ca = go ? go.count(a.id) : 0, cb = go ? go.count(b.id) : 0;
+          return cb - ca || new Date(a.start_at) - new Date(b.start_at);
+        });
+      } else if (state.time === "all") {
         list = list.slice().reverse();
       } else {
         var now = Date.now();
@@ -2526,6 +2542,7 @@
   new MutationObserver(refresh).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState !== "loading") refresh();
   else document.addEventListener("DOMContentLoaded", refresh);
+  window.chumeiToast = toast;   // 共用提示條（「我要去」模組也用）
   window.chumeiFollow = {
     isFollowed: isFollowed,
     toggle: toggle,
@@ -2540,4 +2557,85 @@
       renderNotifyStats();
     }).catch(renderNotifyStats);
   }
+})();
+
+
+/* 「我要去」計數：綁帳號（一人一場只算一次），未登入可看數字、按下引導登入。 */
+(function () {
+  "use strict";
+  var counts = {}, mine = {}, authed = false, ready = false;
+
+  function n(v) { return typeof v === "number" && isFinite(v) && v > 0 ? v : 0; }
+  function apply(data) {
+    if (!data || !data.ok) return;
+    authed = !!data.authenticated;
+    counts = data.counts || {};
+    mine = {};
+    (data.going || []).forEach(function (id) { mine[id] = true; });
+    ready = true;
+    refresh();
+    window.dispatchEvent(new CustomEvent("chumei-going-change"));
+  }
+  // 只在值真的變了才寫 DOM：寫 textContent 會產生 childList 變動，
+  // 而下面的 MutationObserver 正是觀察 childList——無條件寫入會自我觸發成無限迴圈。
+  function setText(el, value) {
+    if (el && el.textContent !== value) el.textContent = value;
+  }
+  function refresh() {
+    document.querySelectorAll(".going-btn[data-event-id]").forEach(function (b) {
+      var id = b.dataset.eventId, v = n(counts[id]);
+      b.setAttribute("aria-pressed", String(!!mine[id]));
+      var c = b.querySelector(".going-count");
+      if (c) {
+        setText(c, v ? String(v) : "");
+        c.hidden = !v;
+      }
+    });
+    document.querySelectorAll(".going-badge[data-event-id]").forEach(function (el) {
+      var v = n(counts[el.dataset.eventId]);
+      setText(el, v ? v + " 人要去" : "");
+      el.hidden = !v;
+    });
+  }
+  function toggle(id, btn) {
+    if (!authed) {
+      if (window.chumeiToast) {
+        window.chumeiToast('要先<a href="/auth/nycu/start?return_to=' +
+          encodeURIComponent(location.pathname + location.search) + '">用學校帳號登入</a>才能標記參加');
+      } else {
+        location.href = "/auth/nycu/start?return_to=" + encodeURIComponent(location.pathname);
+      }
+      return;
+    }
+    var going = !mine[id];
+    // 樂觀更新，失敗再由回應校正
+    mine[id] = going;
+    counts[id] = Math.max(0, n(counts[id]) + (going ? 1 : -1));
+    refresh();
+    if (btn) btn.disabled = true;
+    fetch("/auth/events/" + encodeURIComponent(id), {
+      method: going ? "PUT" : "DELETE", credentials: "same-origin"
+    }).then(function (r) { return r.json(); }).then(apply).catch(function () {
+      load();
+    }).then(function () { if (btn) btn.disabled = false; });
+  }
+  function load() {
+    return fetch("/auth/events", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); }).then(apply).catch(function () {});
+  }
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest(".going-btn[data-event-id]");
+    if (!b) return;
+    ev.preventDefault();
+    toggle(b.dataset.eventId, b);
+  });
+  new MutationObserver(refresh).observe(document.documentElement, { childList: true, subtree: true });
+  window.chumeiGoing = {
+    count: function (id) { return n(counts[id]); },
+    isGoing: function (id) { return !!mine[id]; },
+    ready: function () { return ready; },
+    refresh: refresh,
+    reload: load
+  };
+  load();
 })();

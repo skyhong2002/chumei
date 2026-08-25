@@ -198,6 +198,50 @@ class AuthServerTests(unittest.TestCase):
         )
         self.assertEqual(response.json()["following"], [{"id": 5, "name": "交大電機系學會"}])
 
+    def test_event_going_counter(self):
+        """我要去：需登入、一人一場只算一次、可取消、計數公開。"""
+        anon = self.client.get("/auth/events")
+        self.assertEqual(anon.status_code, 200)
+        self.assertFalse(anon.json()["authenticated"])
+        self.assertEqual(anon.json()["counts"], {})
+
+        denied = self.client.put("/auth/events/evt_abc123def456")
+        self.assertEqual(denied.status_code, 401)
+
+        self._login()
+        marked = self.client.put("/auth/events/evt_abc123def456")
+        self.assertEqual(marked.status_code, 200)
+        self.assertEqual(marked.json()["counts"]["evt_abc123def456"], 1)
+        self.assertEqual(marked.json()["going"], ["evt_abc123def456"])
+
+        # 重複標記不會灌水
+        again = self.client.put("/auth/events/evt_abc123def456")
+        self.assertEqual(again.json()["counts"]["evt_abc123def456"], 1)
+        self.assertEqual(again.json()["summary"]["marks"], 1)
+
+        # 未登入者也看得到計數
+        self.client.post("/auth/logout")
+        public = self.client.get("/auth/events")
+        self.assertEqual(public.json()["counts"]["evt_abc123def456"], 1)
+        self.assertFalse(public.json()["authenticated"])
+        self.assertEqual(public.json()["going"], [])
+
+        self._login()
+        removed = self.client.delete("/auth/events/evt_abc123def456")
+        self.assertEqual(removed.status_code, 200)
+        self.assertNotIn("evt_abc123def456", removed.json()["counts"])
+        self.assertEqual(removed.json()["going"], [])
+
+    def test_event_going_rejects_bad_ids(self):
+        self._login()
+        for bad in ("../etc", "evt_XYZ", "abc123", "evt_" + "a" * 64):
+            with self.subTest(bad=bad):
+                response = self.client.put("/auth/events/" + bad)
+                # 400＝格式擋掉；404＝路由層就不匹配（如含路徑分隔）
+                self.assertIn(response.status_code, (400, 404), bad)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM user_event_going").fetchone()[0], 0)
+
     def test_unconfigured_server_is_safe(self):
         config = auth_server.AuthConfig(
             client_id="",

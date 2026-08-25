@@ -1706,3 +1706,43 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .notify-community-stats span { white-space: nowrap; }
 .notify-community-stats strong { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
 .notify-community-stats small { color: var(--color-text-muted); font-size: 0.78rem; }
+
+/* ---------- 「我要去」計數 ---------- */
+.going-btn { cursor: pointer; font-family: inherit; background: none; }
+.going-btn .going-count {
+  font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.82rem;
+}
+.going-btn[aria-pressed="true"] { color: var(--color-success-text); }
+.going-btn[aria-pressed="true"] svg { stroke-width: 2.6; }
+.going-btn:disabled { opacity: 0.6; pointer-events: none; }
+/* 活動卡：封面右下 */
+.card-going {
+  position: absolute; right: 10px; bottom: 10px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 5px; min-width: 38px; height: 32px;
+  padding: 0 10px; border: 0; border-radius: 999px;
+  background: rgb(0 0 0 / 45%); color: #fff;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.card-media { position: relative; }
+.card-going svg { width: 17px; height: 17px; }
+.card-going[aria-pressed="true"] { background: var(--color-success-surface); color: var(--color-success-text); }
+/* 活動列：與追蹤鈴鐺並排 */
+.ev-row-going {
+  position: absolute; top: 50%; right: 40px; transform: translateY(-50%); z-index: 2;
+  display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px;
+  border: 0; border-radius: 999px; color: var(--color-text-muted);
+}
+.ev-row-going:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.ev-row-going svg { width: 17px; height: 17px; }
+.ev-row-wrap .ev-row { padding-right: 92px; }
+/* 詳情頁：文字按鈕 */
+.going-btn-label svg { width: 18px; height: 18px; margin-right: 7px; }
+.going-btn-label .gb-going { display: none; }
+.going-btn-label[aria-pressed="true"] .gb-go { display: none; }
+.going-btn-label[aria-pressed="true"] .gb-going { display: inline; }
+.btn.going-btn { background: var(--color-surface); }
+.btn.going-btn[aria-pressed="true"] {
+  background: var(--color-success-surface); border-color: var(--color-success-text); color: var(--color-success-text);
+}
+.btn.going-btn .going-count { margin-left: 7px; }
+.going-badge { font-size: 0.8rem; color: var(--color-success-text); font-weight: 600; }
