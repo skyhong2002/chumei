@@ -650,6 +650,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
         <a href="/notify/">App 通知</a>
         <a href="/subscribe/">訂閱管道</a>
         <a href="/source/">資料來源</a>
+        <a href="/submit/">回報活動</a>
         <a href="/account/">登入／帳號</a>
         <a href="/about/">關於竹梅</a>
         <button id="theme-toggle">切換深淺色</button>
@@ -1851,7 +1852,7 @@ def main():
     prerender_stories()
     version_static_assets()
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
+    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/submit/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
            [f"{BASE_URL}/org/{i}/" for i in (org_ids or [])]
     (SITE / "sitemap.xml").write_text(

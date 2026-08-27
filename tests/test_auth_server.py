@@ -299,6 +299,18 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("/auth/nycu/start", page.text)
         self.assertIn("/auth/google/start", page.text)
 
+    def test_account_dashboard_lists_follows_and_going(self):
+        self._login()
+        self.client.put("/auth/follows/42", json={"name": "測試熱舞社"})
+        self.client.put("/auth/events/evt_dashboard_test")
+        page = self.client.get("/account/").text
+        self.assertIn("追蹤的單位", page)
+        self.assertIn("測試熱舞社", page)
+        self.assertIn('href="/org/42/"', page)
+        self.assertIn("我要去的活動", page)
+        self.assertIn("我的回報", page)
+        self.assertIn("登出", page)
+
     def test_unknown_provider_is_rejected(self):
         self.assertEqual(
             self.client.get("/auth/github/start", follow_redirects=False).status_code, 404

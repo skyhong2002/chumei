@@ -120,6 +120,15 @@
         duplicate.classList.add("nav-mobile-extra");
       }
     });
+    if (!menu.querySelector('a[href="/submit/"]')) {
+      var submitMenu = document.createElement("a");
+      submitMenu.href = "/submit/";
+      submitMenu.textContent = "回報活動";
+      submitMenu.className = "nav-mobile-extra";
+      var submitBefore = menu.querySelector('a[href="/about/"]') || menu.querySelector("#theme-toggle");
+      if (submitBefore && submitBefore.parentNode) submitBefore.parentNode.insertBefore(submitMenu, submitBefore);
+      else menu.appendChild(submitMenu);
+    }
     if (!menu.querySelector('a[href="/account/"]')) {
       var accountMenu = document.createElement("a");
       accountMenu.href = "/account/";
@@ -1658,7 +1667,7 @@
           }).join("");
           lb.querySelector(".slb-head").innerHTML =
             (s.avatar ? '<img class="slb-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
-            '<span class="who"><strong>' + esc(s.username) + '</strong><span class="sub">' + ago(s.taken_at) + "</span></span>" +
+            '<span class="who"><strong>' + esc(s.name || s.username) + '</strong><span class="sub">@' + esc(s.username) + '・' + ago(s.taken_at) + "</span></span>" +
             '<button class="slb-pause" aria-label="暫停播放" aria-pressed="false">Ⅱ</button>';
           lb.querySelector(".slb-media").innerHTML = '<img src="' + esc(s.media) + '" alt="">';
           lb.querySelector(".slb-ig-link").href = s.ig_url;

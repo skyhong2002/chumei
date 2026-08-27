@@ -153,8 +153,8 @@ class SubmissionApiTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(r.status_code, 303)
-        self.assertEqual(r.headers["location"], "/account/?submit=ok#submit")
-        page = self.client.get("/account/?submit=ok")
+        self.assertEqual(r.headers["location"], "/submit/?submit=ok#submit")
+        page = self.client.get("/submit/?submit=ok")
         self.assertIn('submit-card" id="submit"', page.text)
         self.assertIn("facebook.com/nthu.tw/posts/9", page.text)
         self.assertIn("待處理", page.text)
@@ -166,13 +166,24 @@ class SubmissionApiTests(unittest.TestCase):
         self._login()
         self.client.post("/auth/submissions", json={"url": "https://example.org/pub", "note": "secret"})
         self.client.post("/auth/logout")
-        page = self.client.get("/account/")
+        page = self.client.get("/submit/")
         self.assertIn('submit-card" id="submit"', page.text)
         self.assertIn("example.org/pub", page.text)
         self.assertNotIn('name="url"', page.text)
         self.assertNotIn("你回報的", page.text)
         self.assertNotIn("secret", page.text)
         self.assertIn("登入後回報連結", page.text)
+
+    def test_account_page_shows_my_submissions_only(self):
+        self._login()
+        self.client.post("/auth/submissions", json={"url": "https://example.org/mine", "note": "我的備註"})
+        page = self.client.get("/account/")
+        self.assertIn("我的回報", page.text)
+        self.assertIn("example.org/mine", page.text)
+        self.assertIn("備註：我的備註", page.text)
+        self.assertIn("追蹤的單位", page.text)
+        self.assertIn("我要去的活動", page.text)
+        self.assertNotIn('name="url"', page.text)  # 表單搬去 /submit/
 
 
 class ProcessTests(unittest.TestCase):

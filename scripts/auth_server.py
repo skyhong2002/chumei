@@ -3,7 +3,7 @@
 NYCU handles credentials and consent. Chumei stores only a local user mapping
 and opaque browser sessions; it never receives or stores a school password.
 
-Public routes (Caddy proxies /auth/* and /account* to this service):
+Public routes (Caddy proxies /auth/*, /account*, /submit* to this service):
   GET  /account/              account/login page
   GET  /auth/{provider}/start     begin Authorization Code + PKCE flow (nycu / google)
   GET  /auth/{provider}/callback  exchange code and create/login local account
@@ -637,10 +637,53 @@ SUBMIT_NOTICES = {
 }
 
 
+EVENTS_DATA_PATH = ROOT / "site" / "data" / "events.json"
+_events_cache: dict = {"mtime": None, "byid": {}}
+
+
+def _events_by_id() -> dict:
+    """帳號頁把「我要去」的 event_id 對回標題／日期；以 mtime 快取整份 events.json。"""
+    try:
+        mtime = EVENTS_DATA_PATH.stat().st_mtime
+    except OSError:
+        return _events_cache["byid"]
+    if _events_cache["mtime"] != mtime:
+        try:
+            data = json.loads(EVENTS_DATA_PATH.read_text())
+        except (OSError, json.JSONDecodeError):
+            return _events_cache["byid"]
+        _events_cache["byid"] = {e["id"]: e for e in data.get("events", []) if e.get("id")}
+        _events_cache["mtime"] = mtime
+    return _events_cache["byid"]
+
+
 def _fmt_time(ts: int | None) -> str:
     if not ts:
         return ""
     return time.strftime("%m/%d %H:%M", time.localtime(ts))
+
+
+def _submission_item_html(it: dict, mine: bool) -> str:
+    status = it.get("status") or "pending"
+    label = STATUS_LABELS.get(status, status)
+    url = it["url"]
+    short = html.escape(url.replace("https://", "").replace("www.", "")[:72] + ("…" if len(url) > 80 else ""))
+    reason = html.escape(it.get("reason") or "")
+    link = ""
+    if it.get("event_url"):
+        link = f' <a class="submit-result" href="{html.escape(it["event_url"])}">查看→</a>'
+    note = ""
+    if mine and it.get("note"):
+        note = f'<p class="submit-note">備註：{html.escape(it["note"])}</p>'
+    return (
+        f'<li class="submit-item is-{html.escape(status)}{" is-mine" if mine else ""}">'
+        f'<div class="submit-item-head"><span class="submit-status">{html.escape(label)}</span>'
+        + ('<span class="submit-mine">你回報的</span>' if mine else "")
+        + f'<time>{_fmt_time(it.get("created_at"))}</time></div>'
+        f'<a class="submit-url" href="{html.escape(url)}" rel="noopener nofollow" target="_blank">{short}</a>'
+        + (f'<p class="submit-reason">{reason}{link}</p>' if reason or link else "")
+        + note + "</li>"
+    )
 
 
 def _submissions_html(items: list[dict], notice: str | None, user_id: str | None, nycu_ok: bool, google_ok: bool) -> str:
@@ -648,29 +691,10 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
     if notice in SUBMIT_NOTICES:
         text, is_error = SUBMIT_NOTICES[notice]
         alert = f'<p class="submit-notice{" is-error" if is_error else ""}" role="status">{html.escape(text)}</p>'
-    rows = []
-    for it in items:
-        status = it.get("status") or "pending"
-        label = STATUS_LABELS.get(status, status)
-        url = it["url"]
-        short = html.escape(url.replace("https://", "").replace("www.", "")[:72] + ("…" if len(url) > 80 else ""))
-        reason = html.escape(it.get("reason") or "")
-        mine = user_id and it.get("user_id") == user_id
-        link = ""
-        if it.get("event_url"):
-            link = f' <a class="submit-result" href="{html.escape(it["event_url"])}">查看→</a>'
-        note = ""
-        if mine and it.get("note"):
-            note = f'<p class="submit-note">備註：{html.escape(it["note"])}</p>'
-        rows.append(
-            f'<li class="submit-item is-{html.escape(status)}{" is-mine" if mine else ""}">'
-            f'<div class="submit-item-head"><span class="submit-status">{html.escape(label)}</span>'
-            + ('<span class="submit-mine">你回報的</span>' if mine else "")
-            + f'<time>{_fmt_time(it.get("created_at"))}</time></div>'
-            f'<a class="submit-url" href="{html.escape(url)}" rel="noopener nofollow" target="_blank">{short}</a>'
-            + (f'<p class="submit-reason">{reason}{link}</p>' if reason or link else "")
-            + note + "</li>"
-        )
+    rows = [
+        _submission_item_html(it, bool(user_id) and it.get("user_id") == user_id)
+        for it in items
+    ]
     listing = (
         f'<ul class="submit-list">{"".join(rows)}</ul>'
         if rows
@@ -688,9 +712,9 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
     elif nycu_ok or google_ok:
         btns = []
         if nycu_ok:
-            btns.append('<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to=/account/%23submit">登入後回報連結</a>')
+            btns.append('<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to=/submit/">登入後回報連結</a>')
         if google_ok:
-            btns.append('<a class="btn account-action" href="/auth/google/start?return_to=/account/%23submit">用 Google 登入</a>')
+            btns.append('<a class="btn account-action" href="/auth/google/start?return_to=/submit/">用 Google 登入</a>')
         form = "".join(btns)
     else:
         form = ""
@@ -705,6 +729,58 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
     """
 
 
+def _submit_page_html(items: list[dict], notice: str | None, user: dict | None, nycu_ok: bool, google_ok: bool) -> str:
+    inner = _submissions_html(items, notice, user["id"] if user else None, nycu_ok, google_ok)
+    content = f"""
+<section class="account-page">
+  <div class="hero">
+    <h1>回報活動</h1>
+    <p>幫竹梅補上漏掉的活動。處理進度公開，已收錄的會直接連到活動頁。</p>
+  </div>
+  <section class="account-card submit-card" id="submit">{inner}</section>
+</section>
+"""
+    return page_shell(
+        "回報活動｜竹梅活動觀測站",
+        "把活動貼文或公告的連結回報給竹梅，系統會自動判讀收錄。",
+        content,
+        canonical="https://chumei.observe.tw/submit/",
+    )
+
+
+def _going_html(going_ids: list[str]) -> str:
+    byid = _events_by_id()
+    today = time.strftime("%Y-%m-%d")
+    upcoming, past = [], []
+    for eid in going_ids:
+        ev = byid.get(eid)
+        if not ev:
+            continue
+        start = str(ev.get("start_at") or "")[:10]
+        (upcoming if start >= today else past).append((start, ev))
+    upcoming.sort(key=lambda p: p[0])
+    past.sort(key=lambda p: p[0], reverse=True)
+
+    def row(start: str, ev: dict) -> str:
+        date = f"{start[5:7]}/{start[8:10]}" if len(start) == 10 else "——"
+        org = html.escape(ev.get("organizer") or "")
+        eid = html.escape(ev["id"])
+        ev_title = html.escape(ev.get("title") or "未命名活動")
+        return (f'<li><time>{date}</time><a href="/event/{eid}/">{ev_title}</a>'
+                + (f'<span class="account-event-org">{org}</span>' if org else "")
+                + "</li>")
+
+    parts = []
+    if upcoming:
+        parts.append('<ul class="account-events">' + "".join(row(*p) for p in upcoming) + "</ul>")
+    else:
+        parts.append('<p class="account-empty">還沒有標記要去的活動。到<a href="/events/">活動總覽</a>按 ✓，它們就會出現在這裡。</p>')
+    if past:
+        parts.append(f'<details class="account-past"><summary>已結束（{len(past)} 場）</summary>'
+                     '<ul class="account-events">' + "".join(row(*p) for p in past) + "</ul></details>")
+    return "".join(parts)
+
+
 def _account_html(
     user: dict | None,
     nycu_ok: bool,
@@ -712,10 +788,11 @@ def _account_html(
     *,
     title: str = "帳號",
     message: str | None = None,
-    submissions: list[dict] | None = None,
-    notice: str | None = None,
+    following: list[dict] | None = None,
+    going_ids: list[str] | None = None,
+    my_submissions: list[dict] | None = None,
 ) -> str:
-    extra = ""
+    sections = []
     if user:
         email = html.escape(user.get("email") or "")
         subject = html.escape(user.get("subject") or "")
@@ -726,53 +803,81 @@ def _account_html(
             status_line = "已使用陽明交大 OAuth 登入"
             ident = (f"<div><dt>學校帳號</dt><dd>{subject}</dd></div>"
                      + (f'<div><dt>Email</dt><dd>{email}</dd></div>' if email else ''))
-        card = f"""
+        sections.append(f"""<section class="account-card">
         <div class="account-status"><span class="account-dot"></span>{status_line}</div>
         <h2>{html.escape(user.get('display_name') or '竹梅使用者')}</h2>
         <dl>{ident}</dl>
         <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
-        """
+        </section>""")
+
+        follows = following or []
+        if follows:
+            chips = []
+            for org in follows:
+                name = html.escape(org.get("name") or f"單位 {org['id']}")
+                chips.append(f'<a class="account-chip" href="/org/{org["id"]}/">{name}</a>')
+            follow_body = f'<div class="account-chips">{"".join(chips)}</div>'
+        else:
+            follow_body = '<p class="account-empty">還沒有追蹤任何單位。在貼文、活動卡或單位頁按 🔔 就會出現在這裡。</p>'
+        sections.append(f"""<section class="account-card account-section">
+        <h2>追蹤的單位{f'<span class="account-count">{len(follows)}</span>' if follows else ''}</h2>
+        {follow_body}
+        <p class="account-links"><a href="/source/">找更多單位 →</a><a href="/notify/">通知設定 →</a></p>
+        </section>""")
+
+        sections.append(f"""<section class="account-card account-section">
+        <h2>我要去的活動</h2>
+        {_going_html(going_ids or [])}
+        </section>""")
+
+        subs = my_submissions or []
+        if subs:
+            sub_body = ('<ul class="submit-list">'
+                        + "".join(_submission_item_html(it, True) for it in subs)
+                        + "</ul>")
+        else:
+            sub_body = '<p class="account-empty">還沒有回報過連結。看到竹梅漏掉的活動，貼個連結就能幫大家補上。</p>'
+        sections.append(f"""<section class="account-card account-section">
+        <h2>我的回報</h2>
+        {sub_body}
+        <p class="account-links"><a href="/submit/">回報新連結 →</a></p>
+        </section>""")
     elif nycu_ok or google_ok:
         nycu_btn = ('<a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>'
                     if nycu_ok else "")
         google_btn = ('<a class="btn account-action" href="/auth/google/start">使用 Google 帳號登入</a>'
                       if google_ok else "")
-        card = f"""
+        sections.append(f"""<section class="account-card">
         <p class="eyebrow">OAuth-only account</p>
         <h2>登入竹梅</h2>
         <p>陽明交大成員請走學校單一入口；清大朋友、校友與其他人可用 Google 帳號登入。竹梅不會取得或儲存你的密碼。</p>
         {nycu_btn}
         {google_btn}
-        <p class="privacy-note">登入只取得穩定的帳號識別與 Email，用來記住你的追蹤與回報。登入後可以把看到的活動連結回報給竹梅，系統會自動判讀收錄。</p>
-        """
+        <p class="privacy-note">登入只取得穩定的帳號識別與 Email，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。</p>
+        </section>""")
     else:
-        card = """
+        sections.append("""<section class="account-card">
         <p class="eyebrow">OAuth-only account</p>
         <h2>登入功能設定中</h2>
         <p>OAuth Client 尚未完成設定，請稍後再試。</p>
         <span class="btn btn-primary account-action disabled" aria-disabled="true">登入竹梅</span>
-        """
-    if submissions is not None:
-        extra = (
-            '<section class="account-card submit-card" id="submit">'
-            + _submissions_html(submissions, notice, user["id"] if user else None, nycu_ok, google_ok)
-            + "</section>"
-        )
+        </section>""")
+
     alert = f'<div class="account-alert">{html.escape(message)}</div>' if message else ""
+    lede = "" if message else "<p>登入身分、追蹤的單位、要去的活動與回報進度都在這裡。</p>"
     content = f"""
 <section class="account-page">
   <div class="hero">
     <h1>{html.escape(title)}</h1>
-    <p>使用校方 OAuth 管理你的竹梅登入身分。</p>
+    {lede}
   </div>
   {alert}
-  <section class="account-card">{card}</section>
-  {extra}
+  {"".join(sections)}
 </section>
 """
     return page_shell(
         f"{title}｜竹梅活動觀測站",
-        "使用陽明交通大學 OAuth 登入竹梅。",
+        "管理你的竹梅帳號：登入、追蹤單位、參加標記與回報。",
         content,
         canonical="https://chumei.observe.tw/account/",
     )
@@ -820,14 +925,24 @@ def create_app(
 
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        kwargs = {}
+        if user:
+            kwargs = {
+                "following": store.follow_snapshot(user["id"])["following"],
+                "going_ids": store.event_snapshot(user["id"])["going"],
+                "my_submissions": submissions.list_for_user(user["id"], 8),
+            }
+        return HTMLResponse(
+            _account_html(user, config.configured, config.google_configured, **kwargs)
+        )
+
+    async def submit_page(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
         notice = request.query_params.get("submit")
         return HTMLResponse(
-            _account_html(
-                user,
-                config.configured,
-                config.google_configured,
-                submissions=submissions.list_recent(),
-                notice=notice,
+            _submit_page_html(
+                submissions.list_recent(), notice, user,
+                config.configured, config.google_configured,
             )
         )
 
@@ -866,14 +981,14 @@ def create_app(
                 if item:
                     body["submission"] = submission_payload(item, user)
                 return JSONResponse(body, status_code=status_code)
-            return RedirectResponse(f"/account/?submit={code}#submit", 303)
+            return RedirectResponse(f"/submit/?submit={code}#submit", 303)
 
         if not user:
             if wants_json:
                 return JSONResponse(
                     {"ok": False, "error": "authentication required"}, status_code=401
                 )
-            return RedirectResponse("/account/", 303)
+            return RedirectResponse("/submit/", 303)
         if wants_json:
             try:
                 body = await request.json()
@@ -1096,6 +1211,8 @@ def create_app(
         routes=[
             Route("/account", account, methods=["GET"]),
             Route("/account/", account, methods=["GET"]),
+            Route("/submit", submit_page, methods=["GET"]),
+            Route("/submit/", submit_page, methods=["GET"]),
             Route("/auth/{provider}/start", oauth_start, methods=["GET"]),
             Route("/auth/{provider}/callback", oauth_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
