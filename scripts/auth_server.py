@@ -5,8 +5,8 @@ and opaque browser sessions; it never receives or stores a school password.
 
 Public routes (Caddy proxies /auth/* and /account* to this service):
   GET  /account/              account/login page
-  GET  /auth/nycu/start       begin Authorization Code + PKCE flow
-  GET  /auth/nycu/callback    exchange code and create/login local account
+  GET  /auth/{provider}/start     begin Authorization Code + PKCE flow (nycu / google)
+  GET  /auth/{provider}/callback  exchange code and create/login local account
   GET  /auth/me               current session
   GET  /auth/follows          public counts plus current user's follows
   POST /auth/follows/sync     merge browser-local follows after login
@@ -59,6 +59,9 @@ PORT = 8324
 NYCU_AUTHORIZE_URL = "https://id.nycu.edu.tw/o/authorize/"
 NYCU_TOKEN_URL = "https://id.nycu.edu.tw/o/token/"
 NYCU_PROFILE_URL = "https://id.nycu.edu.tw/api/profile/"
+GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 SESSION_COOKIE = "chumei_session"
 EVENT_ID_RE = re.compile(r"evt_[0-9a-f]{6,32}")
 OAUTH_STATE_COOKIE = "chumei_oauth_state"
@@ -119,6 +122,8 @@ def _normalize_follow_orgs(values) -> list[dict]:
 class AuthConfig:
     client_id: str
     client_secret: str
+    google_client_id: str = ""
+    google_client_secret: str = ""
     public_base_url: str = "https://chumei.observe.tw"
     database_path: Path = ROOT / "state" / "auth.sqlite3"
     cookie_secure: bool = True
@@ -132,9 +137,17 @@ class AuthConfig:
             client_id = _keychain_value("tw.observe.chumei.nycu-oauth-client-id")
         if not client_secret:
             client_secret = _keychain_value("tw.observe.chumei.nycu-oauth-secret")
+        google_client_id = env.get("CHUMEI_GOOGLE_OAUTH_CLIENT_ID", "").strip()
+        google_client_secret = env.get("CHUMEI_GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+        if not google_client_id:
+            google_client_id = _keychain_value("tw.observe.chumei.google-oauth-client-id")
+        if not google_client_secret:
+            google_client_secret = _keychain_value("tw.observe.chumei.google-oauth-secret")
         return cls(
             client_id=client_id,
             client_secret=client_secret,
+            google_client_id=google_client_id,
+            google_client_secret=google_client_secret,
             public_base_url=env.get(
                 "CHUMEI_AUTH_PUBLIC_BASE_URL", "https://chumei.observe.tw"
             ).rstrip("/"),
@@ -150,8 +163,16 @@ class AuthConfig:
         return bool(self.client_id and self.client_secret)
 
     @property
+    def google_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @property
     def redirect_uri(self) -> str:
         return f"{self.public_base_url}/auth/nycu/callback"
+
+    @property
+    def google_redirect_uri(self) -> str:
+        return f"{self.public_base_url}/auth/google/callback"
 
 
 def _keychain_value(service: str) -> str:
@@ -302,9 +323,9 @@ class AuthStore:
             return None
         return row
 
-    def get_or_create_user(self, subject: str, email: str | None) -> dict:
+    def get_or_create_user(self, provider: str, subject: str, email: str | None) -> dict:
         now = _now()
-        display_name = (email or subject).split("@", 1)[0][:80] or "NYCU 使用者"
+        display_name = (email or subject).split("@", 1)[0][:80] or "竹梅使用者"
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
@@ -312,15 +333,15 @@ class AuthStore:
                 SELECT u.id, u.display_name, u.email
                 FROM oauth_identities i
                 JOIN users u ON u.id = i.user_id
-                WHERE i.provider = 'nycu' AND i.subject = ?
+                WHERE i.provider = ? AND i.subject = ?
                 """,
-                (subject,),
+                (provider, subject),
             ).fetchone()
             if row:
                 conn.execute(
                     "UPDATE oauth_identities SET email = ?, updated_at = ? "
-                    "WHERE provider = 'nycu' AND subject = ?",
-                    (email, now, subject),
+                    "WHERE provider = ? AND subject = ?",
+                    (email, now, provider, subject),
                 )
                 conn.execute(
                     "UPDATE users SET email = COALESCE(?, email), updated_at = ? WHERE id = ?",
@@ -336,8 +357,8 @@ class AuthStore:
             )
             conn.execute(
                 "INSERT INTO oauth_identities(provider, subject, user_id, email, created_at, updated_at) "
-                "VALUES ('nycu', ?, ?, ?, ?, ?)",
-                (subject, user_id, email, now, now),
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (provider, subject, user_id, email, now, now),
             )
             return {"id": user_id, "display_name": display_name, "email": email}
 
@@ -359,11 +380,12 @@ class AuthStore:
         with self._connection() as conn:
             row = conn.execute(
                 """
-                SELECT u.id, u.display_name, u.email, i.subject
+                SELECT u.id, u.display_name, u.email, i.provider, i.subject
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
-                JOIN oauth_identities i ON i.user_id = u.id AND i.provider = 'nycu'
+                JOIN oauth_identities i ON i.user_id = u.id
                 WHERE s.token_hash = ? AND s.expires_at > ?
+                LIMIT 1
                 """,
                 (_hash_token(raw_token), now),
             ).fetchone()
@@ -558,8 +580,51 @@ class NYCUOAuthClient:
         return subject.strip(), email
 
 
+class GoogleOAuthClient:
+    """Google OpenID Connect（Authorization Code + PKCE）；用 userinfo 端點拿 sub 與 email。"""
+
+    def __init__(self, http=requests):
+        self.http = http
+
+    def exchange_code(self, config: AuthConfig, code: str, verifier: str) -> str:
+        response = self.http.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": config.google_redirect_uri,
+                "client_id": config.google_client_id,
+                "client_secret": config.google_client_secret,
+                "code_verifier": verifier,
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        access_token = payload.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise ValueError("Google token response did not contain access_token")
+        return access_token
+
+    def profile(self, access_token: str) -> tuple[str, str | None]:
+        response = self.http.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        subject = payload.get("sub")
+        email = payload.get("email")
+        if not isinstance(subject, str) or not subject.strip():
+            raise ValueError("Google userinfo response did not contain sub")
+        if not isinstance(email, str) or "@" not in email:
+            email = None
+        return subject.strip(), email
+
+
 def _error_page(title: str, message: str, status_code: int = 400) -> HTMLResponse:
-    body = _account_html(None, False, title=title, message=message)
+    body = _account_html(None, False, False, title=title, message=message)
     return HTMLResponse(body, status_code=status_code)
 
 
@@ -578,7 +643,7 @@ def _fmt_time(ts: int | None) -> str:
     return time.strftime("%m/%d %H:%M", time.localtime(ts))
 
 
-def _submissions_html(items: list[dict], notice: str | None, user_id: str | None, configured: bool) -> str:
+def _submissions_html(items: list[dict], notice: str | None, user_id: str | None, nycu_ok: bool, google_ok: bool) -> str:
     alert = ""
     if notice in SUBMIT_NOTICES:
         text, is_error = SUBMIT_NOTICES[notice]
@@ -620,8 +685,13 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
           <input id="submit-note" class="submit-input" type="text" name="note" maxlength="{MAX_NOTE_LENGTH}" placeholder="例如：主辦是清大天文社、活動在 9/20">
           <button class="btn btn-primary account-action" type="submit">送出</button>
         </form>"""
-    elif configured:
-        form = '<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to=/account/%23submit">登入後回報連結</a>'
+    elif nycu_ok or google_ok:
+        btns = []
+        if nycu_ok:
+            btns.append('<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to=/account/%23submit">登入後回報連結</a>')
+        if google_ok:
+            btns.append('<a class="btn account-action" href="/auth/google/start?return_to=/account/%23submit">用 Google 登入</a>')
+        form = "".join(btns)
     else:
         form = ""
     return f"""
@@ -637,7 +707,8 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
 
 def _account_html(
     user: dict | None,
-    configured: bool,
+    nycu_ok: bool,
+    google_ok: bool,
     *,
     title: str = "帳號",
     message: str | None = None,
@@ -648,31 +719,43 @@ def _account_html(
     if user:
         email = html.escape(user.get("email") or "")
         subject = html.escape(user.get("subject") or "")
+        if (user.get("provider") or "nycu") == "google":
+            status_line = "已使用 Google 帳號登入"
+            ident = f'<div><dt>Email</dt><dd>{email or "（未提供）"}</dd></div>'
+        else:
+            status_line = "已使用陽明交大 OAuth 登入"
+            ident = (f"<div><dt>學校帳號</dt><dd>{subject}</dd></div>"
+                     + (f'<div><dt>Email</dt><dd>{email}</dd></div>' if email else ''))
         card = f"""
-        <div class="account-status"><span class="account-dot"></span>已使用陽明交大 OAuth 登入</div>
-        <h2>{html.escape(user.get('display_name') or 'NYCU 使用者')}</h2>
-        <dl><div><dt>學校帳號</dt><dd>{subject}</dd></div>{f'<div><dt>Email</dt><dd>{email}</dd></div>' if email else ''}</dl>
+        <div class="account-status"><span class="account-dot"></span>{status_line}</div>
+        <h2>{html.escape(user.get('display_name') or '竹梅使用者')}</h2>
+        <dl>{ident}</dl>
         <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
         """
-    elif configured:
-        card = """
+    elif nycu_ok or google_ok:
+        nycu_btn = ('<a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>'
+                    if nycu_ok else "")
+        google_btn = ('<a class="btn account-action" href="/auth/google/start">使用 Google 帳號登入</a>'
+                      if google_ok else "")
+        card = f"""
         <p class="eyebrow">OAuth-only account</p>
         <h2>登入竹梅</h2>
-        <p>使用陽明交大單一入口驗證身分。竹梅不會取得或儲存你的學校密碼。</p>
-        <a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>
-        <p class="privacy-note">目前只要求基本 profile，用來取得穩定帳號識別與校方 Email。登入後可以把看到的活動連結回報給竹梅，系統會自動判讀收錄。</p>
+        <p>陽明交大成員請走學校單一入口；清大朋友、校友與其他人可用 Google 帳號登入。竹梅不會取得或儲存你的密碼。</p>
+        {nycu_btn}
+        {google_btn}
+        <p class="privacy-note">登入只取得穩定的帳號識別與 Email，用來記住你的追蹤與回報。登入後可以把看到的活動連結回報給竹梅，系統會自動判讀收錄。</p>
         """
     else:
         card = """
         <p class="eyebrow">OAuth-only account</p>
         <h2>登入功能設定中</h2>
-        <p>NYCU OAuth Client 尚未完成設定，請稍後再試。</p>
-        <span class="btn btn-primary account-action disabled" aria-disabled="true">使用陽明交大 OAuth 登入</span>
+        <p>OAuth Client 尚未完成設定，請稍後再試。</p>
+        <span class="btn btn-primary account-action disabled" aria-disabled="true">登入竹梅</span>
         """
     if submissions is not None:
         extra = (
             '<section class="account-card submit-card" id="submit">'
-            + _submissions_html(submissions, notice, user["id"] if user else None, configured)
+            + _submissions_html(submissions, notice, user["id"] if user else None, nycu_ok, google_ok)
             + "</section>"
         )
     alert = f'<div class="account-alert">{html.escape(message)}</div>' if message else ""
@@ -700,18 +783,51 @@ def create_app(
     store: AuthStore | None = None,
     oauth_client: NYCUOAuthClient | None = None,
     submissions: SubmissionStore | None = None,
+    google_oauth_client: "GoogleOAuthClient | None" = None,
 ) -> Starlette:
     config = config or AuthConfig.from_env()
     store = store or AuthStore(config.database_path)
     oauth_client = oauth_client or NYCUOAuthClient()
+    google_oauth_client = google_oauth_client or GoogleOAuthClient()
     submissions = submissions or SubmissionStore(config.database_path)
+
+    providers = {
+        "nycu": {
+            "client": oauth_client,
+            "authorize_url": NYCU_AUTHORIZE_URL,
+            "scope": "profile",
+            "client_id": config.client_id,
+            "redirect_uri": config.redirect_uri,
+            "configured": config.configured,
+            "extra": {},
+            "cancel_msg": "陽明交大未授權登入，帳號沒有建立。",
+            "fail_msg": "無法向陽明交大完成身分驗證，請稍後再試。",
+            "unconfigured_msg": "NYCU OAuth Client 尚未完成設定。",
+        },
+        "google": {
+            "client": google_oauth_client,
+            "authorize_url": GOOGLE_AUTHORIZE_URL,
+            "scope": "openid email",
+            "client_id": config.google_client_id,
+            "redirect_uri": config.google_redirect_uri,
+            "configured": config.google_configured,
+            "extra": {"prompt": "select_account"},
+            "cancel_msg": "Google 未授權登入，帳號沒有建立。",
+            "fail_msg": "無法向 Google 完成身分驗證，請稍後再試。",
+            "unconfigured_msg": "Google OAuth Client 尚未完成設定。",
+        },
+    }
 
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         notice = request.query_params.get("submit")
         return HTMLResponse(
             _account_html(
-                user, config.configured, submissions=submissions.list_recent(), notice=notice
+                user,
+                config.configured,
+                config.google_configured,
+                submissions=submissions.list_recent(),
+                notice=notice,
             )
         )
 
@@ -781,22 +897,26 @@ def create_app(
         return reply("ok", item, status_code=201)
 
     async def oauth_start(request: Request):
-        if not config.configured:
-            return _error_page("登入功能設定中", "NYCU OAuth Client 尚未完成設定。", 503)
+        spec = providers.get(str(request.path_params.get("provider") or ""))
+        if not spec:
+            return _error_page("不支援的登入方式", "沒有這個登入提供者。", 404)
+        if not spec["configured"]:
+            return _error_page("登入功能設定中", spec["unconfigured_msg"], 503)
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
         return_to = _safe_return_to(request.query_params.get("return_to"))
         store.put_oauth_state(state, verifier, return_to)
         params = {
             "response_type": "code",
-            "client_id": config.client_id,
-            "redirect_uri": config.redirect_uri,
-            "scope": "profile",
+            "client_id": spec["client_id"],
+            "redirect_uri": spec["redirect_uri"],
+            "scope": spec["scope"],
             "state": state,
             "code_challenge": _pkce_challenge(verifier),
             "code_challenge_method": "S256",
+            **spec["extra"],
         }
-        response = RedirectResponse(f"{NYCU_AUTHORIZE_URL}?{urlencode(params)}", 302)
+        response = RedirectResponse(f"{spec['authorize_url']}?{urlencode(params)}", 302)
         response.set_cookie(
             OAUTH_STATE_COOKIE,
             state,
@@ -809,11 +929,15 @@ def create_app(
         return response
 
     async def oauth_callback(request: Request):
+        provider_key = str(request.path_params.get("provider") or "")
+        spec = providers.get(provider_key)
+        if not spec:
+            return _error_page("不支援的登入方式", "沒有這個登入提供者。", 404)
         provider_error = request.query_params.get("error")
         state = request.query_params.get("state") or ""
         state_cookie = request.cookies.get(OAUTH_STATE_COOKIE) or ""
         if provider_error:
-            return _error_page("登入已取消", "陽明交大未授權登入，帳號沒有建立。")
+            return _error_page("登入已取消", spec["cancel_msg"])
         if not state or not secrets.compare_digest(state, state_cookie):
             return _error_page("登入驗證失敗", "登入狀態已失效，請回到帳號頁重新登入。")
         state_row = store.consume_oauth_state(state)
@@ -822,15 +946,13 @@ def create_app(
             return _error_page("登入驗證失敗", "授權碼或登入狀態已失效，請重新登入。")
         try:
             access_token = await run_in_threadpool(
-                oauth_client.exchange_code, config, code, state_row["code_verifier"]
+                spec["client"].exchange_code, config, code, state_row["code_verifier"]
             )
-            subject, email = await run_in_threadpool(oauth_client.profile, access_token)
-            user = store.get_or_create_user(subject, email)
+            subject, email = await run_in_threadpool(spec["client"].profile, access_token)
+            user = store.get_or_create_user(provider_key, subject, email)
             raw_session = store.create_session(user["id"])
         except (requests.RequestException, ValueError, json.JSONDecodeError):
-            return _error_page(
-                "登入暫時失敗", "無法向陽明交大完成身分驗證，請稍後再試。", 502
-            )
+            return _error_page("登入暫時失敗", spec["fail_msg"], 502)
         response = RedirectResponse(state_row["return_to"], 303)
         response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
         response.set_cookie(
@@ -856,7 +978,7 @@ def create_app(
                     "id": user["id"],
                     "displayName": user["display_name"],
                     "email": user["email"],
-                    "provider": "nycu",
+                    "provider": user.get("provider") or "nycu",
                 },
             }
         )
@@ -962,15 +1084,20 @@ def create_app(
 
     async def health(request: Request):
         return JSONResponse(
-            {"ok": True, "service": "chumei-auth", "configured": config.configured}
+            {
+                "ok": True,
+                "service": "chumei-auth",
+                "configured": config.configured,
+                "googleConfigured": config.google_configured,
+            }
         )
 
     app = Starlette(
         routes=[
             Route("/account", account, methods=["GET"]),
             Route("/account/", account, methods=["GET"]),
-            Route("/auth/nycu/start", oauth_start, methods=["GET"]),
-            Route("/auth/nycu/callback", oauth_callback, methods=["GET"]),
+            Route("/auth/{provider}/start", oauth_start, methods=["GET"]),
+            Route("/auth/{provider}/callback", oauth_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
             Route("/auth/follows", follows, methods=["GET"]),
             Route("/auth/events", events_going, methods=["GET"]),

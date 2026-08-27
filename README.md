@@ -33,7 +33,7 @@ scripts/extract_events.py   LLM 活動判別＋欄位抽取（vision，含快取
 scripts/build_site.py       合併、跨來源去重、名錄歸戶、venue→座標 → 靜態站 + feeds + API
 scripts/publish_telegram.py 新活動以「貼文」為單位推送（同貼文多活動合一則訊息）
 scripts/push_server.py      Web Push 訂閱 API（Caddy 反代 /push/*；launchd 常駐）
-scripts/auth_server.py      NYCU OAuth-only 帳號／Session API（Caddy 反代 /auth/*、/account*）
+scripts/auth_server.py      OAuth 帳號／Session API（NYCU＋Google；Caddy 反代 /auth/*、/account*）
 scripts/publish_push.py     Web Push 滴灌發布（偏好過濾；launchd 每 30 分鐘）
 scripts/push_common.py      Web Push 共用層（訂閱儲存、偏好比對、VAPID、發送）
 scripts/bot_core.py         查詢 bot 共用核心（一句話 → 解析時間/學校/類型/關鍵字 → 搜尋與排版）
@@ -64,7 +64,7 @@ Instagram 抓取有兩個後端（`CHUMEI_IG_BACKEND` 或 `fetch_instagram.py --
 
 首次正常執行會把現有近期活動記為 baseline，不會洗版。此後每輪 pipeline 最多推送 10 則貼文；22:00–07:59 自動靜音。
 
-## NYCU OAuth 帳號
+## OAuth 帳號（NYCU＋Google）
 
 在 NYCU OAuth 管理介面註冊 Authorization Code 應用程式，Callback URL 設為
 `https://chumei.observe.tw/auth/nycu/callback`。正式機的 Client ID／Secret 存在 macOS
@@ -76,6 +76,13 @@ CHUMEI_NYCU_OAUTH_CLIENT_ID=
 CHUMEI_NYCU_OAUTH_CLIENT_SECRET=
 CHUMEI_AUTH_PUBLIC_BASE_URL=https://chumei.observe.tw
 ```
+
+Google 登入開放任何 Google 帳號（給清大朋友與校友用）：在 GCP Console 建 OAuth 2.0
+Client（Web application），Callback URL 設為
+`https://chumei.observe.tw/auth/google/callback`。正式機的 Client ID／Secret 存在
+Keychain（service：`tw.observe.chumei.google-oauth-client-id` 與
+`tw.observe.chumei.google-oauth-secret`）；開發環境也可用 `.env` 的
+`CHUMEI_GOOGLE_OAUTH_CLIENT_ID` 與 `CHUMEI_GOOGLE_OAUTH_CLIENT_SECRET`。
 
 服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將
 `/auth/*` 與 `/account*` 反代到該埠。帳號資料只包含 OAuth identity 與雜湊後的

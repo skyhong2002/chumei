@@ -41,6 +41,8 @@ class FakeHTTP:
 
     def get(self, url, headers, timeout):
         self.profile_calls.append((url, headers, timeout))
+        if "openidconnect" in url:
+            return FakeResponse({"sub": "115566778899", "email": "friend@gmail.com"})
         return FakeResponse({"username": "student123", "email": "student123@nycu.edu.tw"})
 
 
@@ -52,6 +54,8 @@ class AuthServerTests(unittest.TestCase):
         self.config = auth_server.AuthConfig(
             client_id="client-id",
             client_secret="client-secret",
+            google_client_id="google-client-id",
+            google_client_secret="google-client-secret",
             public_base_url="https://chumei.example",
             database_path=self.db_path,
             cookie_secure=False,
@@ -62,6 +66,7 @@ class AuthServerTests(unittest.TestCase):
             self.config,
             store=self.store,
             oauth_client=auth_server.NYCUOAuthClient(self.http),
+            google_oauth_client=auth_server.GoogleOAuthClient(self.http),
         )
         self.client = TestClient(app)
 
@@ -241,6 +246,85 @@ class AuthServerTests(unittest.TestCase):
                 self.assertIn(response.status_code, (400, 404), bad)
         with closing(sqlite3.connect(self.db_path)) as conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM user_event_going").fetchone()[0], 0)
+
+    def _google_login(self, return_to="/account/"):
+        start = self.client.get(
+            "/auth/google/start", params={"return_to": return_to}, follow_redirects=False
+        )
+        self.assertEqual(start.status_code, 302)
+        parsed = urlparse(start.headers["location"])
+        query = parse_qs(parsed.query)
+        self.assertEqual(parsed.geturl().split("?", 1)[0], auth_server.GOOGLE_AUTHORIZE_URL)
+        self.assertEqual(query["scope"], ["openid email"])
+        self.assertEqual(query["client_id"], ["google-client-id"])
+        self.assertEqual(
+            query["redirect_uri"], ["https://chumei.example/auth/google/callback"]
+        )
+        return self.client.get(
+            "/auth/google/callback",
+            params={"code": "google-code", "state": query["state"][0]},
+            follow_redirects=False,
+        )
+
+    def test_google_login_creates_account_with_google_identity(self):
+        callback = self._google_login("/events/")
+        self.assertEqual(callback.status_code, 303)
+        self.assertEqual(callback.headers["location"], "/events/")
+        me = self.client.get("/auth/me").json()
+        self.assertTrue(me["authenticated"])
+        self.assertEqual(me["user"]["provider"], "google")
+        self.assertEqual(me["user"]["email"], "friend@gmail.com")
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT provider, subject FROM oauth_identities"
+            ).fetchone()
+        self.assertEqual(row, ("google", "115566778899"))
+        token_url = self.http.token_calls[-1][0]
+        self.assertEqual(token_url, auth_server.GOOGLE_TOKEN_URL)
+
+    def test_google_and_nycu_logins_are_separate_accounts(self):
+        self._login()
+        self.client.cookies.clear()
+        self._google_login()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            n_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            providers = sorted(
+                r[0] for r in conn.execute("SELECT provider FROM oauth_identities")
+            )
+        self.assertEqual(n_users, 2)
+        self.assertEqual(providers, ["google", "nycu"])
+
+    def test_account_page_offers_both_login_options(self):
+        page = self.client.get("/account/")
+        self.assertIn("/auth/nycu/start", page.text)
+        self.assertIn("/auth/google/start", page.text)
+
+    def test_unknown_provider_is_rejected(self):
+        self.assertEqual(
+            self.client.get("/auth/github/start", follow_redirects=False).status_code, 404
+        )
+        self.assertEqual(
+            self.client.get("/auth/github/callback", follow_redirects=False).status_code, 404
+        )
+
+    def test_unconfigured_google_returns_503_but_nycu_still_works(self):
+        config = auth_server.AuthConfig(
+            client_id="client-id",
+            client_secret="client-secret",
+            public_base_url="https://chumei.example",
+            database_path=Path(self.tempdir.name) / "nycu-only.sqlite3",
+            cookie_secure=False,
+        )
+        with TestClient(auth_server.create_app(config)) as client:
+            self.assertEqual(
+                client.get("/auth/google/start", follow_redirects=False).status_code, 503
+            )
+            self.assertEqual(
+                client.get("/auth/nycu/start", follow_redirects=False).status_code, 302
+            )
+            page = client.get("/account/")
+            self.assertIn("/auth/nycu/start", page.text)
+            self.assertNotIn("/auth/google/start", page.text)
 
     def test_unconfigured_server_is_safe(self):
         config = auth_server.AuthConfig(

@@ -223,6 +223,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   appearance: none; background: var(--color-surface); color: var(--color-text-primary);
 }
 .account-action.disabled { opacity: 0.48; cursor: not-allowed; }
+.account-card a.account-action + a.account-action { margin-left: 10px; }
 .privacy-note { margin: 14px 0 0; font-size: 0.82rem; }
 .account-alert {
   margin: 0 0 18px; padding: 12px 14px; border-radius: var(--radius-md);
@@ -280,6 +281,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .account-page .hero { padding-bottom: 14px; }
   .account-card { padding: 20px 18px; }
   .account-action { display: flex; justify-content: center; width: 100%; }
+  .account-card a.account-action + a.account-action { margin-left: 0; margin-top: 10px; }
   .submit-form .account-action { justify-self: stretch; }
 }
 

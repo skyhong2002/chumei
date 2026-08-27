@@ -2663,11 +2663,12 @@
   }
   function toggle(id, btn) {
     if (!authed) {
+      var rt = encodeURIComponent(location.pathname + location.search);
       if (window.chumeiToast) {
-        window.chumeiToast('要先<a href="/auth/nycu/start?return_to=' +
-          encodeURIComponent(location.pathname + location.search) + '">用學校帳號登入</a>才能標記參加');
+        window.chumeiToast('要先登入才能標記參加：<a href="/auth/nycu/start?return_to=' + rt +
+          '">學校帳號</a>／<a href="/auth/google/start?return_to=' + rt + '">Google</a>');
       } else {
-        location.href = "/auth/nycu/start?return_to=" + encodeURIComponent(location.pathname);
+        location.href = "/account/";
       }
       return;
     }
