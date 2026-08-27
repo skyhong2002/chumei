@@ -311,6 +311,84 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("我的回報", page)
         self.assertIn("登出", page)
 
+    def _link(self, provider="google"):
+        start = self.client.get(
+            f"/auth/{provider}/start", params={"link": "1"}, follow_redirects=False
+        )
+        self.assertEqual(start.status_code, 302)
+        query = parse_qs(urlparse(start.headers["location"]).query)
+        code = "google-code" if provider == "google" else "authorization-code"
+        return self.client.get(
+            f"/auth/{provider}/callback",
+            params={"code": code, "state": query["state"][0]},
+            follow_redirects=False,
+        )
+
+    def test_link_google_to_nycu_account(self):
+        self._login()
+        callback = self._link("google")
+        self.assertEqual(callback.status_code, 303)
+        self.assertEqual(callback.headers["location"], "/account/?link=ok")
+        me = self.client.get("/auth/me").json()
+        self.assertEqual(me["user"]["providers"], ["nycu", "google"])
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT count(*) FROM oauth_identities").fetchone()[0], 2
+            )
+        page = self.client.get("/account/").text
+        self.assertIn("已綁定學校與 Google 帳號", page)
+        self.assertIn("解除綁定", page)
+
+    def test_link_merges_existing_account_data(self):
+        # Google 帳號先自己用過：有追蹤與參加標記
+        self._google_login()
+        self.client.put("/auth/follows/7", json={"name": "谷歌社"})
+        self.client.put("/auth/events/evt_abc123")
+        self.client.cookies.clear()
+        # 學校帳號另外用過，之後把 Google 綁進來
+        self._login()
+        self.client.put("/auth/follows/9", json={"name": "交大社"})
+        callback = self._link("google")
+        self.assertEqual(callback.headers["location"], "/account/?link=merged")
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 1)
+        follows = self.client.get("/auth/follows").json()
+        self.assertEqual(sorted(f["id"] for f in follows["following"]), [7, 9])
+        going = self.client.get("/auth/events").json()
+        self.assertIn("evt_abc123", going["going"])
+        # 之後再用 Google 登入，回到同一個帳號
+        self.client.cookies.clear()
+        self._google_login()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 1)
+
+    def test_link_again_is_idempotent(self):
+        self._login()
+        self._link("google")
+        callback = self._link("google")
+        self.assertEqual(callback.headers["location"], "/account/?link=already")
+
+    def test_link_requires_login(self):
+        start = self.client.get(
+            "/auth/google/start", params={"link": "1"}, follow_redirects=False
+        )
+        self.assertEqual(start.status_code, 401)
+
+    def test_unlink_keeps_last_identity(self):
+        self._login()
+        fail = self.client.post(
+            "/auth/unlink", data={"provider": "nycu"}, follow_redirects=False
+        )
+        self.assertEqual(fail.headers["location"], "/account/?link=unlink_fail")
+        self._link("google")
+        ok = self.client.post(
+            "/auth/unlink", data={"provider": "google"}, follow_redirects=False
+        )
+        self.assertEqual(ok.headers["location"], "/account/?link=unlinked")
+        me = self.client.get("/auth/me").json()
+        self.assertEqual(me["user"]["providers"], ["nycu"])
+
     def test_unknown_provider_is_rejected(self):
         self.assertEqual(
             self.client.get("/auth/github/start", follow_redirects=False).status_code, 404

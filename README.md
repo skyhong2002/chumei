@@ -84,6 +84,10 @@ Keychain（service：`tw.observe.chumei.google-oauth-client-id` 與
 `tw.observe.chumei.google-oauth-secret`）；開發環境也可用 `.env` 的
 `CHUMEI_GOOGLE_OAUTH_CLIENT_ID` 與 `CHUMEI_GOOGLE_OAUTH_CLIENT_SECRET`。
 
+兩種登入可在帳號頁互相綁定（`/auth/{provider}/start?link=1` → callback 走綁定分
+支）。若要綁定的身分已有自己的帳號，會把對方的追蹤、參加標記、回報與 session 全部
+併入目前帳號再刪除對方；`POST /auth/unlink` 可解除綁定，但至少要留一種登入方式。
+
 服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將
 `/auth/*` 與 `/account*` 反代到該埠。帳號資料只包含 OAuth identity 與雜湊後的
 Session token，以及使用者主動追蹤的單位關聯，存於被 Git 忽略的

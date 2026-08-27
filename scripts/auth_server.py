@@ -289,6 +289,9 @@ class AuthStore:
                 );
                 """
             )
+            columns = {r[1] for r in conn.execute("PRAGMA table_info(oauth_states)")}
+            if "link_user_id" not in columns:
+                conn.execute("ALTER TABLE oauth_states ADD COLUMN link_user_id TEXT")
 
     def cleanup(self, now: int | None = None) -> None:
         now = now or _now()
@@ -299,14 +302,16 @@ class AuthStore:
                 (now - OAUTH_STATE_AGE_SECONDS,),
             )
 
-    def put_oauth_state(self, state: str, verifier: str, return_to: str) -> None:
+    def put_oauth_state(
+        self, state: str, verifier: str, return_to: str, link_user_id: str | None = None
+    ) -> None:
         now = _now()
         self.cleanup(now)
         with self._connection() as conn:
             conn.execute(
-                "INSERT INTO oauth_states(state_hash, code_verifier, return_to, created_at) "
-                "VALUES (?, ?, ?, ?)",
-                (_hash_token(state), verifier, _safe_return_to(return_to), now),
+                "INSERT INTO oauth_states(state_hash, code_verifier, return_to, created_at, link_user_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (_hash_token(state), verifier, _safe_return_to(return_to), now, link_user_id),
             )
 
     def consume_oauth_state(self, state: str) -> sqlite3.Row | None:
@@ -314,7 +319,7 @@ class AuthStore:
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT code_verifier, return_to, created_at FROM oauth_states "
+                "SELECT code_verifier, return_to, created_at, link_user_id FROM oauth_states "
                 "WHERE state_hash = ?",
                 (state_hash,),
             ).fetchone()
@@ -362,6 +367,94 @@ class AuthStore:
             )
             return {"id": user_id, "display_name": display_name, "email": email}
 
+    def identities_for_user(self, user_id: str) -> list[dict]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT provider, subject, email FROM oauth_identities "
+                "WHERE user_id = ? ORDER BY created_at",
+                (user_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def link_identity(self, user_id: str, provider: str, subject: str, email: str | None) -> str:
+        """把 (provider, subject) 綁到 user_id。回傳 ok / merged / already。
+
+        若該身分已屬於另一個使用者，把對方的追蹤、參加、回報與 session
+        全部搬過來再刪除對方（merged）。
+        """
+        now = _now()
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT user_id FROM oauth_identities WHERE provider = ? AND subject = ?",
+                (provider, subject),
+            ).fetchone()
+            if row and row["user_id"] == user_id:
+                conn.execute(
+                    "UPDATE oauth_identities SET email = ?, updated_at = ? "
+                    "WHERE provider = ? AND subject = ?",
+                    (email, now, provider, subject),
+                )
+                return "already"
+            if row:
+                other_id = row["user_id"]
+                conn.execute(
+                    "UPDATE OR IGNORE user_org_follows SET user_id = ? WHERE user_id = ?",
+                    (user_id, other_id),
+                )
+                conn.execute(
+                    "UPDATE OR IGNORE user_event_going SET user_id = ? WHERE user_id = ?",
+                    (user_id, other_id),
+                )
+                conn.execute(
+                    "UPDATE sessions SET user_id = ? WHERE user_id = ?", (user_id, other_id)
+                )
+                conn.execute(
+                    "UPDATE oauth_identities SET user_id = ?, email = ?, updated_at = ? "
+                    "WHERE user_id = ?",
+                    (user_id, email, now, other_id),
+                )
+                has_submissions = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'submissions'"
+                ).fetchone()
+                if has_submissions:
+                    conn.execute(
+                        "UPDATE submissions SET user_id = ? WHERE user_id = ?",
+                        (user_id, other_id),
+                    )
+                conn.execute(
+                    "UPDATE users SET email = COALESCE(email, ?), updated_at = ? WHERE id = ?",
+                    (email, now, user_id),
+                )
+                conn.execute("DELETE FROM users WHERE id = ?", (other_id,))
+                return "merged"
+            conn.execute(
+                "INSERT INTO oauth_identities(provider, subject, user_id, email, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (provider, subject, user_id, email, now, now),
+            )
+            conn.execute(
+                "UPDATE users SET email = COALESCE(email, ?), updated_at = ? WHERE id = ?",
+                (email, now, user_id),
+            )
+            return "ok"
+
+    def unlink_identity(self, user_id: str, provider: str) -> bool:
+        """解除某個 provider 的綁定；至少要留下一種登入方式。"""
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                "SELECT provider FROM oauth_identities WHERE user_id = ?", (user_id,)
+            ).fetchall()
+            kept = [r["provider"] for r in rows if r["provider"] != provider]
+            if len(kept) == len(rows) or not kept:
+                return False
+            conn.execute(
+                "DELETE FROM oauth_identities WHERE user_id = ? AND provider = ?",
+                (user_id, provider),
+            )
+            return True
+
     def create_session(self, user_id: str) -> str:
         raw = secrets.token_urlsafe(32)
         now = _now()
@@ -385,6 +478,7 @@ class AuthStore:
                 JOIN users u ON u.id = s.user_id
                 JOIN oauth_identities i ON i.user_id = u.id
                 WHERE s.token_hash = ? AND s.expires_at > ?
+                ORDER BY i.created_at
                 LIMIT 1
                 """,
                 (_hash_token(raw_token), now),
@@ -791,22 +885,56 @@ def _account_html(
     following: list[dict] | None = None,
     going_ids: list[str] | None = None,
     my_submissions: list[dict] | None = None,
+    identities: list[dict] | None = None,
 ) -> str:
     sections = []
     if user:
-        email = html.escape(user.get("email") or "")
-        subject = html.escape(user.get("subject") or "")
-        if (user.get("provider") or "nycu") == "google":
+        idents = identities or []
+        if not idents:
+            idents = [{"provider": user.get("provider") or "nycu",
+                       "subject": user.get("subject") or "",
+                       "email": user.get("email")}]
+        by_provider = {i["provider"]: i for i in idents}
+        can_unlink = len(idents) > 1
+
+        def unlink_form(provider: str) -> str:
+            if not can_unlink:
+                return ""
+            return (f'<form method="post" action="/auth/unlink" class="account-unlink">'
+                    f'<input type="hidden" name="provider" value="{provider}">'
+                    f'<button type="submit">解除綁定</button></form>')
+
+        rows = []
+        nycu = by_provider.get("nycu")
+        if nycu:
+            rows.append(f'<div><dt>學校帳號</dt><dd>{html.escape(nycu.get("subject") or "")}'
+                        f'{unlink_form("nycu")}</dd></div>')
+        elif nycu_ok:
+            rows.append('<div><dt>學校帳號</dt><dd><a class="account-bind" '
+                        'href="/auth/nycu/start?link=1">綁定陽明交大 OAuth →</a></dd></div>')
+        if nycu and not by_provider.get("google") and user.get("email"):
+            rows.append(f'<div><dt>Email</dt><dd>{html.escape(user["email"])}</dd></div>')
+        google = by_provider.get("google")
+        if google:
+            g_label = html.escape(google.get("email") or google.get("subject") or "")
+            rows.append(f'<div><dt>Google</dt><dd>{g_label}{unlink_form("google")}</dd></div>')
+        elif google_ok:
+            rows.append('<div><dt>Google</dt><dd><a class="account-bind" '
+                        'href="/auth/google/start?link=1">綁定 Google 帳號 →</a></dd></div>')
+
+        if "nycu" in by_provider and "google" in by_provider:
+            status_line = "已綁定學校與 Google 帳號"
+        elif "google" in by_provider:
             status_line = "已使用 Google 帳號登入"
-            ident = f'<div><dt>Email</dt><dd>{email or "（未提供）"}</dd></div>'
         else:
             status_line = "已使用陽明交大 OAuth 登入"
-            ident = (f"<div><dt>學校帳號</dt><dd>{subject}</dd></div>"
-                     + (f'<div><dt>Email</dt><dd>{email}</dd></div>' if email else ''))
+        bind_hint = ("" if can_unlink else
+                     '<p class="account-hint">綁定另一種登入方式後，用哪個帳號登入都會回到同一份追蹤與回報。</p>')
         sections.append(f"""<section class="account-card">
         <div class="account-status"><span class="account-dot"></span>{status_line}</div>
         <h2>{html.escape(user.get('display_name') or '竹梅使用者')}</h2>
-        <dl>{ident}</dl>
+        <dl>{''.join(rows)}</dl>
+        {bind_hint}
         <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
         </section>""")
 
@@ -923,6 +1051,14 @@ def create_app(
         },
     }
 
+    LINK_MESSAGES = {
+        "ok": "綁定完成！之後用學校或 Google 帳號登入，都會回到同一個竹梅帳號。",
+        "merged": "綁定完成，另一個帳號的追蹤、參加標記與回報都合併進來了。",
+        "already": "這兩個帳號原本就綁在一起了。",
+        "unlinked": "已解除綁定。",
+        "unlink_fail": "至少要保留一種登入方式，無法解除綁定。",
+    }
+
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         kwargs = {}
@@ -931,6 +1067,8 @@ def create_app(
                 "following": store.follow_snapshot(user["id"])["following"],
                 "going_ids": store.event_snapshot(user["id"])["going"],
                 "my_submissions": submissions.list_for_user(user["id"], 8),
+                "identities": store.identities_for_user(user["id"]),
+                "message": LINK_MESSAGES.get(request.query_params.get("link") or ""),
             }
         return HTMLResponse(
             _account_html(user, config.configured, config.google_configured, **kwargs)
@@ -1017,10 +1155,16 @@ def create_app(
             return _error_page("不支援的登入方式", "沒有這個登入提供者。", 404)
         if not spec["configured"]:
             return _error_page("登入功能設定中", spec["unconfigured_msg"], 503)
+        link_user_id = None
+        if request.query_params.get("link"):
+            link_user = store.session_user(request.cookies.get(SESSION_COOKIE))
+            if not link_user:
+                return _error_page("要先登入", "請先登入原本的帳號，再綁定另一種登入方式。", 401)
+            link_user_id = link_user["id"]
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
         return_to = _safe_return_to(request.query_params.get("return_to"))
-        store.put_oauth_state(state, verifier, return_to)
+        store.put_oauth_state(state, verifier, return_to, link_user_id=link_user_id)
         params = {
             "response_type": "code",
             "client_id": spec["client_id"],
@@ -1064,10 +1208,19 @@ def create_app(
                 spec["client"].exchange_code, config, code, state_row["code_verifier"]
             )
             subject, email = await run_in_threadpool(spec["client"].profile, access_token)
-            user = store.get_or_create_user(provider_key, subject, email)
-            raw_session = store.create_session(user["id"])
         except (requests.RequestException, ValueError, json.JSONDecodeError):
             return _error_page("登入暫時失敗", spec["fail_msg"], 502)
+        link_user_id = state_row["link_user_id"]
+        if link_user_id:
+            current = store.session_user(request.cookies.get(SESSION_COOKIE))
+            if not current or current["id"] != link_user_id:
+                return _error_page("綁定失敗", "登入狀態已改變，請重新登入後再綁定一次。", 400)
+            outcome = store.link_identity(current["id"], provider_key, subject, email)
+            response = RedirectResponse(f"/account/?link={outcome}", 303)
+            response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
+            return response
+        user = store.get_or_create_user(provider_key, subject, email)
+        raw_session = store.create_session(user["id"])
         response = RedirectResponse(state_row["return_to"], 303)
         response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
         response.set_cookie(
@@ -1094,6 +1247,9 @@ def create_app(
                     "displayName": user["display_name"],
                     "email": user["email"],
                     "provider": user.get("provider") or "nycu",
+                    "providers": [
+                        i["provider"] for i in store.identities_for_user(user["id"])
+                    ],
                 },
             }
         )
@@ -1197,6 +1353,18 @@ def create_app(
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
+    async def unlink(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return RedirectResponse("/account/", 303)
+        form = await request.form()
+        provider_key = str(form.get("provider") or "")
+        if provider_key not in providers:
+            return RedirectResponse("/account/", 303)
+        removed = store.unlink_identity(user["id"], provider_key)
+        code = "unlinked" if removed else "unlink_fail"
+        return RedirectResponse(f"/account/?link={code}", 303)
+
     async def health(request: Request):
         return JSONResponse(
             {
@@ -1224,6 +1392,7 @@ def create_app(
             Route("/auth/follows/{org_id:int}", follow_remove, methods=["DELETE"]),
             Route("/auth/submissions", submissions_list, methods=["GET"]),
             Route("/auth/submissions", submissions_create, methods=["POST"]),
+            Route("/auth/unlink", unlink, methods=["POST"]),
             Route("/auth/logout", logout, methods=["POST"]),
             Route("/auth/health", health, methods=["GET"]),
         ]
