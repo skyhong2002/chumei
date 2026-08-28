@@ -424,7 +424,10 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(feed.status_code, 200)
         self.assertTrue(feed.headers["content-type"].startswith("text/calendar"))
         self.assertIn("BEGIN:VCALENDAR", feed.text)
-        self.assertIn("竹梅・我要去的活動", feed.text)
+        self.assertIn("X-WR-CALNAME:竹梅 student123 已追蹤", feed.text)
+        self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "sky_cal"})
+        self.assertIn("X-WR-CALNAME:竹梅 sky_cal 已追蹤",
+                      self.client.get(f"/auth/calendar/{token}.ics").text)
         if auth_server.EVENTS_DATA_PATH.exists():
             events = json.loads(auth_server.EVENTS_DATA_PATH.read_text())["events"]
             real = next(e for e in events if auth_server.EVENT_ID_RE.fullmatch(e["id"]))
