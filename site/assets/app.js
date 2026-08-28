@@ -432,11 +432,12 @@
     fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
       var posts = data.posts;
       // 手機單欄的全域篩選＋檢視切換；桌機欄位各自帶篩選（見 cols）
-      var state = { follow: "all", school: "all", platform: "all", cat: "all", org: "all", q: "" };
+      var state = { kind: "all", follow: "all", school: "all", platform: "all", cat: "all", org: "all", q: "" };
       function followedOrg(id) {
         return !!(id && window.chumeiFollow && window.chumeiFollow.isFollowed(id));
       }
-      var FOLLOW_OPTS = [["all", "全部"], ["on", "只看追蹤"]];
+      var FOLLOW_OPTS = [["all", "所有單位"], ["on", "已追蹤單位"]];
+      var KIND_OPTS = [["all", "全部貼文"], ["events", "僅活動貼文"]];
       var params = new URLSearchParams(location.search);
       var seededFromUrl = false;
       Object.keys(state).forEach(function (k) { if (params.get(k)) { state[k] = params.get(k); seededFromUrl = true; } });
@@ -476,6 +477,7 @@
       posts.forEach(function (p) { p.events.forEach(function (e) { feedCats[e.category || "其他"] = 1; }); });
       var CAT_OPTS = [["all", "全部類型"]].concat(Object.keys(feedCats).sort().map(function (k) { return [k, k]; }));
 
+      chips("pf-kind", KIND_OPTS, "kind");
       chips("pf-follow", FOLLOW_OPTS, "follow");
       chips("pf-school", SCHOOL_OPTS, "school");
       chips("pf-platform", PLAT_OPTS, "platform");
@@ -505,7 +507,7 @@
         var view = viewCols[activeCol];
         var c = view && view.col;
         if (!c || c.t !== "feed") return;
-        ["follow", "school", "platform", "cat", "org", "q"].forEach(function (k) { state[k] = c[k] || (k === "q" ? "" : "all"); });
+        ["kind", "follow", "school", "platform", "cat", "org", "q"].forEach(function (k) { state[k] = c[k] || (k === "q" ? "" : "all"); });
         Object.keys(groups).forEach(function (k) {
           Object.keys(groups[k].buttons).forEach(function (v) {
             groups[k].buttons[v].setAttribute("aria-pressed", String(state[k] === v));
@@ -529,6 +531,7 @@
         return "nycu-guangfu";
       }
       function matches(p, f) {
+        if (f.kind === "events" && !p.events.length) return false;
         if (f.follow === "on" && !followedOrg(p.org_id)) return false;
         if (f.school && f.school !== "all" && p.school !== "both" && postSchool(p) !== f.school) return false;
         if (f.platform && f.platform !== "all" && p.platform !== f.platform) return false;
@@ -616,11 +619,11 @@
       var shown = 30;
       // 欄位模型：欄就是「貼文」（篩選自帶：學校/平台/類型/主辦/搜尋）或「即將活動」
       var SCHOOL_L = { all: "全部", "nycu-guangfu": "交大", nthu: "清大", "nycu-yangming": "陽明" };
-      function feedCol(school) { return { t: "feed", follow: "all", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
+      function feedCol(school) { return { t: "feed", kind: "all", follow: "all", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
       function followCol() { var c = feedCol("all"); c.follow = "on"; return c; }
       function defaultCols() { return [feedCol("nycu-guangfu"), feedCol("nthu"), feedCol("nycu-yangming")]; }
       function isLegacyDefaultFeed(c, school) {
-        return c && c.t === "feed" && c.school === school && (c.follow || "all") === "all" &&
+        return c && c.t === "feed" && c.school === school && (c.follow || "all") === "all" && (c.kind || "all") === "all" &&
           (c.platform || "all") === "all" && (c.cat || "all") === "all" &&
           (c.org || "all") === "all" && !(c.q || "");
       }
@@ -642,7 +645,7 @@
               }
               if (c && (c.t === "events" || c.t === "stories")) return { t: c.t };
               if (c && c.t === "feed") return {
-                t: "feed", follow: c.follow === "on" ? "on" : "all",
+                t: "feed", kind: c.kind === "events" ? "events" : "all", follow: c.follow === "on" ? "on" : "all",
                 school: c.school === "nycu" ? "nycu-guangfu" : c.school === "both" ? "all" : (SCHOOL_L[c.school] ? c.school : "all"),
                 platform: c.platform || "all", cat: c.cat || "all",
                 org: c.org || "all", q: typeof c.q === "string" ? c.q : ""
@@ -710,8 +713,8 @@
       function colTitle(c) {
         if (c.t === "events") return { label: "即將活動", dot: "events" };
         if (c.t === "stories") return { label: "限時動態", dot: "stories" };
-        if (c.follow === "on") return {
-          label: "追蹤" + (c.school === "all" ? "" : "・" + SCHOOL_L[c.school]),
+        if (c.follow === "on" || c.kind === "events") return {
+          label: (c.follow === "on" ? "追蹤" : "活動貼文") + (c.school === "all" ? "" : "・" + SCHOOL_L[c.school]),
           dot: c.school === "all" ? "all" : c.school.indexOf("nycu-") === 0 ? "nycu" : c.school
         };
         return {
@@ -720,7 +723,7 @@
         };
       }
       function colFilterActive(c) {
-        return c.t === "feed" && (c.follow === "on" || c.school !== "all" || c.platform !== "all" || c.cat !== "all" || c.org !== "all" || !!c.q);
+        return c.t === "feed" && (c.kind === "events" || c.follow === "on" || c.school !== "all" || c.platform !== "all" || c.cat !== "all" || c.org !== "all" || !!c.q);
       }
       function menuRow(label, key, opts, cur) {
         return '<div class="filter-row"><span class="label">' + label + '</span><span class="fgroup">' +
@@ -732,7 +735,8 @@
       function colMenu(c, sourceIdx) {
         var inner = c.t !== "feed" ? "" :
           '<input class="cf-q" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋這一欄" value="' + esc(c.q) + '">' +
-          menuRow("追蹤", "follow", FOLLOW_OPTS, c.follow || "all") +
+          menuRow("貼文", "kind", KIND_OPTS, c.kind || "all") +
+          menuRow("單位", "follow", FOLLOW_OPTS, c.follow || "all") +
           (sourceIdx < 0 ? "" : menuRow("學校", "school", SCHOOL_OPTS, c.school)) +
           menuRow("平台", "platform", PLAT_OPTS, c.platform) +
           menuRow("類型", "cat", CAT_OPTS, c.cat) +
@@ -1073,7 +1077,7 @@
           // 桌機：篩選在各欄選單；手機：只有貼文欄能篩
           ff.hidden = wide || !cur || cur.t !== "feed";
           ff.classList.toggle("fon",
-            state.follow === "on" || state.school !== "all" || state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
+            state.kind === "events" || state.follow === "on" || state.school !== "all" || state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
         }
         Object.keys(groups).forEach(function (key) {
           groups[key].options.forEach(function (opt) {
@@ -1102,7 +1106,7 @@
           seededFromUrl = false;
           var ci = wide ? viewCols.findIndex(function (view) { return view.col.t === "feed"; }) : 0;
           if (ci >= 0) {
-            ["follow", "school", "platform", "cat", "org", "q"].forEach(function (k) { viewCols[ci].col[k] = state[k]; });
+            ["kind", "follow", "school", "platform", "cat", "org", "q"].forEach(function (k) { viewCols[ci].col[k] = state[k]; });
             activeCol = ci;
             if (viewCols[ci].source >= 0) saveCols();
           }
@@ -1893,7 +1897,7 @@
       ["24h", "24 小時"], ["3d", "3 天"], ["7d", "7 天"], ["30d", "1 個月"],
       ["upcoming", "未來全部"], ["all", "全部"]
     ], "time");
-    buildChips("f-follow", [["all", "全部"], ["on", "只看追蹤"]], "follow");
+    buildChips("f-follow", [["all", "所有單位"], ["on", "已追蹤單位"]], "follow");
     buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
     buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
@@ -2318,7 +2322,7 @@
         host.appendChild(b);
       });
     }
-    buildChips("f-follow", [["all", "全部"], ["on", "只看追蹤"]], "follow");
+    buildChips("f-follow", [["all", "所有單位"], ["on", "已追蹤單位"]], "follow");
     buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
     buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
