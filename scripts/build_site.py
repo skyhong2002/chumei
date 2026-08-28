@@ -1406,8 +1406,20 @@ def cache_post_image(sid, pid, url):
 FEED_PLACEHOLDER_TEXTS = {"（純圖片貼文，內容見海報）"}
 
 
-def _feed_dedupe_key(text):
-    return re.sub(r"\W+", "", text or "")[:80]
+def _feed_norm_text(text):
+    """去掉 @帳號、#標籤、網址與標點後的純文字，用來比對跨平台重複貼文。"""
+    t = re.sub(r"https?://\S+|[@#]\S+", " ", text or "")
+    return re.sub(r"\W+", "", t).casefold()
+
+
+def _feed_same_post(a, b):
+    if not a or not b:
+        return False
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    if len(short) >= 40 and short[:120] in long_:
+        return True
+    from difflib import SequenceMatcher
+    return SequenceMatcher(None, a[:400], b[:400]).ratio() > 0.85
 
 
 def build_posts_data(events, sid_to_entry=None):
@@ -1495,12 +1507,14 @@ def build_posts_data(events, sid_to_entry=None):
         })
     posts.sort(key=lambda p: p.get("posted_at") or "", reverse=True)
     # 同一單位在 IG／Threads／FB 貼同一篇：只留最新的一則
-    seen_text, deduped = set(), []
+    kept_by_org, deduped = {}, []
     for post in posts:
-        dk = (post.get("org_id") or post["source_id"], _feed_dedupe_key(post["text"]))
-        if post["text"] and dk in seen_text:
+        org_key = post.get("org_id") or post["source_id"]
+        norm = _feed_norm_text(post["text"])
+        if norm and any(_feed_same_post(norm, prev) for prev in kept_by_org.get(org_key, [])):
             continue
-        seen_text.add(dk)
+        if norm:
+            kept_by_org.setdefault(org_key, []).append(norm)
         deduped.append(post)
     posts = deduped[:FEED_LIMIT]
     (SITE / "data").mkdir(parents=True, exist_ok=True)
