@@ -3,8 +3,9 @@
 NYCU handles credentials and consent. Chumei stores only a local user mapping
 and opaque browser sessions; it never receives or stores a school password.
 
-Public routes (Caddy proxies /auth/*, /account*, /submit* to this service):
-  GET  /account/              account/login page
+Public routes (Caddy proxies /auth/*, /account*, /submit*, /@* to this service):
+  GET  /@{handle}             public profile (display name, follows, going events)
+  GET  /account/              account settings / login page
   GET  /auth/{provider}/start     begin Authorization Code + PKCE flow (nycu / google)
   GET  /auth/{provider}/callback  exchange code and create/login local account
   GET  /auth/me               current session
@@ -309,6 +310,30 @@ class AuthStore:
                 conn.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS users_calendar_token ON users(calendar_token)"
                 )
+            if "profile_public" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN profile_public INTEGER NOT NULL DEFAULT 1")
+            # 舊帳號補代號：每個帳號都要有公開個人頁的網址
+            for row in conn.execute(
+                "SELECT id, display_name, email FROM users WHERE handle IS NULL OR handle = ''"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE users SET handle = ? WHERE id = ?",
+                    (self._free_handle(conn, row["email"] or row["display_name"]), row["id"]),
+                )
+
+    @staticmethod
+    def _free_handle(conn, seed: str | None) -> str:
+        base = re.sub(r"[^a-z0-9_]+", "_", (seed or "").split("@", 1)[0].lower()).strip("_")[:20]
+        if len(base) < 3:
+            base = (base + "_user")[:20]
+        if base in RESERVED_HANDLES:
+            base = base[:18] + "_1"
+        candidate, n = base, 1
+        while conn.execute("SELECT 1 FROM users WHERE handle = ?", (candidate,)).fetchone():
+            n += 1
+            suffix = str(n)
+            candidate = base[:20 - len(suffix)] + suffix
+        return candidate
 
     def cleanup(self, now: int | None = None) -> None:
         now = now or _now()
@@ -373,9 +398,9 @@ class AuthStore:
 
             user_id = str(uuid.uuid4())
             conn.execute(
-                "INSERT INTO users(id, display_name, email, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (user_id, display_name, email, now, now),
+                "INSERT INTO users(id, display_name, email, handle, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, display_name, email, self._free_handle(conn, email or subject), now, now),
             )
             conn.execute(
                 "INSERT INTO oauth_identities(provider, subject, user_id, email, created_at, updated_at) "
@@ -472,22 +497,33 @@ class AuthStore:
             )
             return True
 
-    def update_profile(self, user_id: str, display_name: str, handle: str | None) -> str:
-        """回傳 ok / handle_taken。handle 為 None 表示清空。"""
+    def update_profile(self, user_id: str, display_name: str, handle: str, public: bool) -> str:
+        """回傳 ok / handle_taken。"""
         now = _now()
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            if handle:
-                taken = conn.execute(
-                    "SELECT 1 FROM users WHERE handle = ? AND id <> ?", (handle, user_id)
-                ).fetchone()
-                if taken:
-                    return "handle_taken"
+            taken = conn.execute(
+                "SELECT 1 FROM users WHERE handle = ? AND id <> ?", (handle, user_id)
+            ).fetchone()
+            if taken:
+                return "handle_taken"
             conn.execute(
-                "UPDATE users SET display_name = ?, handle = ?, updated_at = ? WHERE id = ?",
-                (display_name, handle, now, user_id),
+                "UPDATE users SET display_name = ?, handle = ?, profile_public = ?, updated_at = ? "
+                "WHERE id = ?",
+                (display_name, handle, 1 if public else 0, now, user_id),
             )
             return "ok"
+
+    def user_by_handle(self, handle: str) -> dict | None:
+        if not handle:
+            return None
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT id, display_name, handle, profile_public, created_at FROM users "
+                "WHERE handle = ?",
+                (handle.lower(),),
+            ).fetchone()
+        return dict(row) if row else None
 
     def calendar_token(self, user_id: str, rotate: bool = False) -> str:
         """每個帳號一組私密行事曆 token；rotate=True 換新（舊連結立即失效）。"""
@@ -532,7 +568,8 @@ class AuthStore:
         with self._connection() as conn:
             row = conn.execute(
                 """
-                SELECT u.id, u.display_name, u.email, u.handle, i.provider, i.subject
+                SELECT u.id, u.display_name, u.email, u.handle, u.profile_public, u.created_at,
+                       i.provider, i.subject
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
                 JOIN oauth_identities i ON i.user_id = u.id
@@ -946,22 +983,145 @@ def _going_html(going_ids: list[str]) -> str:
     return "".join(parts)
 
 
+def _avatar_html(user: dict, size: str = "") -> str:
+    initial = (user.get("display_name") or user.get("handle") or "竹")[:1].upper()
+    return f'<span class="profile-avatar{(" " + size) if size else ""}" aria-hidden="true">{html.escape(initial)}</span>'
+
+
+def _joined(user: dict) -> str:
+    try:
+        return time.strftime("%Y/%m", time.localtime(int(user.get("created_at") or 0)))
+    except (TypeError, ValueError, OverflowError):
+        return ""
+
+
+def _follow_chips_html(follows: list[dict], owner: bool) -> str:
+    if follows:
+        chips = []
+        for org in follows:
+            name = html.escape(org.get("name") or f"單位 {org['id']}")
+            chips.append(f'<a class="account-chip" href="/org/{org["id"]}/">{name}</a>')
+        return f'<div class="account-chips">{"".join(chips)}</div>'
+    if owner:
+        return '<p class="account-empty">還沒有追蹤任何單位。在貼文、活動卡或單位頁按 🔔 就會出現在這裡。</p>'
+    return '<p class="account-empty">還沒有追蹤任何單位。</p>'
+
+
+def _profile_html(
+    profile: dict,
+    viewer: dict | None,
+    following: list[dict],
+    going_ids: list[str],
+) -> str:
+    """公開個人頁 /@handle：名稱、代號、追蹤的單位、要去的活動。"""
+    owner = bool(viewer and viewer["id"] == profile["id"])
+    name = html.escape(profile.get("display_name") or "竹梅使用者")
+    handle = html.escape(profile.get("handle") or "")
+    joined = _joined(profile)
+    byid = _events_by_id()
+    today = time.strftime("%Y-%m-%d")
+    upcoming_n = sum(1 for eid in going_ids
+                     if eid in byid and str(byid[eid].get("start_at") or "")[:10] >= today)
+    actions = ""
+    if owner:
+        actions = ('<div class="profile-actions">'
+                   '<a class="btn account-action" href="/account/">編輯個人檔案</a>'
+                   '<button class="btn account-action profile-share" type="button" '
+                   f'data-url="https://chumei.observe.tw/@{handle}">分享個人頁</button></div>')
+    private_note = ""
+    if owner and not profile.get("profile_public"):
+        private_note = '<p class="account-hint">這個個人頁目前設為不公開，只有你看得到。可在<a href="/account/">帳號設定</a>改。</p>'
+    going_block = (_going_html(going_ids) if owner
+                   else _going_html([eid for eid in going_ids
+                                     if eid in byid and str(byid[eid].get("start_at") or "")[:10] >= today]))
+    content = f"""
+<section class="account-page profile-page">
+  <header class="profile-head">
+    {_avatar_html(profile, "lg")}
+    <div class="profile-id">
+      <h1>{name}</h1>
+      <p class="profile-handle">@{handle}{f'<span class="profile-joined">・{joined} 加入</span>' if joined else ''}</p>
+      <p class="profile-stats"><span><strong>{len(following)}</strong> 追蹤的單位</span><span><strong>{upcoming_n}</strong> 場要去</span></p>
+    </div>
+    {actions}
+  </header>
+  {private_note}
+  <section class="account-card account-section">
+    <h2>追蹤的單位{f'<span class="account-count">{len(following)}</span>' if following else ''}</h2>
+    {_follow_chips_html(following, owner)}
+  </section>
+  <section class="account-card account-section">
+    <h2>{'要去的活動' if owner else '要去的活動'}</h2>
+    {going_block}
+  </section>
+</section>
+"""
+    return page_shell(
+        f"{name}（@{handle}）｜竹梅活動觀測站",
+        f"{name} 在竹梅追蹤的單位與要去的活動。",
+        content,
+        canonical=f"https://chumei.observe.tw/@{handle}",
+    )
+
+
+def _login_card_html(nycu_ok: bool, google_ok: bool) -> str:
+    if nycu_ok or google_ok:
+        nycu_btn = ('<a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>'
+                    if nycu_ok else "")
+        google_btn = ('<a class="btn account-action" href="/auth/google/start">使用 Google 帳號登入</a>'
+                      if google_ok else "")
+        return f"""<section class="account-card">
+        <p class="eyebrow">OAuth-only account</p>
+        <h2>登入竹梅</h2>
+        <p>陽明交大成員請走學校單一入口；清大朋友、校友與其他人可用 Google 帳號登入。竹梅不會取得或儲存你的密碼。</p>
+        {nycu_btn}
+        {google_btn}
+        <p class="privacy-note">登入只取得穩定的帳號識別與 Email，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。</p>
+        </section>"""
+    return """<section class="account-card">
+        <p class="eyebrow">OAuth-only account</p>
+        <h2>登入功能設定中</h2>
+        <p>OAuth Client 尚未完成設定，請稍後再試。</p>
+        <span class="btn btn-primary account-action disabled" aria-disabled="true">登入竹梅</span>
+        </section>"""
+
+
 def _account_html(
     user: dict | None,
     nycu_ok: bool,
     google_ok: bool,
     *,
-    title: str = "帳號",
+    title: str = "帳號設定",
     message: str | None = None,
-    following: list[dict] | None = None,
-    going_ids: list[str] | None = None,
     my_submissions: list[dict] | None = None,
     identities: list[dict] | None = None,
     calendar_token: str | None = None,
     message_ok: bool = False,
 ) -> str:
+    """帳號設定 /account/：個人檔案、登入方式、行事曆、回報、登出。未登入＝登入頁。"""
     sections = []
     if user:
+        handle = html.escape(user.get("handle") or "")
+        name = html.escape(user.get("display_name") or "竹梅使用者")
+        public = bool(user.get("profile_public", 1))
+        # ---- 個人檔案
+        sections.append(f"""<section class="account-card account-section">
+        <h2>個人檔案</h2>
+        <div class="profile-row">{_avatar_html(user)}<div><strong>{name}</strong><span class="profile-handle">@{handle}</span></div>
+          <a class="account-bind" href="/@{handle}">查看個人頁 →</a></div>
+        <form method="post" action="/auth/profile" class="account-profile-form">
+          <label><span>顯示名稱</span><input name="display_name" maxlength="80" required value="{name}"></label>
+          <label><span>帳號代號</span><span class="account-handle-input"><span class="at">@</span>
+            <input name="handle" maxlength="20" pattern="[a-z0-9_]{{3,20}}" required autocapitalize="off" autocorrect="off"
+            spellcheck="false" value="{handle}"></span></label>
+          <p class="account-hint">代號限小寫英數與底線，3–20 字，全站唯一；個人頁網址是 chumei.observe.tw/@代號。</p>
+          <label class="account-check"><input type="checkbox" name="public" value="1"{' checked' if public else ''}>
+            <span>公開個人頁<small>其他人能看到你追蹤的單位與即將參加的活動；關掉後只有你自己看得到。</small></span></label>
+          <button class="btn btn-primary account-action" type="submit">儲存</button>
+        </form>
+        </section>""")
+
+        # ---- 登入方式
         idents = identities or []
         if not idents:
             idents = [{"provider": user.get("provider") or "nycu",
@@ -994,80 +1154,44 @@ def _account_html(
         elif google_ok:
             rows.append('<div><dt>Google</dt><dd><a class="account-bind" '
                         'href="/auth/google/start?link=1">綁定 Google 帳號 →</a></dd></div>')
-
         if "nycu" in by_provider and "google" in by_provider:
             status_line = "已綁定學校與 Google 帳號"
         elif "google" in by_provider:
-            status_line = "已使用 Google 帳號登入"
+            status_line = "以 Google 帳號登入"
         else:
-            status_line = "已使用陽明交大 OAuth 登入"
+            status_line = "以陽明交大 OAuth 登入"
         bind_hint = ("" if can_unlink else
                      '<p class="account-hint">綁定另一種登入方式後，用哪個帳號登入都會回到同一份追蹤與回報。</p>')
-        handle = html.escape(user.get("handle") or "")
-        handle_line = f'<p class="account-handle">@{handle}</p>' if handle else ""
-        sections.append(f"""<section class="account-card">
+        sections.append(f"""<section class="account-card account-section">
+        <h2>登入方式</h2>
         <div class="account-status"><span class="account-dot"></span>{status_line}</div>
-        <h2>{html.escape(user.get('display_name') or '竹梅使用者')}</h2>
-        {handle_line}
         <dl>{''.join(rows)}</dl>
         {bind_hint}
-        <details class="account-profile">
-          <summary>編輯名稱與帳號代號</summary>
-          <form method="post" action="/auth/profile" class="account-profile-form">
-            <label><span>顯示名稱</span><input name="display_name" maxlength="80" required
-              value="{html.escape(user.get('display_name') or '')}"></label>
-            <label><span>帳號代號</span><span class="account-handle-input"><span class="at">@</span>
-              <input name="handle" maxlength="20" pattern="[a-z0-9_]{{3,20}}" autocapitalize="off" autocorrect="off"
-              spellcheck="false" placeholder="留空＝不設定" value="{handle}"></span></label>
-            <p class="account-hint">代號限小寫英數與底線，3–20 字，全站唯一。</p>
-            <button class="btn btn-primary account-action" type="submit">儲存</button>
-          </form>
-        </details>
-        <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
         </section>""")
 
-        follows = following or []
-        if follows:
-            chips = []
-            for org in follows:
-                name = html.escape(org.get("name") or f"單位 {org['id']}")
-                chips.append(f'<a class="account-chip" href="/org/{org["id"]}/">{name}</a>')
-            follow_body = f'<div class="account-chips">{"".join(chips)}</div>'
-        else:
-            follow_body = '<p class="account-empty">還沒有追蹤任何單位。在貼文、活動卡或單位頁按 🔔 就會出現在這裡。</p>'
-        sections.append(f"""<section class="account-card account-section">
-        <h2>追蹤的單位{f'<span class="account-count">{len(follows)}</span>' if follows else ''}</h2>
-        {follow_body}
-        <p class="account-links"><a href="/source/">找更多單位 →</a><a href="/notify/">通知設定 →</a></p>
-        </section>""")
-
-        cal_block = ""
+        # ---- 行事曆
         if calendar_token:
             cal_owner = user.get("handle") or user.get("display_name") or ""
             cal_name = f"竹梅 {cal_owner} 已追蹤" if cal_owner else "竹梅 已追蹤"
             cal_url = f"https://chumei.observe.tw/auth/calendar/{html.escape(calendar_token)}.ics"
             webcal = cal_url.replace("https://", "webcal://", 1)
-            cal_block = f"""<details class="account-calendar">
-          <summary>訂閱到行事曆</summary>
-          <p class="account-hint">把這個私密連結加到 Google／Apple 行事曆，按過「我要去」的活動會自動出現、取消也會消失（行事曆每幾小時同步一次）。</p>
-          <div class="account-cal-row">
-            <input readonly value="{cal_url}" aria-label="行事曆訂閱連結" onclick="this.select()">
-            <a class="btn account-action" href="{webcal}">開啟 Apple 行事曆</a>
-            <a class="btn account-action" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">加到 Google 日曆</a>
-          </div>
-          <p class="account-hint">Apple 行事曆會自動命名為「{html.escape(cal_name)}」；Google 日曆一律拿網址當名稱，加入後請到該行事曆的設定把名稱改成
-            <code class="account-copy" title="點一下複製" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent)">{html.escape(cal_name)}</code>。</p>
-          <form method="post" action="/auth/calendar/rotate" class="account-unlink"
-            onsubmit="return confirm('換新連結後，舊連結會立即失效，要繼續嗎？')">
-            <button type="submit">連結外流了？換一組新的</button>
-          </form>
-        </details>"""
-        sections.append(f"""<section class="account-card account-section">
-        <h2>我要去的活動</h2>
-        {_going_html(going_ids or [])}
-        {cal_block}
+            sections.append(f"""<section class="account-card account-section">
+        <h2>行事曆訂閱</h2>
+        <p class="account-hint">把這個私密連結加到 Google／Apple 行事曆，按過「我要去」的活動會自動出現、取消也會消失（行事曆每幾小時同步一次）。</p>
+        <div class="account-cal-row">
+          <input readonly value="{cal_url}" aria-label="行事曆訂閱連結" onclick="this.select()">
+          <a class="btn account-action" href="{webcal}">開啟 Apple 行事曆</a>
+          <a class="btn account-action" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">加到 Google 日曆</a>
+        </div>
+        <p class="account-hint">Apple 行事曆會自動命名為「{html.escape(cal_name)}」；Google 日曆一律拿網址當名稱，加入後請到該行事曆的設定把名稱改成
+          <code class="account-copy" title="點一下複製" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent)">{html.escape(cal_name)}</code>。</p>
+        <form method="post" action="/auth/calendar/rotate" class="account-unlink"
+          onsubmit="return confirm('換新連結後，舊連結會立即失效，要繼續嗎？')">
+          <button type="submit">連結外流了？換一組新的</button>
+        </form>
         </section>""")
 
+        # ---- 回報
         subs = my_submissions or []
         if subs:
             sub_body = ('<ul class="submit-list">'
@@ -1080,34 +1204,25 @@ def _account_html(
         {sub_body}
         <p class="account-links"><a href="/submit/">回報新連結 →</a></p>
         </section>""")
-    elif nycu_ok or google_ok:
-        nycu_btn = ('<a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>'
-                    if nycu_ok else "")
-        google_btn = ('<a class="btn account-action" href="/auth/google/start">使用 Google 帳號登入</a>'
-                      if google_ok else "")
-        sections.append(f"""<section class="account-card">
-        <p class="eyebrow">OAuth-only account</p>
-        <h2>登入竹梅</h2>
-        <p>陽明交大成員請走學校單一入口；清大朋友、校友與其他人可用 Google 帳號登入。竹梅不會取得或儲存你的密碼。</p>
-        {nycu_btn}
-        {google_btn}
-        <p class="privacy-note">登入只取得穩定的帳號識別與 Email，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。</p>
-        </section>""")
+
+        sections.append('<form method="post" action="/auth/logout" class="account-logout">'
+                        '<button class="btn account-action" type="submit">登出</button></form>')
     else:
-        sections.append("""<section class="account-card">
-        <p class="eyebrow">OAuth-only account</p>
-        <h2>登入功能設定中</h2>
-        <p>OAuth Client 尚未完成設定，請稍後再試。</p>
-        <span class="btn btn-primary account-action disabled" aria-disabled="true">登入竹梅</span>
-        </section>""")
+        sections.append(_login_card_html(nycu_ok, google_ok))
 
     alert = (f'<div class="account-alert{" ok" if message_ok else ""}">{html.escape(message)}</div>'
              if message else "")
-    lede = "" if message else "<p>登入身分、追蹤的單位、要去的活動與回報進度都在這裡。</p>"
+    if message:
+        lede = ""
+    elif user:
+        lede = "<p>個人檔案、登入方式、行事曆訂閱與回報進度。</p>"
+    else:
+        lede = "<p>登入後可以追蹤單位、標記要去的活動、回報連結，並擁有自己的個人頁。</p>"
+    page_title = title if user or title != "帳號設定" else "登入"
     content = f"""
 <section class="account-page">
   <div class="hero">
-    <h1>{html.escape(title)}</h1>
+    <h1>{html.escape(page_title)}</h1>
     {lede}
   </div>
   {alert}
@@ -1115,8 +1230,8 @@ def _account_html(
 </section>
 """
     return page_shell(
-        f"{title}｜竹梅活動觀測站",
-        "管理你的竹梅帳號：登入、追蹤單位、參加標記與回報。",
+        f"{page_title}｜竹梅活動觀測站",
+        "管理你的竹梅帳號：登入方式、個人檔案、行事曆訂閱與回報。",
         content,
         canonical="https://chumei.observe.tw/account/",
     )
@@ -1178,13 +1293,25 @@ def create_app(
         "unlink_fail": "至少要保留一種登入方式，無法解除綁定。",
     }
 
+    async def profile_page(request: Request):
+        handle = str(request.path_params.get("handle") or "")
+        profile = store.user_by_handle(handle)
+        viewer = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not profile or (not profile.get("profile_public") and not (viewer and viewer["id"] == profile["id"])):
+            return _error_page("找不到這個個人頁", "沒有這個代號，或對方沒有公開個人頁。", 404)
+        if profile["handle"] != handle:
+            return RedirectResponse(f"/@{profile['handle']}", 301)
+        return HTMLResponse(_profile_html(
+            profile, viewer,
+            store.follow_snapshot(profile["id"])["following"],
+            store.event_snapshot(profile["id"])["going"],
+        ))
+
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         kwargs = {}
         if user:
             kwargs = {
-                "following": store.follow_snapshot(user["id"])["following"],
-                "going_ids": store.event_snapshot(user["id"])["going"],
                 "my_submissions": submissions.list_for_user(user["id"], 8),
                 "identities": store.identities_for_user(user["id"]),
                 "calendar_token": store.calendar_token(user["id"]),
@@ -1370,6 +1497,8 @@ def create_app(
                     "displayName": user["display_name"],
                     "email": user["email"],
                     "handle": user.get("handle"),
+                    "profileUrl": f"/@{user['handle']}" if user.get("handle") else None,
+                    "profilePublic": bool(user.get("profile_public", 1)),
                     "provider": user.get("provider") or "nycu",
                     "providers": [
                         i["provider"] for i in store.identities_for_user(user["id"])
@@ -1484,11 +1613,12 @@ def create_app(
         form = await request.form()
         display_name = " ".join(str(form.get("display_name") or "").split())[:80]
         handle = str(form.get("handle") or "").strip().lstrip("@").lower()
+        public = str(form.get("public") or "") in {"1", "on", "true"}
         if not display_name:
             return RedirectResponse("/account/?profile=bad_name", 303)
-        if handle and (not HANDLE_RE.fullmatch(handle) or handle in RESERVED_HANDLES):
+        if not HANDLE_RE.fullmatch(handle) or handle in RESERVED_HANDLES:
             return RedirectResponse("/account/?profile=bad_handle", 303)
-        outcome = store.update_profile(user["id"], display_name, handle or None)
+        outcome = store.update_profile(user["id"], display_name, handle, public)
         return RedirectResponse(f"/account/?profile={outcome}", 303)
 
     async def calendar_feed(request: Request):
@@ -1535,6 +1665,7 @@ def create_app(
 
     app = Starlette(
         routes=[
+            Route("/@{handle}", profile_page, methods=["GET"]),
             Route("/account", account, methods=["GET"]),
             Route("/account/", account, methods=["GET"]),
             Route("/submit", submit_page, methods=["GET"]),

@@ -99,6 +99,18 @@ class OrgDisplayNameTests(unittest.TestCase):
         self.assertEqual(build_site.org_display_name("新竹市文化局", "external"), "新竹市文化局")
 
 
+class StoryDisplayNameTests(unittest.TestCase):
+    def test_school_prefixes_are_hidden(self):
+        self.assertEqual(build_site.story_display_name("陽明交大竹韻口琴社"), "竹韻口琴社")
+        self.assertEqual(build_site.story_display_name("清大教育心理與諮商學系"), "教育心理與諮商學系")
+        self.assertEqual(build_site.story_display_name("國立清華大學學生會"), "學生會")
+        self.assertEqual(build_site.story_display_name("交大電子競技社"), "電子競技社")
+
+    def test_non_school_name_and_empty_fallback_are_preserved(self):
+        self.assertEqual(build_site.story_display_name("陽明愛杏管弦樂團"), "陽明愛杏管弦樂團")
+        self.assertEqual(build_site.story_display_name("國立清華大學"), "國立清華大學")
+
+
 class PostCampusTests(unittest.TestCase):
     def test_directory_campus_wins_over_event_venue(self):
         self.assertEqual(

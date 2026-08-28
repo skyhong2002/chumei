@@ -181,8 +181,6 @@ class SubmissionApiTests(unittest.TestCase):
         self.assertIn("我的回報", page.text)
         self.assertIn("example.org/mine", page.text)
         self.assertIn("備註：我的備註", page.text)
-        self.assertIn("追蹤的單位", page.text)
-        self.assertIn("我要去的活動", page.text)
         self.assertNotIn('name="url"', page.text)  # 表單搬去 /submit/
 
 

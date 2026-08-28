@@ -304,13 +304,46 @@ class AuthServerTests(unittest.TestCase):
         self._login()
         self.client.put("/auth/follows/42", json={"name": "測試熱舞社"})
         self.client.put("/auth/events/evt_dashboard_test")
-        page = self.client.get("/account/").text
+        page = self.client.get("/@student123").text
         self.assertIn("追蹤的單位", page)
         self.assertIn("測試熱舞社", page)
         self.assertIn('href="/org/42/"', page)
-        self.assertIn("我要去的活動", page)
-        self.assertIn("我的回報", page)
-        self.assertIn("登出", page)
+        self.assertIn("要去的活動", page)
+        self.assertIn("編輯個人檔案", page)
+        settings = self.client.get("/account/").text
+        self.assertIn("我的回報", settings)
+        self.assertIn("登出", settings)
+        self.assertIn('href="/@student123"', settings)
+
+    def test_profile_is_public_unless_disabled(self):
+        self._login()
+        self.assertEqual(self.client.get("/auth/me").json()["user"]["handle"], "student123")
+        anon = TestClient(self.client.app)
+        self.assertEqual(anon.get("/@student123").status_code, 200)
+        self.assertNotIn("編輯個人檔案", anon.get("/@student123").text)
+        self.assertEqual(anon.get("/@Student123", follow_redirects=False).status_code, 301)
+        self.assertEqual(anon.get("/@nobody").status_code, 404)
+        self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "student123"})
+        self.assertEqual(anon.get("/@student123").status_code, 404)
+        self.assertEqual(self.client.get("/@student123").status_code, 200)
+        self.assertIn("不公開", self.client.get("/@student123").text)
+
+    def test_handles_are_auto_assigned_and_unique(self):
+        self._login()
+        self.client.cookies.clear()
+        self._google_login()
+        me = self.client.get("/auth/me").json()["user"]
+        self.assertEqual(me["handle"], "friend")
+        self.assertEqual(me["profileUrl"], "/@friend")
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            conn.execute("UPDATE users SET handle = NULL WHERE handle = 'friend'")
+            conn.execute("INSERT INTO users(id, display_name, email, handle, created_at, updated_at) "
+                         "VALUES ('x', 'Dup', 'student123@other.tw', NULL, 1, 1)")
+            conn.commit()
+        auth_server.AuthStore(self.db_path, self.directory_path)  # 重新初始化會補代號
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            handles = sorted(r[0] for r in conn.execute("SELECT handle FROM users"))
+        self.assertEqual(handles, ["friend", "student123", "student1232"])
 
     def _link(self, provider="google"):
         start = self.client.get(
@@ -393,7 +426,7 @@ class AuthServerTests(unittest.TestCase):
     def test_profile_handle_is_unique_and_validated(self):
         self._login()
         ok = self.client.post(
-            "/auth/profile", data={"display_name": " Sky  Hong ", "handle": "@Sky_01"},
+            "/auth/profile", data={"display_name": " Sky  Hong ", "handle": "@Sky_01", "public": "1"},
             follow_redirects=False,
         )
         self.assertEqual(ok.headers["location"], "/account/?profile=ok")
@@ -401,6 +434,7 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(me["displayName"], "Sky Hong")
         self.assertEqual(me["handle"], "sky_01")
         self.assertIn("@sky_01", self.client.get("/account/").text)
+        self.assertEqual(self.client.get("/@sky_01").status_code, 200)
         bad = self.client.post(
             "/auth/profile", data={"display_name": "Sky", "handle": "no-dash"},
             follow_redirects=False,

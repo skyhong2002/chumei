@@ -293,6 +293,29 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .account-cal-row input { flex: 1 1 260px; font-size: 0.82rem; }
 .account-cal-row .btn { white-space: nowrap; }
 .account-copy { cursor: copy; padding: 1px 6px; border-radius: 6px; background: var(--color-surface-soft); font-size: 0.86em; }
+.profile-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 0 0 20px; }
+.profile-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 44px; height: 44px; border-radius: 50%; font-weight: 700; font-size: 1.1rem;
+  color: #fff; background: linear-gradient(135deg, var(--chumei-bamboo, #2f8f5b), var(--chumei-plum, #7a3fb8));
+}
+.profile-avatar.lg { width: 72px; height: 72px; font-size: 1.8rem; }
+.profile-id { flex: 1 1 200px; min-width: 0; }
+.profile-id h1 { margin: 0; font-size: 1.6rem; line-height: 1.2; }
+.profile-handle { margin: 2px 0 0; color: var(--color-text-muted); font-size: 0.95rem; }
+.profile-joined { color: var(--color-text-muted); font-size: 0.85rem; }
+.profile-stats { display: flex; gap: 16px; margin: 8px 0 0; font-size: 0.9rem; color: var(--color-text-secondary); }
+.profile-stats strong { color: var(--color-text-primary); margin-right: 3px; }
+.profile-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.profile-row { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; flex-wrap: wrap; }
+.profile-row > div { display: flex; flex-direction: column; min-width: 0; }
+.profile-row .profile-handle { margin: 0; font-size: 0.86rem; }
+.profile-row .account-bind { margin-left: auto; }
+.account-check { display: flex !important; flex-direction: row !important; gap: 10px; align-items: flex-start; font-size: 0.92rem !important; color: var(--color-text-primary) !important; }
+.account-check input { margin-top: 3px; }
+.account-check small { display: block; color: var(--color-text-muted); font-size: 0.82rem; margin-top: 2px; }
+.account-logout { margin-top: 4px; }
+@media (max-width: 640px) { .profile-actions { width: 100%; } .profile-actions .btn { flex: 1; text-align: center; } }
 .story-tools { display: flex; justify-content: flex-end; margin: 4px 0 8px; }
 .story-tools .fchip[aria-pressed="true"] { border-color: var(--color-text-brand); color: var(--color-text-brand); }
 .account-empty { color: var(--color-text-muted); font-size: 0.92rem; margin: 0; }

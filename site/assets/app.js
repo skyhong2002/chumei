@@ -143,11 +143,21 @@
       return r.ok ? r.json() : null;
     }).then(function (data) {
       if (!data || !data.authenticated) return;
+      var profileUrl = data.user && data.user.profileUrl;
       document.querySelectorAll('a[href="/account/"]').forEach(function (a) {
         var label = a.querySelector(".nav-label");
         if (label) label.textContent = "帳號";
         else a.textContent = "帳號";
+        if (profileUrl) a.href = profileUrl;
       });
+      if (profileUrl && menu && !menu.querySelector('a[href="/account/"]')) {
+        var settingsMenu = document.createElement("a");
+        settingsMenu.href = "/account/";
+        settingsMenu.textContent = "帳號設定";
+        var profileMenu = menu.querySelector('a[href="' + profileUrl + '"]');
+        if (profileMenu && profileMenu.parentNode) profileMenu.parentNode.insertBefore(settingsMenu, profileMenu.nextSibling);
+        else menu.appendChild(settingsMenu);
+      }
     }).catch(function () {});
     document.querySelectorAll('a[href="/notify/"]').forEach(function (a) {
       if ((a.textContent || "").trim() === "推播與追蹤") a.textContent = "App 通知";
@@ -155,9 +165,9 @@
     });
   })();
 
-  // ---- 分享按鈕（詳情頁）：行動裝置系統分享，桌機複製連結＋LINE ----
+  // ---- 分享按鈕（詳情頁／個人頁）：行動裝置系統分享，桌機複製連結＋LINE ----
   document.addEventListener("click", function (ev) {
-    var b = ev.target.closest(".btn-share");
+    var b = ev.target.closest(".btn-share, .profile-share");
     if (!b) return;
     var url = b.dataset.url, title = b.dataset.title;
     if (navigator.share) {
@@ -791,7 +801,7 @@
             (s.is_video ? '<span class="sc-video">▶</span>' : "") +
             '<span class="sc-meta">' +
             (s.avatar ? '<img class="sc-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
-            '<span class="sc-who"><strong>' + esc(s.name) + "</strong>" + ago(s.taken_at) + "</span></span></button>";
+            '<span class="sc-who"><strong>' + esc(storyDisplayName(s.name)) + "</strong>" + ago(s.taken_at) + "</span></span></button>";
         }).join("") + "</div>";
       }
       function colBody(c, list) {
@@ -1440,7 +1450,7 @@
               '<span class="story-ring ring-' + esc(g[0].school) + '">' +
               '<img src="' + esc(g[0].media) + '" alt="">' +
               (g.length > 1 ? '<span class="story-count">' + g.length + "</span>" : "") +
-              '</span><span class="story-name">' + esc(g[0].name) + "</span></button>";
+              '</span><span class="story-name">' + esc(storyDisplayName(g[0].name)) + "</span></button>";
           }).join("");
           strip.addEventListener("click", function (ev) {
             var b = ev.target.closest(".story-item");
@@ -1488,7 +1498,7 @@
               (s.is_video ? '<span class="sc-video">▶</span>' : "") +
               '<span class="sc-meta">' +
               (s.avatar ? '<img class="sc-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
-              '<span class="sc-who"><strong>' + esc(s.name) + "</strong>" + ago(s.taken_at) + "</span></span></button>";
+              '<span class="sc-who"><strong>' + esc(storyDisplayName(s.name)) + "</strong>" + ago(s.taken_at) + "</span></span></button>";
           }).join("");
           wall.addEventListener("click", function (ev) {
             var b = ev.target.closest(".story-card");
@@ -1740,7 +1750,7 @@
           }).join("");
           lb.querySelector(".slb-head").innerHTML =
             (s.avatar ? '<img class="slb-avatar" src="' + esc(s.avatar) + '" alt="">' : "") +
-            '<span class="who"><strong>' + esc(s.name || s.username) + '</strong><span class="sub">@' + esc(s.username) + '・' + ago(s.taken_at) + "</span></span>" +
+            '<span class="who"><strong>' + esc(storyDisplayName(s.name || s.username)) + '</strong><span class="sub">@' + esc(s.username) + '・' + ago(s.taken_at) + "</span></span>" +
             '<button class="slb-pause" aria-label="暫停播放" aria-pressed="false">Ⅱ</button>';
           lb.querySelector(".slb-media").innerHTML = '<img src="' + esc(s.media) + '" alt="">';
           lb.querySelector(".slb-ig-link").href = s.ig_url;
@@ -1814,6 +1824,13 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
+  }
+
+  function storyDisplayName(name) {
+    var raw = String(name || "").trim();
+    if (!raw) return raw;
+    var body = raw.replace(/^(?:(?:國立)?(?:陽明交通大學|陽明大學|交通大學|清華大學)|陽明交大|清大|交大|NYCU|NCTU|NTHU)[\s・｜|／/-]*/i, "").trim();
+    return body || raw;
   }
   function ongoingLabel(e) {
     // 跨日進行中的活動（展覽、申請期間）：顯示「進行中」而非幾個月前的開始日

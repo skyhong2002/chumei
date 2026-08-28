@@ -971,6 +971,17 @@ def org_display_name(name, school, campus=None):
     return prefix + body
 
 
+def story_display_name(name):
+    """限動卡片已用外圈顏色表示校別，畫面名稱不再重複學校前綴。"""
+    raw = str(name or "").strip()
+    if not raw:
+        return raw
+    pattern = (r"^(?:(?:國立)?(?:陽明交通大學|陽明大學|交通大學|清華大學)|"
+               r"陽明交大|清大|交大|NYCU|NCTU|NTHU)[\s・｜|／/-]*")
+    body = re.sub(pattern, "", raw, count=1, flags=re.I).strip()
+    return body or raw
+
+
 def _org_sim(a, b):
     if not a or not b:
         return 0
@@ -1692,7 +1703,7 @@ def prerender_stories():
             + ('<span class="sc-video">▶</span>' if s.get("is_video") else "") +
             '<span class="sc-meta">'
             + (f'<img class="sc-avatar" src="{esc(s["avatar"])}" alt="">' if s.get("avatar") else "") +
-            f'<span class="sc-who"><strong>{esc(s["name"])}</strong>{ago(s["taken_at"])}</span></span></button>'
+            f'<span class="sc-who"><strong>{esc(story_display_name(s["name"]))}</strong>{ago(s["taken_at"])}</span></span></button>'
             for i, s in enumerate(flat))
     _inject_ssr(SITE / "stories" / "index.html", "ssr-stories", body)
     print(f"prerender: {len(flat)} stories into stories/index.html")
