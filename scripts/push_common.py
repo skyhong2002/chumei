@@ -15,11 +15,19 @@ publish_push 讀取兼清理失效 endpoint）。每筆訂閱帶偏好（prefs�
   (學校=nycu) AND (類型∈{表演,展覽}) AND NOT(費用=付費)
 
 orgs 與 rules 都空＝所有新活動都通知。舊版平鋪格式會自動轉成單一規則。
+
+訂閱可綁竹梅帳號（record["user_id"]，由 push_server 用 session cookie 解析
+state/auth.sqlite3）。綁定後：
+  - 發送時 orgs 以帳號目前的追蹤清單為準（任一裝置按鈴鐺，所有裝置都生效）
+  - mode／rules 儲存時同步到同帳號的其他裝置
+  - 「我要去」的活動前一天會收到提醒（publish_push）
 """
 
 import fcntl
 import hashlib
 import json
+import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -31,6 +39,64 @@ LOCK_PATH = PUSH_DIR / "subscriptions.lock"
 VAPID_KEY_PATH = PUSH_DIR / "vapid_private.pem"
 SOURCES_PATH = ROOT / "site" / "data" / "sources.json"
 VAPID_SUB = "mailto:chumei@observe.tw"
+AUTH_DB_PATH = ROOT / "state" / "auth.sqlite3"
+SESSION_COOKIE = "chumei_session"
+
+
+# ---- 帳號（唯讀查 auth_server 的 SQLite） ----
+
+def _auth_db_path():
+    return Path(load_env().get("CHUMEI_AUTH_DATABASE") or AUTH_DB_PATH)
+
+
+def _auth_query(sql, params=()):
+    path = _auth_db_path()
+    if not path.exists():
+        return []
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5) as conn:
+            conn.row_factory = sqlite3.Row
+            return conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        return []
+
+
+def session_user_id(raw_token):
+    """session cookie → user_id；無效／過期回 None。"""
+    if not raw_token:
+        return None
+    token_hash = hashlib.sha256(str(raw_token).encode("utf-8")).hexdigest()
+    rows = _auth_query(
+        "SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?",
+        (token_hash, int(time.time())),
+    )
+    return rows[0]["user_id"] if rows else None
+
+
+def account_follows():
+    """{user_id: [{"id", "name"}]} — 有追蹤紀錄的帳號。"""
+    out = {}
+    for row in _auth_query("SELECT user_id, org_id, org_name FROM user_org_follows ORDER BY created_at"):
+        out.setdefault(row["user_id"], []).append({"id": row["org_id"], "name": row["org_name"]})
+    return out
+
+
+def account_going():
+    """{user_id: [event_id, ...]} — 「我要去」標記。"""
+    out = {}
+    for row in _auth_query("SELECT user_id, event_id FROM user_event_going ORDER BY created_at"):
+        out.setdefault(row["user_id"], []).append(row["event_id"])
+    return out
+
+
+def effective_prefs(record, follows):
+    """綁帳號的訂閱：追蹤單位以帳號現況為準（多裝置一致）；未綁維持裝置偏好。"""
+    prefs = record.get("prefs") or {}
+    user_id = record.get("user_id")
+    if user_id and user_id in follows:
+        prefs = dict(prefs)
+        prefs["orgs"] = follows[user_id]
+    return prefs
 
 
 # ---- 儲存 ----
@@ -149,8 +215,12 @@ def normalize_prefs(raw):
     return {"mode": mode, "orgs": orgs, "rules": rules}
 
 
-def upsert_sub(subscription, prefs=None, migrate_from=None, ua=""):
-    """新增/更新訂閱；migrate_from 時把舊 endpoint 的偏好搬到新 endpoint。"""
+def upsert_sub(subscription, prefs=None, migrate_from=None, ua="", user_id=None):
+    """新增/更新訂閱；migrate_from 時把舊 endpoint 的偏好搬到新 endpoint。
+
+    user_id：字串＝綁定該帳號；""＝明確解除（瀏覽器已登出）；None＝不動。
+    綁帳號且帶 prefs 時，mode／rules 會同步到同帳號的其他裝置。
+    """
     endpoint = subscription["endpoint"]
     with subs_lock():
         data = load_subs()
@@ -167,7 +237,18 @@ def upsert_sub(subscription, prefs=None, migrate_from=None, ua=""):
         record["updated_at"] = now_iso()
         if ua:
             record["ua"] = str(ua)[:200]
-        data["subs"][sub_key(endpoint)] = record
+        if user_id is not None:
+            if user_id:
+                record["user_id"] = str(user_id)
+            else:
+                record.pop("user_id", None)
+        key = sub_key(endpoint)
+        data["subs"][key] = record
+        if record.get("user_id") and prefs is not None:
+            for other_key, other in data["subs"].items():
+                if other_key != key and other.get("user_id") == record["user_id"]:
+                    other["prefs"] = dict(other.get("prefs") or {},
+                                          mode=record["prefs"]["mode"], rules=record["prefs"]["rules"])
         save_subs(data)
         return record
 
@@ -190,16 +271,20 @@ def subscription_stats():
     records = list(load_subs().get("subs", {}).values())
     with_orgs = 0
     with_rules = 0
+    linked = 0
     for record in records:
         prefs = record.get("prefs") or {}
         if prefs.get("orgs"):
             with_orgs += 1
         if prefs.get("rules"):
             with_rules += 1
+        if record.get("user_id"):
+            linked += 1
     return {
         "devices": len(records),
         "withOrganizations": with_orgs,
         "withRules": with_rules,
+        "linked": linked,
     }
 
 

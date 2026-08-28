@@ -4,8 +4,10 @@
 端點：
   GET  /push/config       → {publicKey}（VAPID 公鑰，前端 subscribe 用）
   POST /push/subscribe    → {subscription, prefs?, migrate_from?}；新訂閱回發歡迎通知
+                            帶竹梅 session cookie 就把訂閱綁到帳號（登出狀態則解除）
   POST /push/unsubscribe  → {endpoint}
-  POST /push/status       → {endpoint} → {subscribed, prefs}（UI 還原狀態用）
+  POST /push/status       → {endpoint} → {subscribed, prefs, linked}（UI 還原狀態用；
+                            同時依 cookie 校正綁定）
   GET  /push/stats        → 匿名推播裝置／偏好計數
   POST /push/test         → {endpoint}；重發測試通知
 
@@ -69,6 +71,7 @@ async def subscribe(request):
         prefs=prefs,
         migrate_from=body.get("migrate_from"),
         ua=request.headers.get("user-agent", ""),
+        user_id=pc.session_user_id(request.cookies.get(pc.SESSION_COOKIE)) or "",
     )
     if not existed and not body.get("migrate_from"):
         try:
@@ -78,7 +81,7 @@ async def subscribe(request):
             return bad_request("endpoint rejected by push service")
         except Exception as exc:  # 歡迎通知失敗不擋訂閱本身
             print(f"push: welcome push failed: {exc}")
-    return JSONResponse({"ok": True, "prefs": record["prefs"]})
+    return JSONResponse({"ok": True, "prefs": record["prefs"], "linked": bool(record.get("user_id"))})
 
 
 async def unsubscribe(request):
@@ -103,7 +106,11 @@ async def status(request):
     record = pc.get_sub(endpoint)
     if not record:
         return JSONResponse({"ok": True, "subscribed": False})
-    return JSONResponse({"ok": True, "subscribed": True, "prefs": record["prefs"]})
+    user_id = pc.session_user_id(request.cookies.get(pc.SESSION_COOKIE)) or ""
+    if (record.get("user_id") or "") != user_id:
+        record = pc.upsert_sub(record["sub"], user_id=user_id)
+    return JSONResponse({"ok": True, "subscribed": True, "prefs": record["prefs"],
+                         "linked": bool(record.get("user_id"))})
 
 
 async def stats(request):

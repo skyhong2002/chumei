@@ -174,7 +174,7 @@ class StoreTest(unittest.TestCase):
         )
         self.assertEqual(
             pc.subscription_stats(),
-            {"devices": 3, "withOrganizations": 1, "withRules": 1},
+            {"devices": 3, "withOrganizations": 1, "withRules": 1, "linked": 0},
         )
 
 
@@ -236,3 +236,94 @@ class EndToEndCryptoTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AccountBindingTest(unittest.TestCase):
+    """訂閱綁帳號：偏好跨裝置同步、追蹤以帳號為準、session 解析、「我要去」提醒。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        tmp_path = Path(self.tmp.name)
+        self._orig = (pc.PUSH_DIR, pc.SUBS_PATH, pc.LOCK_PATH, pc.AUTH_DB_PATH)
+        pc.PUSH_DIR = tmp_path
+        pc.SUBS_PATH = tmp_path / "subscriptions.json"
+        pc.LOCK_PATH = tmp_path / "subscriptions.lock"
+        pc.AUTH_DB_PATH = tmp_path / "auth.sqlite3"
+
+    def tearDown(self):
+        pc.PUSH_DIR, pc.SUBS_PATH, pc.LOCK_PATH, pc.AUTH_DB_PATH = self._orig
+        self.tmp.cleanup()
+
+    @staticmethod
+    def sub(n):
+        return {"endpoint": f"https://push.example/{n}", "keys": {"p256dh": "k", "auth": "a"}}
+
+    def test_prefs_propagate_across_devices_of_same_account(self):
+        pc.upsert_sub(self.sub("a"), prefs={"mode": "custom", "rules": [{"cats": ["演講"]}]}, user_id="u1")
+        pc.upsert_sub(self.sub("b"), prefs={"mode": "all"}, user_id="u1")
+        pc.upsert_sub(self.sub("c"), prefs={"mode": "custom", "rules": [{"cats": ["表演"]}]}, user_id="u2")
+        self.assertEqual(pc.get_sub(self.sub("a")["endpoint"])["prefs"]["mode"], "all")
+        self.assertEqual(pc.get_sub(self.sub("c")["endpoint"])["prefs"]["mode"], "custom")
+        # 登出後 subscribe → 解除綁定；None → 不動
+        pc.upsert_sub(self.sub("a"), user_id="")
+        self.assertNotIn("user_id", pc.get_sub(self.sub("a")["endpoint"]))
+        pc.upsert_sub(self.sub("b"), prefs=None, user_id=None)
+        self.assertEqual(pc.get_sub(self.sub("b")["endpoint"])["user_id"], "u1")
+        self.assertEqual(pc.subscription_stats()["linked"], 2)
+
+    def test_effective_prefs_use_account_follows(self):
+        record = {"user_id": "u1", "prefs": pc.normalize_prefs({"mode": "following", "orgs": []})}
+        follows = {"u1": [{"id": 5, "name": "電機系學會"}]}
+        self.assertTrue(pc.event_matches(event(), pc.effective_prefs(record, follows), ORG_SIDS))
+        self.assertFalse(pc.event_matches(event(), pc.effective_prefs(record, {}), ORG_SIDS))
+        unlinked = {"prefs": record["prefs"]}
+        self.assertFalse(pc.event_matches(event(), pc.effective_prefs(unlinked, follows), ORG_SIDS))
+
+    def test_session_and_account_lookups_read_auth_db(self):
+        import hashlib
+        import sqlite3
+        import time
+        with sqlite3.connect(pc.AUTH_DB_PATH) as conn:
+            conn.executescript(
+                "CREATE TABLE sessions(token_hash TEXT, user_id TEXT, created_at INT, expires_at INT);"
+                "CREATE TABLE user_org_follows(user_id TEXT, org_id INT, org_name TEXT, created_at INT, updated_at INT);"
+                "CREATE TABLE user_event_going(user_id TEXT, event_id TEXT, created_at INT);"
+            )
+            now = int(time.time())
+            conn.execute("INSERT INTO sessions VALUES (?, 'u1', ?, ?)",
+                         (hashlib.sha256(b"tok").hexdigest(), now, now + 100))
+            conn.execute("INSERT INTO sessions VALUES (?, 'u2', ?, ?)",
+                         (hashlib.sha256(b"old").hexdigest(), now, now - 1))
+            conn.execute("INSERT INTO user_org_follows VALUES ('u1', 5, '電機系學會', 1, 1)")
+            conn.execute("INSERT INTO user_event_going VALUES ('u1', 'evt_a', 1)")
+        self.assertEqual(pc.session_user_id("tok"), "u1")
+        self.assertIsNone(pc.session_user_id("old"))
+        self.assertIsNone(pc.session_user_id(None))
+        self.assertEqual(pc.account_follows(), {"u1": [{"id": 5, "name": "電機系學會"}]})
+        self.assertEqual(pc.account_going(), {"u1": ["evt_a"]})
+
+    def test_reminders_go_to_all_devices_once(self):
+        import publish_push
+        from datetime import date, timedelta
+        today = date(2026, 9, 1)
+        pc.upsert_sub(self.sub("a"), prefs={}, user_id="u1")
+        pc.upsert_sub(self.sub("b"), prefs={}, user_id="u1")
+        pc.upsert_sub(self.sub("c"), prefs={}, user_id="u2")
+        pc.upsert_sub(self.sub("d"), prefs={})
+        subs = pc.load_subs()["subs"]
+        events = [
+            event(id="evt_tmr", title="明天的講座", start_at=(today + timedelta(days=1)).isoformat() + "T19:00:00+08:00"),
+            event(id="evt_today", title="今天的講座", start_at=today.isoformat() + "T19:00:00+08:00"),
+            event(id="evt_far", start_at=(today + timedelta(days=5)).isoformat() + "T19:00:00+08:00"),
+        ]
+        going = {"u1": ["evt_tmr", "evt_today", "evt_far"], "u3": ["evt_tmr"]}
+        state = {}
+        plan = publish_push.reminders_for(subs, events, going, state, today=today)
+        got = {(uid, eid): (len(devs), payload["title"]) for uid, eid, devs, payload in plan}
+        self.assertEqual(got, {
+            ("u1", "evt_tmr"): (2, "明天：明天的講座"),
+            ("u1", "evt_today"): (2, "今天：今天的講座"),
+        })
+        state["reminders"]["u1:evt_tmr"] = {"sent_at": "x"}
+        plan = publish_push.reminders_for(subs, events, going, state, today=today)
+        self.assertEqual([p[1] for p in plan], ["evt_today"])

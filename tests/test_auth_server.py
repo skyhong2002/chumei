@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import sqlite3
 import sys
 import tempfile
@@ -388,6 +389,55 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(ok.headers["location"], "/account/?link=unlinked")
         me = self.client.get("/auth/me").json()
         self.assertEqual(me["user"]["providers"], ["nycu"])
+
+    def test_profile_handle_is_unique_and_validated(self):
+        self._login()
+        ok = self.client.post(
+            "/auth/profile", data={"display_name": " Sky  Hong ", "handle": "@Sky_01"},
+            follow_redirects=False,
+        )
+        self.assertEqual(ok.headers["location"], "/account/?profile=ok")
+        me = self.client.get("/auth/me").json()["user"]
+        self.assertEqual(me["displayName"], "Sky Hong")
+        self.assertEqual(me["handle"], "sky_01")
+        self.assertIn("@sky_01", self.client.get("/account/").text)
+        bad = self.client.post(
+            "/auth/profile", data={"display_name": "Sky", "handle": "no-dash"},
+            follow_redirects=False,
+        )
+        self.assertEqual(bad.headers["location"], "/account/?profile=bad_handle")
+        self.client.cookies.clear()
+        self._google_login()
+        taken = self.client.post(
+            "/auth/profile", data={"display_name": "Friend", "handle": "sky_01"},
+            follow_redirects=False,
+        )
+        self.assertEqual(taken.headers["location"], "/account/?profile=handle_taken")
+
+    def test_calendar_feed_is_private_and_rotatable(self):
+        self._login()
+        page = self.client.get("/account/").text
+        match = re.search(r"/auth/calendar/([A-Za-z0-9_-]+)\.ics", page)
+        self.assertIsNotNone(match)
+        token = match.group(1)
+        feed = self.client.get(f"/auth/calendar/{token}.ics")
+        self.assertEqual(feed.status_code, 200)
+        self.assertTrue(feed.headers["content-type"].startswith("text/calendar"))
+        self.assertIn("BEGIN:VCALENDAR", feed.text)
+        self.assertIn("竹梅・我要去的活動", feed.text)
+        if auth_server.EVENTS_DATA_PATH.exists():
+            events = json.loads(auth_server.EVENTS_DATA_PATH.read_text())["events"]
+            real = next(e for e in events if auth_server.EVENT_ID_RE.fullmatch(e["id"]))
+            self.client.put(f"/auth/events/{real['id']}")
+            feed = self.client.get(f"/auth/calendar/{token}.ics")
+            self.assertIn(f"UID:{real['id']}@chumei.observe.tw", feed.text)
+        self.assertEqual(self.client.get("/auth/calendar/nope.ics").status_code, 404)
+        self.client.post("/auth/calendar/rotate", follow_redirects=False)
+        self.assertEqual(self.client.get(f"/auth/calendar/{token}.ics").status_code, 404)
+        new_token = re.search(r"/auth/calendar/([A-Za-z0-9_-]+)\.ics",
+                              self.client.get("/account/").text).group(1)
+        self.assertNotEqual(new_token, token)
+        self.assertEqual(self.client.get(f"/auth/calendar/{new_token}.ics").status_code, 200)
 
     def test_unknown_provider_is_rejected(self):
         self.assertEqual(

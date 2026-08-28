@@ -88,6 +88,15 @@ Keychain（service：`tw.observe.chumei.google-oauth-client-id` 與
 支）。若要綁定的身分已有自己的帳號，會把對方的追蹤、參加標記、回報與 session 全部
 併入目前帳號再刪除對方；`POST /auth/unlink` 可解除綁定，但至少要留一種登入方式。
 
+帳號還提供：
+- **名稱與代號**：`POST /auth/profile`（display_name、handle）；handle 小寫英數底線 3–20 字、全站唯一。
+- **私密行事曆**：`GET /auth/calendar/{token}.ics` 輸出該帳號「我要去」的活動（token 在帳號頁，
+  `POST /auth/calendar/rotate` 換新）。
+- **推播綁帳號**：`push_server` 用 session cookie 解析 `state/auth.sqlite3`，把訂閱記上 `user_id`。
+  綁定後發送時追蹤單位以帳號現況為準（跨裝置同步）、mode／rules 儲存時同步到同帳號其他裝置，
+  `publish_push` 會在「我要去」的活動前一天推提醒（每帳號每場一次，記在 `state/push/publish.json` 的 `reminders`）。
+- **只看追蹤**：首頁河道欄、活動列表、日曆與限動牆都有「追蹤」篩選；登入且有追蹤的人第一次進首頁會自動多一欄「追蹤」河道。
+
 服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將
 `/auth/*` 與 `/account*` 反代到該埠。帳號資料只包含 OAuth identity 與雜湊後的
 Session token，以及使用者主動追蹤的單位關聯，存於被 Git 忽略的

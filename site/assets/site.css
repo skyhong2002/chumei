@@ -229,6 +229,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   margin: 0 0 18px; padding: 12px 14px; border-radius: var(--radius-md);
   background: var(--color-danger-surface, #3b1515); color: var(--color-danger-text, #ffb4b4);
 }
+.account-alert.ok { background: var(--color-success-surface); color: var(--color-success-text); }
 .account-status {
   display: flex; align-items: center; gap: 8px;
   color: var(--color-text-secondary); font-size: 0.9rem;
@@ -272,6 +273,27 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 .account-unlink button:hover { color: var(--color-text-primary); }
 .account-hint { color: var(--color-text-muted); font-size: 0.88rem; margin: -8px 0 16px; }
+.account-handle { margin: -10px 0 0; color: var(--color-text-muted); font-size: 0.95rem; }
+.account-profile, .account-calendar { margin: 0 0 16px; }
+.account-profile summary, .account-calendar summary { cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--color-text-secondary); }
+.account-profile-form { display: grid; gap: 12px; margin-top: 12px; max-width: 420px; }
+.account-profile-form label { display: grid; gap: 4px; font-size: 0.82rem; color: var(--color-text-muted); }
+.account-profile-form input,
+.account-cal-row input {
+  width: 100%; box-sizing: border-box; padding: 9px 12px; font: inherit;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md);
+  background: var(--color-bg-elevated, transparent); color: var(--color-text-primary);
+}
+.account-handle-input { display: flex; align-items: center; gap: 6px; }
+.account-handle-input .at { color: var(--color-text-muted); font-weight: 600; }
+.account-profile-form .account-hint { margin: -4px 0 0; }
+.account-profile-form .btn { justify-self: start; }
+.account-calendar .account-hint { margin: 10px 0 12px; }
+.account-cal-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.account-cal-row input { flex: 1 1 260px; font-size: 0.82rem; }
+.account-cal-row .btn { white-space: nowrap; }
+.story-tools { display: flex; justify-content: flex-end; margin: 4px 0 8px; }
+.story-tools .fchip[aria-pressed="true"] { border-color: var(--color-text-brand); color: var(--color-text-brand); }
 .account-empty { color: var(--color-text-muted); font-size: 0.92rem; margin: 0; }
 .account-links { display: flex; gap: 18px; margin: 16px 0 0; font-size: 0.88rem; }
 @media (max-width: 640px) {
@@ -1382,6 +1404,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .col-menu-filters .cf-q::placeholder { color: var(--color-text-muted); }
 .col-menu-filters .filter-row .label { min-width: 2.6rem; }
 .col-menu-filters .fchip { min-height: 0; }
+.col-menu-filters .fchip[aria-pressed="true"] { color: var(--color-action-on-primary); }
 /* 欄有非預設篩選時，欄頭 caret 旁亮點提示 */
 .col-picker.fon > summary::after {
   content: ""; position: absolute; top: 2px; right: -2px; width: 7px; height: 7px;
@@ -1817,3 +1840,4 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 @media (max-width: 1079px) {
   .post-feed.feed-pager.single-col .feed-col-head { display: none; }
 }
+.story-card[hidden], .story-item[hidden] { display: none !important; }

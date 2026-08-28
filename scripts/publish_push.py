@@ -5,12 +5,16 @@ start_at 在今天以後、貼文逾 14 天不推（防回填洪水）、01:00�
 （事件保留到早上再發）。每個訂閱者只收到符合其偏好的活動；單輪命中
 超過 3 場則收合成一則摘要通知。
 
+綁帳號的訂閱：追蹤單位以帳號現況為準；帳號按過「我要去」的活動，在活動
+前一天（或當天才標記時當天）推一則提醒到該帳號的所有裝置，每場只提醒一次。
+
 launchd: tw.observe.chumei.push-drip（每 30 分鐘）。
 """
 
 import argparse
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 from chumei_lib import ROOT, now_iso
@@ -83,11 +87,13 @@ def digest_payload(matched):
     }
 
 
-def deliveries_for(subs, pending, org_sids):
+def deliveries_for(subs, pending, org_sids, follows=None):
     """[(key, record, [payload, ...]), ...] — 每訂閱一組要發的通知。"""
     plan = []
+    follows = follows or {}
     for key, record in subs.items():
-        matched = [e for e in pending if pc.event_matches(e, record.get("prefs") or {}, org_sids)]
+        prefs = pc.effective_prefs(record, follows)
+        matched = [e for e in pending if pc.event_matches(e, prefs, org_sids)]
         if not matched:
             continue
         if len(matched) > DIGEST_THRESHOLD:
@@ -96,6 +102,75 @@ def deliveries_for(subs, pending, org_sids):
             payloads = [event_payload(e) for e in matched]
         plan.append((key, record, payloads, len(matched)))
     return plan
+
+
+def reminder_payload(event, when):
+    body = (f"🗓 {format_datetime(event.get('start_at'), event.get('all_day'))}"
+            f" ・ {compact(event_location(event), 60)}")
+    return {
+        "title": f"{when}：{compact(event.get('title'), 50)}",
+        "body": body,
+        "url": f"{BASE_URL}/event/{event['id']}/",
+        "tag": f"chumei-remind-{event['id']}",
+        "image": event_photo_url(event),
+    }
+
+
+def reminders_for(subs, events, going, state, today=None):
+    """[(user_id, event_id, [(key, record), ...], payload), ...]
+
+    帳號標記「我要去」且活動明天開始（或今天開始但還沒提醒過）→ 推到該帳號所有裝置。
+    """
+    today = today or date.today()
+    tomorrow = today + timedelta(days=1)
+    by_id = {e["id"]: e for e in events if e.get("id")}
+    by_user = {}
+    for key, record in subs.items():
+        if record.get("user_id"):
+            by_user.setdefault(record["user_id"], []).append((key, record))
+    done = state.setdefault("reminders", {})
+    plan = []
+    for user_id, event_ids in going.items():
+        devices = by_user.get(user_id)
+        if not devices:
+            continue
+        for event_id in event_ids:
+            event = by_id.get(event_id)
+            if not event or event.get("status") == "rejected":
+                continue
+            start = (event.get("start_at") or "")[:10]
+            if start == tomorrow.isoformat():
+                when = "明天"
+            elif start == today.isoformat():
+                when = "今天"
+            else:
+                continue
+            if f"{user_id}:{event_id}" in done:
+                continue
+            plan.append((user_id, event_id, devices, reminder_payload(event, when)))
+    return plan
+
+
+def send_reminders(subs, events, state, dry_run=False):
+    """回傳 (提醒數, 通知數)；state 會被標記（呼叫端負責存檔）。"""
+    going = pc.account_going()
+    plan = reminders_for(subs, events, going, state)
+    if dry_run:
+        for user_id, event_id, devices, payload in plan:
+            print(f"  remind {user_id[:8]}… {event_id} → {len(devices)} device(s): {payload['title']}")
+        return len(plan), sum(len(d) for _, _, d, _ in plan)
+    sent = 0
+    for user_id, event_id, devices, payload in plan:
+        for key, record in devices:
+            try:
+                pc.send_push(record, payload, ttl=6 * 3600)
+                sent += 1
+            except pc.PushGone as exc:
+                pc.prune_endpoint(str(exc))
+            except Exception as exc:
+                print(f"push: reminder failed for {key}: {exc}", file=sys.stderr)
+        state.setdefault("reminders", {})[f"{user_id}:{event_id}"] = {"sent_at": now_iso()}
+    return len(plan), sent
 
 
 def main():
@@ -122,18 +197,23 @@ def main():
             return 0
 
         pending = pending_events(events, state)
-        if not pending:
-            print("push: OK (no pending events)")
-            return 0
         if is_silent_hour() and not args.ignore_quiet_hours:
             print(f"push: quiet hours, {len(pending)} pending held for morning")
             return 0
 
         subs = pc.load_subs()["subs"]
+        n_remind, n_remind_sent = send_reminders(subs, events, state, dry_run=args.dry_run)
+        if n_remind and not args.dry_run:
+            save_state(state)
+        if not pending:
+            print(f"push: OK (no pending events; {n_remind} reminders → {n_remind_sent} notifications)")
+            return 0
+
         org_sids = pc.load_org_sids()
-        plan = deliveries_for(subs, pending, org_sids)
+        plan = deliveries_for(subs, pending, org_sids, pc.account_follows())
         if args.dry_run:
-            print(f"push dry-run: {len(pending)} pending events, {len(subs)} subs, {len(plan)} deliveries")
+            print(f"push dry-run: {len(pending)} pending events, {len(subs)} subs, {len(plan)} deliveries, "
+                  f"{n_remind} reminders")
             for key, _record, payloads, n_matched in plan:
                 kinds = "digest" if payloads and payloads[0].get("tag") == "chumei-digest" else "individual"
                 print(f"  {key}: {n_matched} matched → {len(payloads)} notification(s) ({kinds})")
@@ -160,7 +240,8 @@ def main():
         state["last_success_at"] = stamp
         save_state(state)
         print(f"push: OK ({len(pending)} events → {sent_n} notifications, "
-              f"{len(subs)} subs, pruned {gone_n}, failed {fail_n})")
+              f"{len(subs)} subs, pruned {gone_n}, failed {fail_n}; "
+              f"{n_remind} reminders → {n_remind_sent})")
         return 0
     except (OSError, KeyError, json.JSONDecodeError) as exc:
         print(f"push: FAILED: {exc}", file=sys.stderr)

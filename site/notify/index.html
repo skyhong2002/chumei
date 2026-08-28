@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App 通知｜竹梅活動觀測站</title><meta name="description" content="竹梅 App 通知設定——挑學校、類型、追蹤單位、關鍵字，符合條件的新活動才通知你。"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=38e3b7d3aaa0"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
+<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App 通知｜竹梅活動觀測站</title><meta name="description" content="竹梅 App 通知設定——挑學校、類型、追蹤單位、關鍵字，符合條件的新活動才通知你。"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=580fdb3b967b"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
 .sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
 .sub-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);text-decoration:none;color:var(--color-text-primary)}
@@ -19,6 +19,7 @@
 .push-title strong{display:block;line-height:1.35}
 .push-status{margin:3px 0 0;font-size:.9rem;color:var(--color-text-secondary)}
 .push-status.on{color:var(--color-text-brand)}
+.push-linked{margin:6px 0 0;font-size:.84rem;color:var(--color-text-muted)}
 button.btn{cursor:pointer;font-family:inherit;background:none}
 button.btn.btn-primary{background:var(--color-action-primary)}
 .push-guide{margin:12px 0 0;padding:12px 14px;border:1px dashed var(--color-border-strong);border-radius:12px;font-size:.92rem}
@@ -91,6 +92,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     <span class="push-title">
       <strong id="push-state-title">檢查通知狀態⋯</strong>
       <p class="push-status" id="push-status">檢查支援度⋯</p>
+      <p class="push-linked" id="push-linked" hidden></p>
     </span>
     <button class="btn btn-primary" id="push-toggle" hidden>開啟推播</button>
   </div>
@@ -195,6 +197,14 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     return out;
   }
   function setStatus(text,on){statusEl.textContent=text;statusEl.classList.toggle("on",!!on);}
+  function showLinked(linked,notYet){
+    var el=$("push-linked"); if(!el)return;
+    el.hidden=false;
+    el.innerHTML=linked
+      ?(notYet?"已登入竹梅：開啟推播後這台裝置會自動綁定帳號──追蹤跨裝置同步、「我要去」的活動前一天提醒。"
+              :"已綁定竹梅帳號：追蹤的單位在你的每台裝置同步，按過「我要去」的活動前一天會提醒。")
+      :"<a href=\"/account/\">登入竹梅</a>後這台裝置會自動綁定帳號──追蹤跨裝置同步、「我要去」的活動前一天提醒。";
+  }
   function getSub(){
     return navigator.serviceWorker.register("/sw.js").then(function(reg){return reg.pushManager.getSubscription();});
   }
@@ -550,7 +560,8 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     }).then(function(res){
       if(!res.ok)throw new Error(res.error||"server");
       uiSubscribed();
-      setStatus("推播已開啟 ✅ 剛剛應該有收到一則歡迎通知。",true);
+      setStatus("推播已開啟 ✅ 剛剛應該有收到一則歡迎通知。"+(res.linked?" 這台裝置已綁定你的竹梅帳號。":""),true);
+      showLinked(res.linked);
     }).catch(function(err){
       if(String(err.message)==="permission"){
         setStatus("你封鎖了通知權限——要在瀏覽器設定裡重新允許才能開啟。");
@@ -589,16 +600,20 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     return;
   }
   uiUnsubscribed();
+  fetch("/auth/me",{credentials:"same-origin"}).then(function(r){return r.json()}).then(function(me){
+    if(!subscribed) showLinked(!!(me&&me.authenticated),true);
+  }).catch(function(){});
   getSub().then(function(sub){
     if(!sub)return;
     return post("/push/status",{endpoint:sub.endpoint}).then(function(res){
       if(res.ok&&res.subscribed){
         if(res.prefs){prefs=Object.assign(prefs,res.prefs);prefs.rules=(prefs.rules||[]).map(normRule);renderAll();}
         uiSubscribed();
+        showLinked(res.linked);
       }
     });
   }).catch(function(){});
 })();
 </script>
 </main><footer class="site-footer"><p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p><p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p></footer><a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
-<script src="/assets/app.js?v=a6ad27cb14bf"></script></body></html>
+<script src="/assets/app.js?v=0add6b7e2347"></script></body></html>

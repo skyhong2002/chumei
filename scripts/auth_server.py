@@ -33,17 +33,23 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse
 
 import requests
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import Route
 
-from build_site import page_shell
+from build_site import event_ics, page_shell
 from chumei_lib import ROOT, load_env
 from submissions import (
     DAILY_LIMIT,
@@ -64,6 +70,8 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 SESSION_COOKIE = "chumei_session"
 EVENT_ID_RE = re.compile(r"evt_[0-9a-f]{6,32}")
+HANDLE_RE = re.compile(r"[a-z0-9_]{3,20}")
+RESERVED_HANDLES = {"admin", "chumei", "account", "submit", "auth", "about", "event", "org", "source"}
 OAUTH_STATE_COOKIE = "chumei_oauth_state"
 SESSION_AGE_SECONDS = 30 * 24 * 60 * 60
 OAUTH_STATE_AGE_SECONDS = 10 * 60
@@ -292,6 +300,15 @@ class AuthStore:
             columns = {r[1] for r in conn.execute("PRAGMA table_info(oauth_states)")}
             if "link_user_id" not in columns:
                 conn.execute("ALTER TABLE oauth_states ADD COLUMN link_user_id TEXT")
+            user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+            if "handle" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN handle TEXT")
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_handle ON users(handle)")
+            if "calendar_token" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS users_calendar_token ON users(calendar_token)"
+                )
 
     def cleanup(self, now: int | None = None) -> None:
         now = now or _now()
@@ -455,6 +472,48 @@ class AuthStore:
             )
             return True
 
+    def update_profile(self, user_id: str, display_name: str, handle: str | None) -> str:
+        """回傳 ok / handle_taken。handle 為 None 表示清空。"""
+        now = _now()
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if handle:
+                taken = conn.execute(
+                    "SELECT 1 FROM users WHERE handle = ? AND id <> ?", (handle, user_id)
+                ).fetchone()
+                if taken:
+                    return "handle_taken"
+            conn.execute(
+                "UPDATE users SET display_name = ?, handle = ?, updated_at = ? WHERE id = ?",
+                (display_name, handle, now, user_id),
+            )
+            return "ok"
+
+    def calendar_token(self, user_id: str, rotate: bool = False) -> str:
+        """每個帳號一組私密行事曆 token；rotate=True 換新（舊連結立即失效）。"""
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT calendar_token FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+            token = row["calendar_token"] if row else None
+            if not token or rotate:
+                token = secrets.token_urlsafe(24)
+                conn.execute(
+                    "UPDATE users SET calendar_token = ?, updated_at = ? WHERE id = ?",
+                    (token, _now(), user_id),
+                )
+            return token
+
+    def user_by_calendar_token(self, token: str) -> dict | None:
+        if not token:
+            return None
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT id, display_name, handle FROM users WHERE calendar_token = ?", (token,)
+            ).fetchone()
+        return dict(row) if row else None
+
     def create_session(self, user_id: str) -> str:
         raw = secrets.token_urlsafe(32)
         now = _now()
@@ -473,7 +532,7 @@ class AuthStore:
         with self._connection() as conn:
             row = conn.execute(
                 """
-                SELECT u.id, u.display_name, u.email, i.provider, i.subject
+                SELECT u.id, u.display_name, u.email, u.handle, i.provider, i.subject
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
                 JOIN oauth_identities i ON i.user_id = u.id
@@ -842,6 +901,20 @@ def _submit_page_html(items: list[dict], notice: str | None, user: dict | None, 
     )
 
 
+def _calendar_ics(going_ids: list[str]) -> str:
+    """「我要去」私密行事曆：所有標記過的活動（含已結束，行事曆自己會留歷史）。"""
+    by_id = _events_by_id()
+    events = [by_id[i] for i in going_ids if i in by_id]
+    events.sort(key=lambda e: e.get("start_at") or "")
+    body = "\r\n".join(filter(None, (event_ics(e) for e in events)))
+    return (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//chumei//observe.tw//ZH\r\n"
+        "X-WR-CALNAME:竹梅・我要去的活動\r\nX-WR-TIMEZONE:Asia/Taipei\r\n"
+        "REFRESH-INTERVAL;VALUE=DURATION:PT3H\r\nX-PUBLISHED-TTL:PT3H\r\n"
+        + body + ("\r\n" if body else "") + "END:VCALENDAR\r\n"
+    )
+
+
 def _going_html(going_ids: list[str]) -> str:
     byid = _events_by_id()
     today = time.strftime("%Y-%m-%d")
@@ -886,6 +959,8 @@ def _account_html(
     going_ids: list[str] | None = None,
     my_submissions: list[dict] | None = None,
     identities: list[dict] | None = None,
+    calendar_token: str | None = None,
+    message_ok: bool = False,
 ) -> str:
     sections = []
     if user:
@@ -930,11 +1005,26 @@ def _account_html(
             status_line = "已使用陽明交大 OAuth 登入"
         bind_hint = ("" if can_unlink else
                      '<p class="account-hint">綁定另一種登入方式後，用哪個帳號登入都會回到同一份追蹤與回報。</p>')
+        handle = html.escape(user.get("handle") or "")
+        handle_line = f'<p class="account-handle">@{handle}</p>' if handle else ""
         sections.append(f"""<section class="account-card">
         <div class="account-status"><span class="account-dot"></span>{status_line}</div>
         <h2>{html.escape(user.get('display_name') or '竹梅使用者')}</h2>
+        {handle_line}
         <dl>{''.join(rows)}</dl>
         {bind_hint}
+        <details class="account-profile">
+          <summary>編輯名稱與帳號代號</summary>
+          <form method="post" action="/auth/profile" class="account-profile-form">
+            <label><span>顯示名稱</span><input name="display_name" maxlength="80" required
+              value="{html.escape(user.get('display_name') or '')}"></label>
+            <label><span>帳號代號</span><span class="account-handle-input"><span class="at">@</span>
+              <input name="handle" maxlength="20" pattern="[a-z0-9_]{{3,20}}" autocapitalize="off" autocorrect="off"
+              spellcheck="false" placeholder="留空＝不設定" value="{handle}"></span></label>
+            <p class="account-hint">代號限小寫英數與底線，3–20 字，全站唯一。</p>
+            <button class="btn btn-primary account-action" type="submit">儲存</button>
+          </form>
+        </details>
         <form method="post" action="/auth/logout"><button class="btn account-action" type="submit">登出</button></form>
         </section>""")
 
@@ -953,9 +1043,27 @@ def _account_html(
         <p class="account-links"><a href="/source/">找更多單位 →</a><a href="/notify/">通知設定 →</a></p>
         </section>""")
 
+        cal_block = ""
+        if calendar_token:
+            cal_url = f"https://chumei.observe.tw/auth/calendar/{html.escape(calendar_token)}.ics"
+            webcal = cal_url.replace("https://", "webcal://", 1)
+            cal_block = f"""<details class="account-calendar">
+          <summary>訂閱到行事曆</summary>
+          <p class="account-hint">把這個私密連結加到 Google／Apple 行事曆，按過「我要去」的活動會自動出現、取消也會消失（行事曆每幾小時同步一次）。</p>
+          <div class="account-cal-row">
+            <input readonly value="{cal_url}" aria-label="行事曆訂閱連結" onclick="this.select()">
+            <a class="btn account-action" href="{webcal}">開啟 Apple 行事曆</a>
+            <a class="btn account-action" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">加到 Google 日曆</a>
+          </div>
+          <form method="post" action="/auth/calendar/rotate" class="account-unlink"
+            onsubmit="return confirm('換新連結後，舊連結會立即失效，要繼續嗎？')">
+            <button type="submit">連結外流了？換一組新的</button>
+          </form>
+        </details>"""
         sections.append(f"""<section class="account-card account-section">
         <h2>我要去的活動</h2>
         {_going_html(going_ids or [])}
+        {cal_block}
         </section>""")
 
         subs = my_submissions or []
@@ -991,7 +1099,8 @@ def _account_html(
         <span class="btn btn-primary account-action disabled" aria-disabled="true">登入竹梅</span>
         </section>""")
 
-    alert = f'<div class="account-alert">{html.escape(message)}</div>' if message else ""
+    alert = (f'<div class="account-alert{" ok" if message_ok else ""}">{html.escape(message)}</div>'
+             if message else "")
     lede = "" if message else "<p>登入身分、追蹤的單位、要去的活動與回報進度都在這裡。</p>"
     content = f"""
 <section class="account-page">
@@ -1051,6 +1160,14 @@ def create_app(
         },
     }
 
+    PROFILE_MESSAGES = {
+        "ok": "已更新名稱與帳號代號。",
+        "handle_taken": "這個帳號代號已經有人用了，換一個試試。",
+        "bad_handle": "帳號代號只能用小寫英數與底線，3–20 字。",
+        "bad_name": "顯示名稱不能空白。",
+        "rotated": "已換新的行事曆連結，記得重新訂閱。",
+    }
+    OK_CODES = {"ok", "merged", "already", "unlinked", "rotated"}
     LINK_MESSAGES = {
         "ok": "綁定完成！之後用學校或 Google 帳號登入，都會回到同一個竹梅帳號。",
         "merged": "綁定完成，另一個帳號的追蹤、參加標記與回報都合併進來了。",
@@ -1068,7 +1185,11 @@ def create_app(
                 "going_ids": store.event_snapshot(user["id"])["going"],
                 "my_submissions": submissions.list_for_user(user["id"], 8),
                 "identities": store.identities_for_user(user["id"]),
-                "message": LINK_MESSAGES.get(request.query_params.get("link") or ""),
+                "calendar_token": store.calendar_token(user["id"]),
+                "message": (LINK_MESSAGES.get(request.query_params.get("link") or "")
+                            or PROFILE_MESSAGES.get(request.query_params.get("profile") or "")),
+                "message_ok": (request.query_params.get("link") in OK_CODES
+                               or request.query_params.get("profile") in OK_CODES),
             }
         return HTMLResponse(
             _account_html(user, config.configured, config.google_configured, **kwargs)
@@ -1246,6 +1367,7 @@ def create_app(
                     "id": user["id"],
                     "displayName": user["display_name"],
                     "email": user["email"],
+                    "handle": user.get("handle"),
                     "provider": user.get("provider") or "nycu",
                     "providers": [
                         i["provider"] for i in store.identities_for_user(user["id"])
@@ -1353,6 +1475,40 @@ def create_app(
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
+    async def profile(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return RedirectResponse("/account/", 303)
+        form = await request.form()
+        display_name = " ".join(str(form.get("display_name") or "").split())[:80]
+        handle = str(form.get("handle") or "").strip().lstrip("@").lower()
+        if not display_name:
+            return RedirectResponse("/account/?profile=bad_name", 303)
+        if handle and (not HANDLE_RE.fullmatch(handle) or handle in RESERVED_HANDLES):
+            return RedirectResponse("/account/?profile=bad_handle", 303)
+        outcome = store.update_profile(user["id"], display_name, handle or None)
+        return RedirectResponse(f"/account/?profile={outcome}", 303)
+
+    async def calendar_feed(request: Request):
+        token = str(request.path_params.get("token") or "")
+        user = store.user_by_calendar_token(token)
+        if not user:
+            return PlainTextResponse("not found", status_code=404)
+        going = store.event_snapshot(user["id"])["going"]
+        body = _calendar_ics(going)
+        return Response(
+            body,
+            media_type="text/calendar; charset=utf-8",
+            headers={"Content-Disposition": 'inline; filename="chumei-going.ics"'},
+        )
+
+    async def calendar_rotate(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return RedirectResponse("/account/", 303)
+        store.calendar_token(user["id"], rotate=True)
+        return RedirectResponse("/account/?profile=rotated", 303)
+
     async def unlink(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         if not user:
@@ -1393,6 +1549,9 @@ def create_app(
             Route("/auth/submissions", submissions_list, methods=["GET"]),
             Route("/auth/submissions", submissions_create, methods=["POST"]),
             Route("/auth/unlink", unlink, methods=["POST"]),
+            Route("/auth/profile", profile, methods=["POST"]),
+            Route("/auth/calendar/rotate", calendar_rotate, methods=["POST"]),
+            Route("/auth/calendar/{token}.ics", calendar_feed, methods=["GET"]),
             Route("/auth/logout", logout, methods=["POST"]),
             Route("/auth/health", health, methods=["GET"]),
         ]

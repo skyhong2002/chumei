@@ -414,7 +414,11 @@
     fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
       var posts = data.posts;
       // 手機單欄的全域篩選＋檢視切換；桌機欄位各自帶篩選（見 cols）
-      var state = { school: "all", platform: "all", cat: "all", org: "all", q: "" };
+      var state = { follow: "all", school: "all", platform: "all", cat: "all", org: "all", q: "" };
+      function followedOrg(id) {
+        return !!(id && window.chumeiFollow && window.chumeiFollow.isFollowed(id));
+      }
+      var FOLLOW_OPTS = [["all", "全部"], ["on", "只看追蹤"]];
       var params = new URLSearchParams(location.search);
       var seededFromUrl = false;
       Object.keys(state).forEach(function (k) { if (params.get(k)) { state[k] = params.get(k); seededFromUrl = true; } });
@@ -454,6 +458,7 @@
       posts.forEach(function (p) { p.events.forEach(function (e) { feedCats[e.category || "其他"] = 1; }); });
       var CAT_OPTS = [["all", "全部類型"]].concat(Object.keys(feedCats).sort().map(function (k) { return [k, k]; }));
 
+      chips("pf-follow", FOLLOW_OPTS, "follow");
       chips("pf-school", SCHOOL_OPTS, "school");
       chips("pf-platform", PLAT_OPTS, "platform");
       chips("pf-cat", CAT_OPTS, "cat");
@@ -472,6 +477,7 @@
         if (pagerMode() && c && c.t === "feed") {
           c[key] = value;
           if (view.source >= 0) saveCols();
+          else if (key === "follow") { try { localStorage.setItem("chumei-mobile-follow", value); } catch (e) {} }
           updateBodies(); refreshMeta();
           return;
         }
@@ -481,7 +487,7 @@
         var view = viewCols[activeCol];
         var c = view && view.col;
         if (!c || c.t !== "feed") return;
-        ["school", "platform", "cat", "org", "q"].forEach(function (k) { state[k] = c[k]; });
+        ["follow", "school", "platform", "cat", "org", "q"].forEach(function (k) { state[k] = c[k] || (k === "q" ? "" : "all"); });
         Object.keys(groups).forEach(function (k) {
           Object.keys(groups[k].buttons).forEach(function (v) {
             groups[k].buttons[v].setAttribute("aria-pressed", String(state[k] === v));
@@ -505,6 +511,7 @@
         return "nycu-guangfu";
       }
       function matches(p, f) {
+        if (f.follow === "on" && !followedOrg(p.org_id)) return false;
         if (f.school && f.school !== "all" && p.school !== "both" && postSchool(p) !== f.school) return false;
         if (f.platform && f.platform !== "all" && p.platform !== f.platform) return false;
         if (f.cat && f.cat !== "all" && !p.events.some(function (e) { return (e.category || "其他") === f.cat; })) return false;
@@ -589,10 +596,11 @@
       var shown = 30;
       // 欄位模型：欄就是「貼文」（篩選自帶：學校/平台/類型/主辦/搜尋）或「即將活動」
       var SCHOOL_L = { all: "全部", "nycu-guangfu": "交大", nthu: "清大", "nycu-yangming": "陽明" };
-      function feedCol(school) { return { t: "feed", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
+      function feedCol(school) { return { t: "feed", follow: "all", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
+      function followCol() { var c = feedCol("all"); c.follow = "on"; return c; }
       function defaultCols() { return [feedCol("nycu-guangfu"), feedCol("nthu"), feedCol("nycu-yangming")]; }
       function isLegacyDefaultFeed(c, school) {
-        return c && c.t === "feed" && c.school === school &&
+        return c && c.t === "feed" && c.school === school && (c.follow || "all") === "all" &&
           (c.platform || "all") === "all" && (c.cat || "all") === "all" &&
           (c.org || "all") === "all" && !(c.q || "");
       }
@@ -614,7 +622,8 @@
               }
               if (c && (c.t === "events" || c.t === "stories")) return { t: c.t };
               if (c && c.t === "feed") return {
-                t: "feed", school: c.school === "nycu" ? "nycu-guangfu" : c.school === "both" ? "all" : (SCHOOL_L[c.school] ? c.school : "all"),
+                t: "feed", follow: c.follow === "on" ? "on" : "all",
+                school: c.school === "nycu" ? "nycu-guangfu" : c.school === "both" ? "all" : (SCHOOL_L[c.school] ? c.school : "all"),
                 platform: c.platform || "all", cat: c.cat || "all",
                 org: c.org || "all", q: typeof c.q === "string" ? c.q : ""
               };
@@ -628,6 +637,23 @@
       var cols = loadCols();
       var mobileOverview = feedCol("all");
       mobileOverview.overview = true;
+      try { if (localStorage.getItem("chumei-mobile-follow") === "on") mobileOverview.follow = "on"; } catch (e) {}
+      function hasSavedCols() { try { return !!localStorage.getItem("chumei-cols"); } catch (e) { return true; } }
+      // 登入且有追蹤單位的人，第一次進來就把「追蹤」河道放在最前面（之後由使用者自行增減）
+      var followDefaultApplied = false;
+      function applyFollowDefault() {
+        if (followDefaultApplied || hasSavedCols() || seededFromUrl) return;
+        var fw = window.chumeiFollow;
+        if (!fw || !fw.authenticated() || !fw.following().length) return;
+        followDefaultApplied = true;
+        try { if (localStorage.getItem("chumei-follow-default") === "done") return; localStorage.setItem("chumei-follow-default", "done"); } catch (e) { return; }
+        cols.unshift(followCol());
+        mobileOverview.follow = "on";
+        try { localStorage.setItem("chumei-mobile-follow", "on"); } catch (e) {}
+        saveCols();
+        activeCol = 0;
+        render();
+      }
       var viewCols = [];
       function saveCols() { try { localStorage.setItem("chumei-cols", JSON.stringify(cols)); } catch (e) {} }
       function buildViewCols(wide) {
@@ -664,13 +690,17 @@
       function colTitle(c) {
         if (c.t === "events") return { label: "即將活動", dot: "events" };
         if (c.t === "stories") return { label: "限時動態", dot: "stories" };
+        if (c.follow === "on") return {
+          label: "追蹤" + (c.school === "all" ? "" : "・" + SCHOOL_L[c.school]),
+          dot: c.school === "all" ? "all" : c.school.indexOf("nycu-") === 0 ? "nycu" : c.school
+        };
         return {
           label: c.overview ? (c.school === "all" ? "全部學校" : SCHOOL_L[c.school]) : (c.school === "all" ? "貼文" : SCHOOL_L[c.school]),
           dot: c.school === "all" ? "all" : c.school.indexOf("nycu-") === 0 ? "nycu" : c.school
         };
       }
       function colFilterActive(c) {
-        return c.t === "feed" && (c.school !== "all" || c.platform !== "all" || c.cat !== "all" || c.org !== "all" || !!c.q);
+        return c.t === "feed" && (c.follow === "on" || c.school !== "all" || c.platform !== "all" || c.cat !== "all" || c.org !== "all" || !!c.q);
       }
       function menuRow(label, key, opts, cur) {
         return '<div class="filter-row"><span class="label">' + label + '</span><span class="fgroup">' +
@@ -682,6 +712,7 @@
       function colMenu(c, sourceIdx) {
         var inner = c.t !== "feed" ? "" :
           '<input class="cf-q" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋這一欄" value="' + esc(c.q) + '">' +
+          menuRow("追蹤", "follow", FOLLOW_OPTS, c.follow || "all") +
           (sourceIdx < 0 ? "" : menuRow("學校", "school", SCHOOL_OPTS, c.school)) +
           menuRow("平台", "platform", PLAT_OPTS, c.platform) +
           menuRow("類型", "cat", CAT_OPTS, c.cat) +
@@ -768,7 +799,12 @@
           return (list.length ? evAgenda(list) : '<p class="empty">近期沒有活動。</p>') + moreBtn(list);
         }
         if (c.t === "stories") return storyCards(list) + moreBtn(list);
-        return (list.slice(0, shown).map(row).join("") || '<p class="empty">沒有符合的貼文。</p>') + moreBtn(list);
+        var emptyMsg = c.follow === "on"
+          ? (window.chumeiFollow && window.chumeiFollow.following().length
+              ? '<p class="empty">追蹤的單位最近沒有貼文。</p>'
+              : '<p class="empty">還沒追蹤任何單位——在貼文或<a href="/source/">資料來源</a>按 🔔 就會出現在這裡。</p>')
+          : '<p class="empty">沒有符合的貼文。</p>';
+        return (list.slice(0, shown).map(row).join("") || emptyMsg) + moreBtn(list);
       }
       function colHtml(i, c, list, sourceIdx) {
         var tt = colTitle(c);
@@ -1017,7 +1053,7 @@
           // 桌機：篩選在各欄選單；手機：只有貼文欄能篩
           ff.hidden = wide || !cur || cur.t !== "feed";
           ff.classList.toggle("fon",
-            state.school !== "all" || state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
+            state.follow === "on" || state.school !== "all" || state.platform !== "all" || state.cat !== "all" || state.org !== "all" || !!state.q);
         }
         Object.keys(groups).forEach(function (key) {
           groups[key].options.forEach(function (opt) {
@@ -1046,7 +1082,7 @@
           seededFromUrl = false;
           var ci = wide ? viewCols.findIndex(function (view) { return view.col.t === "feed"; }) : 0;
           if (ci >= 0) {
-            ["school", "platform", "cat", "org", "q"].forEach(function (k) { viewCols[ci].col[k] = state[k]; });
+            ["follow", "school", "platform", "cat", "org", "q"].forEach(function (k) { viewCols[ci].col[k] = state[k]; });
             activeCol = ci;
             if (viewCols[ci].source >= 0) saveCols();
           }
@@ -1072,6 +1108,10 @@
         renderPagerBar(wide);
         refreshMeta();
       }
+      window.addEventListener("chumei-follow-change", function (ev) {
+        if (ev.detail && ev.detail.synced) applyFollowDefault();
+        if (viewCols.some(function (v) { return v.col.follow === "on"; })) { updateBodies(); refreshMeta(); }
+      });
       feed.addEventListener("click", function (ev) {
         var add = ev.target.closest(".deck-add button[data-add]");
         if (add && cols.length < 6) {
@@ -1408,9 +1448,42 @@
           });
         }
 
+        // 只看追蹤：限動沒有 org_id，用 sources.json 的 sids（ig_<username>）對回單位
+        var followToggle = document.getElementById("story-follow-toggle");
+        if (followToggle) {
+          var orgByUser = {};
+          fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (sd) {
+            (sd.entries || []).forEach(function (en) {
+              (en.sids || []).forEach(function (sid) { if (sid.indexOf("ig_") === 0) orgByUser[sid.slice(3)] = en.id; });
+            });
+            applyStoryFollow();
+          }).catch(function () {});
+          var storyFollowOn = false;
+          try { storyFollowOn = localStorage.getItem("chumei-stories-follow") === "on"; } catch (e) {}
+          function applyStoryFollow() {
+            var fw = window.chumeiFollow;
+            var visible = 0;
+            document.querySelectorAll(".story-card[data-user], .story-item[data-user]").forEach(function (el) {
+              var hide = storyFollowOn && !(fw && orgByUser[el.dataset.user] && fw.isFollowed(orgByUser[el.dataset.user]));
+              el.hidden = hide;
+              if (!hide && el.classList.contains("story-card")) visible++;
+            });
+            followToggle.setAttribute("aria-pressed", String(storyFollowOn));
+            var empty = document.getElementById("story-follow-empty");
+            if (empty) empty.hidden = !(storyFollowOn && !visible);
+          }
+          followToggle.addEventListener("click", function () {
+            storyFollowOn = !storyFollowOn;
+            try { localStorage.setItem("chumei-stories-follow", storyFollowOn ? "on" : "off"); } catch (e) {}
+            applyStoryFollow();
+          });
+          window.addEventListener("chumei-follow-change", applyStoryFollow);
+          setTimeout(applyStoryFollow, 0);
+        }
+
         if (wall) {
           wall.innerHTML = flat.map(function (s, i) {
-            return '<button class="story-card" data-i="' + i + '">' +
+            return '<button class="story-card" data-i="' + i + '" data-user="' + esc(s.username) + '">' +
               '<img src="' + esc(s.media) + '" alt="' + esc(s.name) + ' 的限時動態" loading="lazy">' +
               (s.is_video ? '<span class="sc-video">▶</span>' : "") +
               '<span class="sc-meta">' +
@@ -1765,17 +1838,18 @@
   // ---- 活動河道 ----
   function initList(bundle) {
     var labels = bundle.labels;
-    var state = { sort: "time", time: "7d", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
+    var state = { sort: "time", time: "7d", follow: "all", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
+    function followedOrg(id) { return !!(id && window.chumeiFollow && window.chumeiFollow.isFollowed(id)); }
 
     var params = new URLSearchParams(location.search);
-    ["time", "school", "campus", "cat", "org", "reg", "fee", "q"].forEach(function (k) {
+    ["time", "follow", "school", "campus", "cat", "org", "reg", "fee", "q"].forEach(function (k) {
       if (params.get(k)) state[k] = params.get(k);
     });
     if (state.time === "week") state.time = "7d";
 
     var moreFilters = document.getElementById("more-filters");
     function moreActive() {
-      return state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
+      return state.follow === "on" || state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
         state.org !== "all" || state.reg !== "all" || state.fee !== "all";
     }
     // 手機帶著篩選條件進來時直接展開；桌機 popover 用亮點提示
@@ -1792,12 +1866,14 @@
       ["24h", "24 小時"], ["3d", "3 天"], ["7d", "7 天"], ["30d", "1 個月"],
       ["upcoming", "未來全部"], ["all", "全部"]
     ], "time");
+    buildChips("f-follow", [["all", "全部"], ["on", "只看追蹤"]], "follow");
     buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
     buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
     buildChips("f-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
     buildChips("f-reg", [["all", "全部"], ["required", "需報名"], ["free", "自由入場"]], "reg");
     buildChips("f-fee", [["all", "全部"], ["free", "免費"], ["paid", "付費"]], "fee");
+    window.addEventListener("chumei-follow-change", function () { render(); });
 
     var search = document.getElementById("search");
     if (search) {
@@ -1846,6 +1922,7 @@
           if (starts > rangeEnd) return false;
         }
       }
+      if (value("follow") === "on" && !followedOrg(e.org_id)) return false;
       if (value("school") !== "all" && e.school !== value("school") && !(value("school") !== "both" && e.school === "both")) return false;
       if (value("campus") !== "all" && e.campus !== value("campus")) return false;
       if (value("cat") !== "all" && (e.category || "其他") !== value("cat")) return false;
@@ -2184,7 +2261,8 @@
   // ---- 日曆 ----
   function initCalendar(bundle) {
     var labels = bundle.labels;
-    var state = { school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
+    var state = { follow: "all", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
+    function followedOrg(id) { return !!(id && window.chumeiFollow && window.chumeiFollow.isFollowed(id)); }
     var params = new URLSearchParams(location.search);
     Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
@@ -2213,12 +2291,14 @@
         host.appendChild(b);
       });
     }
+    buildChips("f-follow", [["all", "全部"], ["on", "只看追蹤"]], "follow");
     buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
     buildChips("f-cat", [["all", "全部類型"]].concat(Object.keys(cats).sort().map(function (k) { return [k, k]; })), "cat");
     buildChips("f-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
     buildChips("f-reg", [["all", "全部"], ["required", "需報名"], ["free", "自由入場"]], "reg");
     buildChips("f-fee", [["all", "全部"], ["free", "免費"], ["paid", "付費"]], "fee");
+    window.addEventListener("chumei-follow-change", function () { redraw(); });
 
     var search = document.getElementById("search");
     if (search) {
@@ -2228,13 +2308,14 @@
 
     var moreFilters = document.getElementById("more-filters");
     function moreActive() {
-      return state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
+      return state.follow === "on" || state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
         state.org !== "all" || state.reg !== "all" || state.fee !== "all";
     }
     if (moreFilters && window.innerWidth <= 700 && moreActive()) moreFilters.open = true;
 
     function matches(e, overrideKey, overrideValue) {
       function value(k) { return overrideKey === k ? overrideValue : state[k]; }
+      if (value("follow") === "on" && !followedOrg(e.org_id)) return false;
       if (value("school") !== "all" && e.school !== value("school") && !(value("school") !== "both" && e.school === "both")) return false;
       if (value("campus") !== "all" && e.campus !== value("campus")) return false;
       if (value("cat") !== "all" && (e.category || "其他") !== value("cat")) return false;
@@ -2621,6 +2702,8 @@
     toggle: toggle,
     refresh: refresh,
     sync: syncPushServer,
+    authenticated: function () { return authenticated; },
+    following: function () { return readPrefs().orgs || []; },
     count: function (id) { return numberOrZero(counts[String(id)]); }
   };
   refreshLocalFollowNames().then(syncAccount, syncAccount);
