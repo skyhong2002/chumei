@@ -49,7 +49,7 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from build_site import event_ics, ics_escape, page_shell
+from build_site import event_ics, ics_calendar, page_shell
 from chumei_lib import ROOT, load_env
 from submissions import (
     DAILY_LIMIT,
@@ -904,16 +904,13 @@ def _submit_page_html(items: list[dict], notice: str | None, user: dict | None, 
 def _calendar_ics(going_ids: list[str], owner: str = "") -> str:
     """「我要去」私密行事曆：所有標記過的活動（含已結束，行事曆自己會留歷史）。"""
     name = f"竹梅 {owner} 已追蹤" if owner else "竹梅 已追蹤"
+    desc = ("在竹梅活動觀測站按過「我要去」的活動。標記或取消後，行事曆下次同步就會更新。"
+            + (f"（帳號：{owner}）" if owner else ""))
     by_id = _events_by_id()
     events = [by_id[i] for i in going_ids if i in by_id]
     events.sort(key=lambda e: e.get("start_at") or "")
     body = "\r\n".join(filter(None, (event_ics(e) for e in events)))
-    return (
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//chumei//observe.tw//ZH\r\n"
-        f"X-WR-CALNAME:{ics_escape(name)}\r\nX-WR-TIMEZONE:Asia/Taipei\r\n"
-        "REFRESH-INTERVAL;VALUE=DURATION:PT3H\r\nX-PUBLISHED-TTL:PT3H\r\n"
-        + body + ("\r\n" if body else "") + "END:VCALENDAR\r\n"
-    )
+    return ics_calendar(body, name, desc, "https://chumei.observe.tw/account/")
 
 
 def _going_html(going_ids: list[str]) -> str:

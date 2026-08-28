@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from collections import Counter
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -546,9 +546,52 @@ def ics_escape(s):
     return str(s or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
 
+ICS_TZ_BLOCK = (
+    "BEGIN:VTIMEZONE\r\nTZID:Asia/Taipei\r\nX-LIC-LOCATION:Asia/Taipei\r\n"
+    "BEGIN:STANDARD\r\nTZOFFSETFROM:+0800\r\nTZOFFSETTO:+0800\r\nTZNAME:CST\r\n"
+    "DTSTART:19700101T000000\r\nEND:STANDARD\r\nEND:VTIMEZONE"
+)
+
+
+def _ics_stamp(iso):
+    """ISO 時間 → ICS UTC 戳記（DTSTAMP／CREATED／LAST-MODIFIED 用）。"""
+    try:
+        d = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        d = datetime.now(timezone.utc)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone(timedelta(hours=8)))
+    return d.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def ics_calendar(body, name, description="", url="", color="#5B4BDB"):
+    """完整的 VCALENDAR 外殼：RFC 7986 NAME/DESCRIPTION/URL/COLOR、Apple／Google 的 X-WR-*、
+    VTIMEZONE（DTSTART 用 TZID 時必備）、REFRESH-INTERVAL。"""
+    head = [
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//chumei//observe.tw//ZH",
+        "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+        f"NAME:{ics_escape(name)}", f"X-WR-CALNAME:{ics_escape(name)}",
+        f"DESCRIPTION:{ics_escape(description)}" if description else None,
+        f"X-WR-CALDESC:{ics_escape(description)}" if description else None,
+        "TIMEZONE-ID:Asia/Taipei", "X-WR-TIMEZONE:Asia/Taipei",
+        f"URL:{url}" if url else None,
+        f"SOURCE;VALUE=URI:{url}" if url else None,
+        f"COLOR:{color}" if color else None,
+        f"X-APPLE-CALENDAR-COLOR:{color}" if color else None,
+        "REFRESH-INTERVAL;VALUE=DURATION:PT3H", "X-PUBLISHED-TTL:PT3H",
+        f"LAST-MODIFIED:{_ics_stamp(None)}",
+        ICS_TZ_BLOCK,
+    ]
+    return "\r\n".join(l for l in head if l) + "\r\n" + (body + "\r\n" if body else "") + "END:VCALENDAR\r\n"
+
+
 def event_ics(e):
     uid = f"{e['id']}@chumei.observe.tw"
-    lines = ["BEGIN:VEVENT", f"UID:{uid}"]
+    lines = ["BEGIN:VEVENT", f"UID:{uid}",
+             f"DTSTAMP:{_ics_stamp(e.get('first_seen'))}",
+             f"CREATED:{_ics_stamp(e.get('first_seen'))}",
+             f"LAST-MODIFIED:{_ics_stamp(e.get('updated_at') or e.get('first_seen'))}",
+             "STATUS:CONFIRMED", "TRANSP:TRANSPARENT"]
     try:
         st = datetime.fromisoformat(e["start_at"])
     except (TypeError, ValueError):
@@ -575,6 +618,7 @@ def event_ics(e):
         f"SUMMARY:{ics_escape(e['title'])}",
         f"DESCRIPTION:{ics_escape(calendar_details(e))}",
         f"LOCATION:{ics_escape(loc)}" if loc else None,
+        f"CATEGORIES:{ics_escape(e.get('category'))}" if e.get("category") else None,
         f"URL:{BASE_URL}/event/{e['id']}/",
         "END:VEVENT",
     ]
@@ -583,10 +627,8 @@ def event_ics(e):
 
 def write_ics(path, events, name):
     body = "\r\n".join(filter(None, (event_ics(e) for e in events)))
-    path.write_text(
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//chumei//observe.tw//ZH\r\n"
-        f"X-WR-CALNAME:{name}\r\nX-WR-TIMEZONE:Asia/Taipei\r\n" + body + "\r\nEND:VCALENDAR\r\n"
-    )
+    path.write_text(ics_calendar(body, name, "竹梅活動觀測站彙整清大與陽明交大的公開活動。",
+                                 f"{BASE_URL}/subscribe/"))
 
 
 def write_rss(path, events, title):

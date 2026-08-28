@@ -425,6 +425,10 @@ class AuthServerTests(unittest.TestCase):
         self.assertTrue(feed.headers["content-type"].startswith("text/calendar"))
         self.assertIn("BEGIN:VCALENDAR", feed.text)
         self.assertIn("X-WR-CALNAME:竹梅 student123 已追蹤", feed.text)
+        self.assertIn("NAME:竹梅 student123 已追蹤", feed.text)
+        self.assertIn("BEGIN:VTIMEZONE", feed.text)
+        self.assertIn("X-WR-CALDESC:", feed.text)
+        self.assertIn("X-APPLE-CALENDAR-COLOR:", feed.text)
         self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "sky_cal"})
         self.assertIn("X-WR-CALNAME:竹梅 sky_cal 已追蹤",
                       self.client.get(f"/auth/calendar/{token}.ics").text)
