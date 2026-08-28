@@ -1388,8 +1388,8 @@ def cache_post_image(sid, pid, url):
     miss = POST_IMG_DIR / f"{stem}.miss"
     if dest.exists():
         return f"/assets/posts/{dest.name}"
-    if miss.exists():
-        return None
+    if miss.exists() and miss.read_text() == url:
+        return None  # 同一個網址已經失敗過（多半是 CDN 連結過期）；換新網址才重試
     try:
         resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (chumei)"})
         resp.raise_for_status()
@@ -1399,8 +1399,15 @@ def cache_post_image(sid, pid, url):
         image.save(dest, "JPEG", quality=84, optimize=True)
         return f"/assets/posts/{dest.name}"
     except Exception:
-        miss.write_text("")
+        miss.write_text(url)
         return None
+
+
+FEED_PLACEHOLDER_TEXTS = {"（純圖片貼文，內容見海報）"}
+
+
+def _feed_dedupe_key(text):
+    return re.sub(r"\W+", "", text or "")[:80]
 
 
 def build_posts_data(events, sid_to_entry=None):
@@ -1435,7 +1442,7 @@ def build_posts_data(events, sid_to_entry=None):
     # 只保留追蹤名錄裡的來源（名錄外的帳號不進河道），依貼文時間取最近 FEED_LIMIT 則
     keys = [k for k in inbox if (sid_to_entry or {}).get(k[0]) or k in groups]
     keys.sort(key=post_time, reverse=True)
-    keys = keys[:FEED_LIMIT]
+    keys = keys[:FEED_LIMIT * 2]
 
     posts = []
     for key in keys:
@@ -1461,8 +1468,15 @@ def build_posts_data(events, sid_to_entry=None):
         # 保留段落換行；壓掉行內多餘空白與過多空行
         text = re.sub(r"[ \t]+", " ", it.get("text") or "")
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        if text in FEED_PLACEHOLDER_TEXTS:
+            text = ""  # 抓取器的占位字串：有圖就只放圖
+        if not text and not image and not evs:
+            continue   # 沒字、沒圖、沒活動＝沒東西可看
         # 公告的日期欄常是未來的展示起始日；貼文時間以「首次收錄」為準，不讓未來日期霸榜
         posted = post_time(key)
+        posted_dt, fetched_dt = _iso_dt(posted), _iso_dt(it.get("fetched_at"))
+        if not evs and posted_dt and fetched_dt and abs((posted_dt - fetched_dt).total_seconds()) < 120:
+            continue   # 發文時間其實是抓取時間（來源沒給日期），排不出先後就不放
         post_school = it.get("school") or lead.get("school")
         posts.append({
             "source_id": sid, "post_id": pid,
@@ -1480,6 +1494,15 @@ def build_posts_data(events, sid_to_entry=None):
                                "venue": e.get("venue")} for e in evs), key=lambda x: x["start_at"]),
         })
     posts.sort(key=lambda p: p.get("posted_at") or "", reverse=True)
+    # 同一單位在 IG／Threads／FB 貼同一篇：只留最新的一則
+    seen_text, deduped = set(), []
+    for post in posts:
+        dk = (post.get("org_id") or post["source_id"], _feed_dedupe_key(post["text"]))
+        if post["text"] and dk in seen_text:
+            continue
+        seen_text.add(dk)
+        deduped.append(post)
+    posts = deduped[:FEED_LIMIT]
     (SITE / "data").mkdir(parents=True, exist_ok=True)
     (SITE / "data" / "posts.json").write_text(json.dumps(
         {"generated_at": now_iso(), "posts": posts,
