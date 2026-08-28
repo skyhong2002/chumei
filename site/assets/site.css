@@ -1507,7 +1507,6 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .src-th-on { color: var(--chumei-bamboo-text); }
 .src-th-left, .src-th-plain { text-align: left; }
 .src-th-links { text-align: right; }
-@media (max-width: 1180px) { .src-th[data-sort="id"] { display: none; } }
 @media (max-width: 700px) {
   /* 手機列是兩行卡片，沒有真正的欄可對齊：表頭改成「排序」chip 列 */
   .src-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0; top: 54px; border-bottom-width: 1px; }
