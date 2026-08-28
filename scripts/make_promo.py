@@ -67,6 +67,8 @@ def phone(shot_name, width, crop_h=None, crop_top=0):
     shot = shot.resize((width, round(shot.height * scale)), Image.LANCZOS)
     if crop_h:
         shot = shot.crop((0, crop_top, width, min(shot.height, crop_top + crop_h)))
+    elif crop_top:
+        shot = shot.crop((0, crop_top, width, shot.height))
     pad = round(width * 0.035)
     r = round(width * 0.11)
     W, H = shot.width + pad * 2, shot.height + pad * 2
@@ -79,9 +81,11 @@ def phone(shot_name, width, crop_h=None, crop_top=0):
     return frame
 
 
-def paste_phone_fade(im, ph, x, y, fade=220):
-    """貼手機框，底部漸隱到黑（截圖被裁的地方不會有硬邊）。"""
+def paste_phone_fade(im, ph, x, y, fade=220, visible_h=None):
+    """貼手機框，並讓超出畫布的長手機在可見區底部自然漸隱。"""
     ph = ph.copy()
+    if visible_h is not None:
+        ph = ph.crop((0, 0, ph.width, min(ph.height, max(1, visible_h))))
     a = ph.split()[3]
     fd = ImageDraw.Draw(a)
     h = ph.height
@@ -143,9 +147,11 @@ def hero(W, H, s, top_offset=0):
     stat_row(im, y + (290 if tall else 240), items, 68 if tall else 56, 28 if tall else 24)
     pw = 560 if tall else 470
     py = y + (460 if tall else 370)
-    bottom = H - 150
-    ph = phone("home", pw, crop_h=bottom - py - round(pw * 0.07))
-    paste_phone_fade(im, ph, (W - ph.width) // 2, py, fade=200)
+    # 保留正常的長手機比例；超出畫布的內容由畫布邊緣漸隱，而不是把手機
+    # 本身裁成一個矮矮的圓角框。
+    ph = phone("home", pw)
+    paste_phone_fade(im, ph, (W - ph.width) // 2, py,
+                     fade=200, visible_h=H - py)
     text_center(im, H - 92, "https://竹梅.tw", 32, MUTED)
     return im
 
@@ -162,8 +168,9 @@ def slide(title, sub, shot_name, W=1080, H=1350, grad=GRAD_CHU, crop_top=0, inde
     for line in sub.split("\n"):
         d.text((72, yy), line, font=f, fill=MUTED)
         yy += 48
-    ph = phone(shot_name, 620, crop_h=H - 150 - 380 - 44, crop_top=crop_top)
-    paste_phone_fade(im, ph, (W - ph.width) // 2, 380, fade=200)
+    ph = phone(shot_name, 620, crop_top=crop_top)
+    paste_phone_fade(im, ph, (W - ph.width) // 2, 380,
+                     fade=200, visible_h=H - 380)
     wordmark_line(im, W // 2, H - 80, 36)
     return im
 
@@ -180,8 +187,8 @@ def cover(s):
     d.text((360 - d.textlength(cover_label, font=cover_label_font) / 2, 280),
            cover_label, font=cover_label_font, fill=WHITE)
     d.text((90, 405), "陽明/交大、清大校園活動資訊一站看完", font=font(30), fill=MUTED)
-    ph = phone("home", 400, crop_h=560)
-    paste_phone_fade(im, ph, 720, 50, fade=180)
+    ph = phone("home", 400)
+    paste_phone_fade(im, ph, 720, 50, fade=90, visible_h=H - 50)
     domain = "https://竹梅.tw"
     domain_font = font(24)
     d.text((360 - d.textlength(domain, font=domain_font) / 2, 505),
