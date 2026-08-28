@@ -1335,9 +1335,8 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   }
   body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; max-width: none; }
   body.feed-locked .post-feed.feed-wide { flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; }
-  /* 欄內左右留白照 Threads（24px） */
-  body.feed-locked .feed-col .feed-post,
-  body.feed-locked .feed-col-head { padding-left: 24px; padding-right: 24px; }
+  /* 欄內左右留白 16px（欄本身的 padding，貼文不再另外加） */
+  body.feed-locked .feed-cols .feed-col { padding-left: 16px; padding-right: 16px; }
   /* Threads deck：欄寬預設上限 620 置中；欄數多到裝不下時整個欄板橫向捲動 */
   body.feed-locked .feed-cols {
     /* safe center：裝得下時置中；溢出時靠左起算，確保第一欄捲得到 */
