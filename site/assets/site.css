@@ -1475,18 +1475,6 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
     transform: translateY(-50%);
   }
 }
-@media (min-width: 1280px) {
-  body.feed-locked .feed-cols.has-deck-add {
-    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 1fr)) 84px;
-  }
-  body.feed-locked .feed-main[data-feed-cols="1"] .feed-cols.has-deck-add,
-  body.feed-locked .feed-main[data-feed-cols="2"] .feed-cols.has-deck-add {
-    grid-template-columns: repeat(var(--ncols, 2), minmax(480px, 620px)) 84px;
-  }
-  body.feed-locked .feed-cols.cols-many.has-deck-add {
-    grid-template-columns: repeat(var(--ncols), 420px) 84px;
-  }
-}
 .dot-events { background: var(--color-category-orange-text); }
 .dot-stories { background: linear-gradient(135deg, var(--chumei-bamboo-text), var(--chumei-plum-strong)); }
 .feed-col .col-evs { margin-top: 4px; }
