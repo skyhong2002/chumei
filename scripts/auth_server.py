@@ -1043,6 +1043,8 @@ def _account_html(
 
         cal_block = ""
         if calendar_token:
+            cal_owner = user.get("handle") or user.get("display_name") or ""
+            cal_name = f"竹梅 {cal_owner} 已追蹤" if cal_owner else "竹梅 已追蹤"
             cal_url = f"https://chumei.observe.tw/auth/calendar/{html.escape(calendar_token)}.ics"
             webcal = cal_url.replace("https://", "webcal://", 1)
             cal_block = f"""<details class="account-calendar">
@@ -1053,6 +1055,8 @@ def _account_html(
             <a class="btn account-action" href="{webcal}">開啟 Apple 行事曆</a>
             <a class="btn account-action" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">加到 Google 日曆</a>
           </div>
+          <p class="account-hint">Apple 行事曆會自動命名為「{html.escape(cal_name)}」；Google 日曆一律拿網址當名稱，加入後請到該行事曆的設定把名稱改成
+            <code class="account-copy" title="點一下複製" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent)">{html.escape(cal_name)}</code>。</p>
           <form method="post" action="/auth/calendar/rotate" class="account-unlink"
             onsubmit="return confirm('換新連結後，舊連結會立即失效，要繼續嗎？')">
             <button type="submit">連結外流了？換一組新的</button>

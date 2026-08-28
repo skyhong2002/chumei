@@ -292,6 +292,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .account-cal-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
 .account-cal-row input { flex: 1 1 260px; font-size: 0.82rem; }
 .account-cal-row .btn { white-space: nowrap; }
+.account-copy { cursor: copy; padding: 1px 6px; border-radius: 6px; background: var(--color-surface-soft); font-size: 0.86em; }
 .story-tools { display: flex; justify-content: flex-end; margin: 4px 0 8px; }
 .story-tools .fchip[aria-pressed="true"] { border-color: var(--color-text-brand); color: var(--color-text-brand); }
 .account-empty { color: var(--color-text-muted); font-size: 0.92rem; margin: 0; }
