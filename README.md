@@ -88,8 +88,13 @@ Keychain（service：`tw.observe.chumei.google-oauth-client-id` 與
 支）。若要綁定的身分已有自己的帳號，會把對方的追蹤、參加標記、回報與 session 全部
 併入目前帳號再刪除對方；`POST /auth/unlink` 可解除綁定，但至少要留一種登入方式。
 
+帳號分成兩頁：**公開個人頁 `/@handle`**（名稱、代號、追蹤的單位、要去的活動；可在設定關閉公開）與
+**帳號設定 `/account/`**（個人檔案、登入方式綁定、行事曆訂閱、我的回報、登出）。未登入時 `/account/` 是登入頁。
+Caddy 的 auth matcher 包含 `/@*`。
+
 帳號還提供：
-- **名稱與代號**：`POST /auth/profile`（display_name、handle）；handle 小寫英數底線 3–20 字、全站唯一。
+- **名稱與代號**：`POST /auth/profile`（display_name、handle、public）；handle 小寫英數底線 3–20 字、全站唯一，
+  首次登入從 Email 自動產生（撞名加數字），舊帳號在服務啟動時補齊。
 - **私密行事曆**：`GET /auth/calendar/{token}.ics` 輸出該帳號「我要去」的活動（token 在帳號頁，
   `POST /auth/calendar/rotate` 換新）。
 - **推播綁帳號**：`push_server` 用 session cookie 解析 `state/auth.sqlite3`，把訂閱記上 `user_id`。

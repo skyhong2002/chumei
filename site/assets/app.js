@@ -144,7 +144,7 @@
     }).then(function (data) {
       if (!data || !data.authenticated) return;
       var profileUrl = data.user && data.user.profileUrl;
-      document.querySelectorAll('a[href="/account/"]').forEach(function (a) {
+      document.querySelectorAll('.site-nav a[href="/account/"], .nav-more-menu a[href="/account/"]').forEach(function (a) {
         var label = a.querySelector(".nav-label");
         if (label) label.textContent = "帳號";
         else a.textContent = "帳號";

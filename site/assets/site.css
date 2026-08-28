@@ -312,7 +312,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .profile-row .profile-handle { margin: 0; font-size: 0.86rem; }
 .profile-row .account-bind { margin-left: auto; }
 .account-check { display: flex !important; flex-direction: row !important; gap: 10px; align-items: flex-start; font-size: 0.92rem !important; color: var(--color-text-primary) !important; }
-.account-check input { margin-top: 3px; }
+.account-check input { width: auto; flex: none; margin: 3px 0 0; }
 .account-check small { display: block; color: var(--color-text-muted); font-size: 0.82rem; margin-top: 2px; }
 .account-logout { margin-top: 4px; }
 @media (max-width: 640px) { .profile-actions { width: 100%; } .profile-actions .btn { flex: 1; text-align: center; } }
