@@ -165,30 +165,28 @@
     });
   })();
 
-  // ---- 分享按鈕（詳情頁／個人頁）：行動裝置系統分享，桌機複製連結＋LINE ----
+  // ---- 分享：一律直接複製網址（不開系統分享面板、不跳選單），複製完用提示條說一聲 ----
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy")); } catch (e) { reject(e); }
+      ta.remove();
+    });
+  }
   document.addEventListener("click", function (ev) {
     var b = ev.target.closest(".btn-share, .profile-share");
     if (!b) return;
-    var url = b.dataset.url, title = b.dataset.title;
-    if (navigator.share) {
-      navigator.share({ title: title, url: url }).catch(function () {});
-      return;
-    }
-    var existing = document.querySelector(".share-pop");
-    if (existing) { existing.remove(); return; }
-    var pop = document.createElement("div");
-    pop.className = "share-pop";
-    pop.innerHTML = '<button class="share-copy">複製連結</button>' +
-      '<a href="https://social-plugins.line.me/lineit/share?url=' + encodeURIComponent(url) + '" target="_blank" rel="noopener">LINE 分享</a>';
-    b.parentNode.insertBefore(pop, b.nextSibling);
-    pop.querySelector(".share-copy").addEventListener("click", function () {
-      navigator.clipboard.writeText(url).then(function () {
-        pop.querySelector(".share-copy").textContent = "已複製 ✓";
-        setTimeout(function () { pop.remove(); }, 1200);
-      });
-    });
-    document.addEventListener("click", function close(e2) {
-      if (!pop.contains(e2.target) && e2.target !== b) { pop.remove(); document.removeEventListener("click", close); }
+    ev.preventDefault();
+    var url = b.dataset.url || location.href;
+    copyText(url).then(function () {
+      b.classList.add("copied");
+      setTimeout(function () { b.classList.remove("copied"); }, 1500);
+      if (window.chumeiToast) window.chumeiToast("已複製連結");
+    }).catch(function () {
+      if (window.chumeiToast) window.chumeiToast("無法複製，網址：" + url);
     });
   });
 

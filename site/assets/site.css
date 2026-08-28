@@ -1870,3 +1870,4 @@ button.btn:hover { background: var(--color-surface-soft); }
 .profile-page { padding: 28px 0 48px; }
 .profile-page .profile-head { margin-bottom: 28px; }
 @media (max-width: 640px) { .profile-page { padding-top: 16px; } }
+.btn-share.copied, .profile-share.copied { color: var(--color-text-brand); }
