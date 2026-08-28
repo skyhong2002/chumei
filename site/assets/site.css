@@ -1151,7 +1151,6 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 /* 手機：篩選在頂欄左側、與標題垂直對齊（右側留給全域搜尋） */
 @media (max-width: 699px) { .feed-tabs-row { top: 5px; left: 10px; right: auto; } }
-@media (min-width: 700px) and (max-width: 1079px) { .feed-tabs-row { top: 10px; right: 12px; } }
 
 /* 手機全域搜尋：頂欄右側 🔍 ＋ 全螢幕搜尋層 */
 .topbar-search {
@@ -1325,7 +1324,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .chip-campus { background: var(--color-category-orange-surface); color: var(--color-category-orange-text); }
 
 /* 桌機欄位河道：Threads 式——外層鎖定視窗高度、只捲欄內；每欄自選河道，tabs 收進右上工具組 */
-@media (min-width: 1080px) {
+@media (min-width: 700px) {
   .feed-main .story-strip { max-width: 1160px; }
   body.feed-locked { height: 100dvh; overflow: hidden; overscroll-behavior-x: none; }
   body.feed-locked .feed-main {
@@ -1336,13 +1335,9 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   }
   body.feed-locked .story-strip { flex: 0 0 auto; width: 100%; max-width: none; }
   body.feed-locked .post-feed.feed-wide { flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; }
-  /* 單欄／雙欄沿用 Threads 的窄河道；84px 是最右側的「新增河道」控制區。 */
-  body.feed-locked .feed-main[data-feed-cols="1"] .post-feed.feed-wide {
-    max-width: 716px;
-  }
-  body.feed-locked .feed-main[data-feed-cols="2"] .post-feed.feed-wide {
-    max-width: 1348px;
-  }
+  /* 欄內左右留白照 Threads（24px） */
+  body.feed-locked .feed-col .feed-post,
+  body.feed-locked .feed-col-head { padding-left: 24px; padding-right: 24px; }
   /* Threads deck：欄寬預設上限 620 置中；欄數多到裝不下時整個欄板橫向捲動 */
   body.feed-locked .feed-cols {
     /* safe center：裝得下時置中；溢出時靠左起算，確保第一欄捲得到 */
@@ -1356,7 +1351,9 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   body.feed-locked .feed-tabs-row { display: none; }
 }
 .post-feed.feed-wide { max-width: 1160px; }
-:root { --feed-col-w: 460px; }
+/* Threads 實測：寬螢幕每欄 490px，較窄時降為 420px；欄距 12px；欄板裝不下時只有欄板橫向捲 */
+:root { --feed-col-w: 420px; }
+@media (min-width: 1280px) { :root { --feed-col-w: 490px; } }
 .feed-cols {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; align-items: start;
 }
@@ -1454,7 +1451,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 .addcol-menu button:hover { background: var(--color-surface-soft); }
 .addcol-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
-@media (min-width: 1080px) {
+@media (min-width: 700px) {
   body.feed-locked .feed-cols.has-deck-add {
     grid-template-columns: repeat(var(--ncols, 2), var(--feed-col-w)) 84px;
   }
@@ -1640,7 +1637,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .card-heart[aria-pressed="true"]:hover { color: var(--color-bell-on); }
 
 /* ---------- 手機/平板：河道＝左右分頁（欄內只上下捲，整頁不捲） ---------- */
-@media (max-width: 1079px) {
+@media (max-width: 699px) {
   body.feed-locked { height: 100dvh; overflow: hidden; padding-bottom: 0; overscroll-behavior-x: none; }
   body.feed-locked .feed-main {
     display: flex; flex-direction: column; min-height: 0;
@@ -1706,11 +1703,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   /* 頂欄 54px＋底欄 60px＋安全區 */
   body.feed-locked .feed-main { --feed-chrome: calc(54px + 60px + env(safe-area-inset-bottom)); }
 }
-@media (min-width: 700px) and (max-width: 1079px) {
-  body.feed-locked .feed-main { --feed-chrome: 0px; }
-  .post-feed.feed-pager .feed-col { padding: 0 20px 24px; }
-}
-@media (max-width: 1079px) {
+@media (max-width: 699px) {
   /* 欄內下捲時讓出限動列的空間（回到頂端自動展開） */
   body.feed-locked .story-strip {
     transition: max-height 0.24s var(--motion-ease, ease), opacity 0.18s;
@@ -1723,7 +1716,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 
 /* ---------- 桌機多欄：左右移動的箭頭（滑鼠沒有橫向滾輪時的唯一出路） ---------- */
 .deck-nav { display: none; }   /* 手機分頁模式用圓點，不用箭頭（視窗縮小時也不殘留） */
-@media (min-width: 1080px) {
+@media (min-width: 700px) {
   body.feed-locked .post-feed.feed-wide { position: relative; }
   .deck-nav {
     display: flex;
@@ -1851,7 +1844,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 
 /* 手機分頁河道：欄頭的欄位選單與左上角的篩選鈕重複，隱藏欄頭。
    多欄時仍保留（要靠標題分辨是哪一條河道、也才有「移除這一欄」入口）。 */
-@media (max-width: 1079px) {
+@media (max-width: 699px) {
   .post-feed.feed-pager.single-col .feed-col-head { display: none; }
 }
 .story-card[hidden], .story-item[hidden] { display: none !important; }

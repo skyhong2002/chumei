@@ -428,7 +428,7 @@
       var seededFromUrl = false;
       Object.keys(state).forEach(function (k) { if (params.get(k)) { state[k] = params.get(k); seededFromUrl = true; } });
       var activeCol = 0;
-      function pagerMode() { return window.innerWidth < 1080; }
+      function pagerMode() { return window.innerWidth < 700; }
 
       var groups = {};
       function chips(id, options, key, cls) {
@@ -1084,7 +1084,7 @@
       function render(more) {
         if (!more) shown = 30;
         var fc = document.getElementById("feed-count");
-        var wide = window.innerWidth >= 1080;
+        var wide = window.innerWidth >= 700;
         viewCols = buildViewCols(wide);
         if (activeCol >= viewCols.length) activeCol = Math.max(0, viewCols.length - 1);
         // 網址帶篩選參數時，套用到第一個貼文欄（深連結）
@@ -1179,11 +1179,11 @@
         }, 200);
       });
       var resizeT;
-      var wasWide = window.innerWidth >= 1080;
+      var wasWide = window.innerWidth >= 700;
       window.addEventListener("resize", function () {
         clearTimeout(resizeT);
         resizeT = setTimeout(function () {
-          var wide = window.innerWidth >= 1080;
+          var wide = window.innerWidth >= 700;
           if (wide !== wasWide) {
             wasWide = wide;
             activeCol = 0;
