@@ -21,6 +21,10 @@ SITE = ROOT / "site"
 BASE_URL = "https://chumei.observe.tw"
 EXTRACT_DIR = ROOT / "state" / "extraction"
 POSTER_DIR = SITE / "assets" / "posters"
+POST_IMG_DIR = SITE / "assets" / "posts"
+FEED_LIMIT = 300          # 河道最多保留幾則最近貼文
+FEED_TEXT_LIMIT = 2000    # 貼文全文上限（超過才截斷）
+FEED_FOLD_CHARS = 220     # 超過這個字數就先摺疊、附「顯示全文」
 VERSIONED_ASSETS = ("tokens.css", "site.css", "app.js")
 
 SCHOOL_LABEL = {"nthu": "清大", "nycu": "陽明交大", "both": "清大×交大", "external": "校外"}
@@ -1373,8 +1377,34 @@ def post_campus(directory_entry, events):
     return inferred if inferred in {"guangfu", "yangming"} else None
 
 
+def cache_post_image(sid, pid, url):
+    """把貼文自己的圖存成本地副本（社群 CDN 網址會過期）。失敗記 .miss 不重試。"""
+    if not url:
+        return None
+    from PIL import Image
+    POST_IMG_DIR.mkdir(parents=True, exist_ok=True)
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{sid}__{pid}")[:150]
+    dest = POST_IMG_DIR / f"{stem}.jpg"
+    miss = POST_IMG_DIR / f"{stem}.miss"
+    if dest.exists():
+        return f"/assets/posts/{dest.name}"
+    if miss.exists():
+        return None
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (chumei)"})
+        resp.raise_for_status()
+        image = Image.open(io.BytesIO(resp.content))
+        image = image.convert("RGB")
+        image.thumbnail((1200, 1200))
+        image.save(dest, "JPEG", quality=84, optimize=True)
+        return f"/assets/posts/{dest.name}"
+    except Exception:
+        miss.write_text("")
+        return None
+
+
 def build_posts_data(events, sid_to_entry=None):
-    """貼文河道 site/data/posts.json：每則含活動的來源貼文＋其抽出的活動。"""
+    """貼文河道 site/data/posts.json：追蹤來源的最近貼文（有抽出活動就附上活動）。"""
     from chumei_lib import iter_inbox, AVATAR_DIR
     groups = {}
     for e in events:
@@ -1384,18 +1414,36 @@ def build_posts_data(events, sid_to_entry=None):
     inbox = {}
     for it in iter_inbox():
         inbox[(it["source_id"], it["post_id"])] = it
+    # 結構化來源（NYCU LIFE API 等）沒有貼文原文，用活動本身補一則
+    for key, evs in groups.items():
+        if key not in inbox:
+            lead = evs[0]
+            inbox[key] = {"source_name": lead.get("organizer"), "platform": lead["source"]["platform"],
+                          "school": lead.get("school"), "org_type": lead.get("organizer_type"),
+                          "url": lead["source"].get("url"), "posted_at": lead.get("first_seen") or lead["start_at"],
+                          "text": lead.get("summary") or ""}
+    now = now_iso()
+
+    def post_time(key):
+        it = inbox[key]
+        posted = it.get("posted_at") or ""
+        evs = groups.get(key) or []
+        if not posted or posted > now:
+            posted = min((evs[0].get("first_seen") if evs else None) or it.get("fetched_at") or now, now)
+        return posted
+
+    # 只保留追蹤名錄裡的來源（名錄外的帳號不進河道），依貼文時間取最近 FEED_LIMIT 則
+    keys = [k for k in inbox if (sid_to_entry or {}).get(k[0]) or k in groups]
+    keys.sort(key=post_time, reverse=True)
+    keys = keys[:FEED_LIMIT]
 
     posts = []
-    for key, evs in groups.items():
-        it = inbox.get(key)
+    for key in keys:
+        it = inbox[key]
+        evs = groups.get(key) or []
         sid, pid = key
         directory_entry = (sid_to_entry or {}).get(sid) or {}
-        lead = evs[0]
-        if it is None:  # NYCU LIFE API 等結構化來源沒有貼文原文
-            it = {"source_name": lead.get("organizer"), "platform": lead["source"]["platform"],
-                  "school": lead.get("school"), "org_type": lead.get("organizer_type"),
-                  "url": lead["source"].get("url"), "posted_at": lead.get("first_seen") or lead["start_at"],
-                  "text": lead.get("summary") or ""}
+        lead = evs[0] if evs else {}
         avatar = None
         for prefix in ("ig_", "threads_", "fb_", "x_"):
             if sid.startswith(prefix) and (AVATAR_DIR / f"{sid}.jpg").exists():
@@ -1407,14 +1455,14 @@ def build_posts_data(events, sid_to_entry=None):
         image = None
         if has_own_image:
             image = next((e.get("poster_image") for e in evs if e.get("poster_image")), None)
+            if not image:
+                own = (it.get("images") or [None])[0] or it.get("image_url")
+                image = cache_post_image(sid, pid, own)
         # 保留段落換行；壓掉行內多餘空白與過多空行
         text = re.sub(r"[ \t]+", " ", it.get("text") or "")
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
         # 公告的日期欄常是未來的展示起始日；貼文時間以「首次收錄」為準，不讓未來日期霸榜
-        posted = it.get("posted_at") or ""
-        now = now_iso()
-        if not posted or posted > now:
-            posted = min(lead.get("first_seen") or now, now)
+        posted = post_time(key)
         post_school = it.get("school") or lead.get("school")
         posts.append({
             "source_id": sid, "post_id": pid,
@@ -1423,7 +1471,7 @@ def build_posts_data(events, sid_to_entry=None):
             "campus": post_campus(directory_entry, evs) if post_school == "nycu" else None,
             "url": it.get("url"), "posted_at": posted,
             "org_type": it.get("org_type") or lead.get("organizer_type"),
-            "text": text[:500] + ("…" if len(text) > 500 else ""),
+            "text": text[:FEED_TEXT_LIMIT] + ("…" if len(text) > FEED_TEXT_LIMIT else ""),
             "image": image, "avatar": avatar,
             "org_id": (sid_to_entry.get(sid) or {}).get("id") if sid_to_entry else None,
             "events": sorted(({"id": e["id"], "title": e["title"], "start_at": e["start_at"],
@@ -1432,12 +1480,11 @@ def build_posts_data(events, sid_to_entry=None):
                                "venue": e.get("venue")} for e in evs), key=lambda x: x["start_at"]),
         })
     posts.sort(key=lambda p: p.get("posted_at") or "", reverse=True)
-    posts = posts[:200]
     (SITE / "data").mkdir(parents=True, exist_ok=True)
     (SITE / "data" / "posts.json").write_text(json.dumps(
         {"generated_at": now_iso(), "posts": posts,
          "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL}}, ensure_ascii=False))
-    print(f"posts: {len(posts)} event-posts in feed")
+    print(f"posts: {len(posts)} posts in feed ({sum(1 for p in posts if p['events'])} with events)")
     return posts
 
 
@@ -1530,7 +1577,9 @@ def _feed_row(p, now):
             f'<strong class="feed-name">{name}</strong>' +
             (f'<span class="feed-topic"><span class="sep">›</span>{esc(school_label)}</span>' if school_label else "") +
             f'<span class="feed-time">{esc(_feed_ago(p.get("posted_at"), now))}</span>{menu}</div>')
-    body = ((f'<p class="feed-text">{esc(p["text"])}</p>' if p.get("text") else "") +
+    long_text = len(p.get("text") or "") > FEED_FOLD_CHARS
+    body = ((f'<p class="feed-text{" is-long" if long_text else ""}">{esc(p["text"])}</p>' if p.get("text") else "") +
+            ('<button class="feed-text-toggle" type="button">顯示全文</button>' if long_text else "") +
             (f'<img class="feed-img" src="{esc(p["image"])}" alt="" loading="lazy">' if p.get("image") else ""))
     evs = ('<div class="feed-evs">' + "".join(_feed_ev_chip(e) for e in p["events"]) + "</div>") if p["events"] else ""
     ev0 = p["events"][0] if p["events"] else None

@@ -1871,3 +1871,9 @@ button.btn:hover { background: var(--color-surface-soft); }
 .profile-page .profile-head { margin-bottom: 28px; }
 @media (max-width: 640px) { .profile-page { padding-top: 16px; } }
 .btn-share.copied, .profile-share.copied { color: var(--color-text-brand); }
+.feed-text.expanded { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.feed-text-toggle {
+  display: inline-block; margin: 2px 0 0; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--color-text-muted);
+}
+.feed-text-toggle:hover { color: var(--color-text-primary); }

@@ -165,6 +165,16 @@
     });
   })();
 
+  // ---- 貼文全文：長文預設摺疊 6 行，按「顯示全文」展開 ----
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest(".feed-text-toggle");
+    if (!t) return;
+    var text = t.previousElementSibling;
+    if (!text || !text.classList.contains("feed-text")) return;
+    var open = text.classList.toggle("expanded");
+    t.textContent = open ? "收合" : "顯示全文";
+  });
+
   // ---- 分享：一律直接複製網址（不開系統分享面板、不跳選單），複製完用提示條說一聲 ----
   function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
@@ -585,7 +595,9 @@
           '<strong class="feed-name">' + (orgHref ? '<a class="feed-org-link" href="' + orgHref + '">' + esc(p.source_name || "") + "</a>" : esc(p.source_name || "")) + "</strong>" +
           (schoolLabel ? '<span class="feed-topic"><span class="sep">›</span>' + esc(schoolLabel) + "</span>" : "") +
           '<span class="feed-time">' + esc(ago(p.posted_at)) + "</span>" + menu + "</div>";
-        var body = (p.text ? '<p class="feed-text">' + esc(p.text) + "</p>" : "") +
+        var longText = (p.text || "").length > 220;
+        var body = (p.text ? '<p class="feed-text' + (longText ? " is-long" : "") + '">' + esc(p.text) + "</p>" : "") +
+          (longText ? '<button class="feed-text-toggle" type="button">顯示全文</button>' : "") +
           (p.image ? '<img class="feed-img" src="' + esc(p.image) + '" alt="" loading="lazy">' : "");
         var evs = p.events.length ? '<div class="feed-evs">' + p.events.map(evChip).join("") + "</div>" : "";
         var ev0 = p.events[0];
