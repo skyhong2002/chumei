@@ -2021,7 +2021,7 @@
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></button>'
         : "";
       var rowGoing = '<button class="going-btn ev-row-going" data-event-id="' + esc(e.id) + '" aria-pressed="false" title="標記我要去">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l9 -9"/></svg><span class="going-count" hidden></span></button>';
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="going-count" hidden></span></button>';
       return '<div class="ev-row-wrap">' + rowGoing + rowHeart + '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
         '<span class="evr-main"><span class="evr-when">' + esc(when) +
         (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">自由入場</span>' : "") +
@@ -2059,7 +2059,7 @@
         '<div class="card-media">' + media +
         badge +
         '<button class="going-btn card-going" data-event-id="' + esc(e.id) + '" aria-pressed="false" title="標記我要去">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l9 -9"/></svg><span class="going-count" hidden></span></button>' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="going-count" hidden></span></button>' +
         "</div>" +
         '<div class="card-body">' +
         '<p class="chips"><span class="chip chip-' + esc(e.school) + '">' + esc(labels.school[e.school] || e.school) + "</span>" +
@@ -2796,6 +2796,16 @@
       return;
     }
     var going = !mine[id];
+    // 提示條：跟追蹤一樣，標記／取消都講一聲
+    if (window.chumeiToast) {
+      var scope = btn && btn.closest(".ev-row-wrap, .card, .event-page, main");
+      var titleEl = scope && scope.querySelector(".evr-title, .card-title, h1");
+      var title = titleEl ? titleEl.textContent.trim() : "";
+      var esc = function (t) { return t.replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+      window.chumeiToast(going
+        ? "🎟 要去了" + (title ? "：" + esc(title) : "") + '——已加進<a href="/account/">行事曆訂閱</a>，前一天會提醒'
+        : "已取消要去" + (title ? "：" + esc(title) : ""));
+    }
     // 樂觀更新，失敗再由回應校正
     mine[id] = going;
     counts[id] = Math.max(0, n(counts[id]) + (going ? 1 : -1));

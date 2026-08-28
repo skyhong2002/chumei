@@ -876,7 +876,7 @@ def detail_page(e, org=None, org_sections=(), alt_posts=()):
          f'title="標記我要去">'
          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
          'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-         '<path d="M5 12l5 5l9 -9"/></svg>'
+         '<path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg>'
          '<span class="gb-go">我要去</span><span class="gb-going">要去了</span>'
          '<span class="going-count" hidden></span></button>'),
         f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
