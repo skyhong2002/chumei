@@ -1509,9 +1509,15 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .src-th-links { text-align: right; }
 @media (max-width: 1180px) { .src-th[data-sort="id"] { display: none; } }
 @media (max-width: 700px) {
-  .src-head { display: flex; gap: 6px; padding: 6px 2px; top: 54px; }
+  /* 手機列是兩行卡片，沒有真正的欄可對齊：表頭改成「排序」chip 列 */
+  .src-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0; top: 54px; border-bottom-width: 1px; }
+  .src-head::before { content: "排序"; font-size: 0.78rem; color: var(--color-text-muted); margin-right: 4px; }
   .src-th-plain, .src-th[data-sort="id"] { display: none; }
-  .src-th { text-align: left; }
+  .src-th {
+    text-align: left; padding: 5px 11px; border-radius: var(--radius-pill);
+    border: 1px solid var(--color-border-subtle); font-size: 0.8rem; white-space: nowrap;
+  }
+  .src-th-on { border-color: var(--color-action-primary); background: var(--color-action-primary); color: var(--color-action-on-primary); }
 }
 .chip-reg-req { background: var(--color-warning-surface); color: var(--color-warning-text); }
 .chip-reg-free { background: var(--color-success-surface); color: var(--color-success-text); }
