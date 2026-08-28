@@ -1853,3 +1853,7 @@ button.btn:hover { background: var(--color-surface-soft); }
 }
 .feed-text-toggle:hover { color: var(--color-text-primary); }
 .appear-open > span { flex: 1; text-align: left; }
+/* 名錄表頭：中等寬度要跟列用同一套 6 欄格線（放在 .src-head 基本規則之後才蓋得過） */
+@media (min-width: 701px) and (max-width: 1180px) {
+  .src-head { grid-template-columns: 40px minmax(150px, 1.2fr) minmax(120px, 1.3fr) 70px 48px 48px; }
+}
