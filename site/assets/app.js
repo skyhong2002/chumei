@@ -47,7 +47,7 @@
     while (menu.firstChild) main.appendChild(menu.firstChild);
     var open = document.createElement("button");
     open.className = "appear-open";
-    open.innerHTML = "<span>外觀</span>" + CHEV;
+    open.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="mi" aria-hidden="true"><path d="M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></svg><span>外觀</span>' + CHEV;
     main.replaceChild(open, main.querySelector("#theme-toggle"));
 
     function seg(key, opts, cur) {
@@ -84,85 +84,71 @@
     });
   })();
 
-  // ---- 桌機側欄：把常用工具拉出「更多」，手機仍維持原本底部導覽 ----
+  // ---- 導覽：一份有序清單同時決定桌機側欄的額外項目與「更多」選單（含 icon） ----
   (function () {
     var nav = document.querySelector(".site-nav");
     var more = nav && nav.querySelector(".nav-more");
     var menu = more && more.querySelector(".nav-more-menu");
     if (!nav || !more || !menu) return;
     var SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
-    var items = [
-      {
-        href: "/notify/",
-        label: "App 通知",
-        icon: '<path d="M10 5a2 2 0 0 1 4 0a7 7 0 0 1 4 6v3l2 2H4l2-2v-3a7 7 0 0 1 4-6"/><path d="M9 19a3 3 0 0 0 6 0"/>'
-      },
-      {
-        href: "/source/",
-        label: "資料來源",
-        icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'
-      },
-      {
-        href: "/account/",
-        label: "登入",
-        icon: '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>'
-      }
+    var ICON = {
+      user: '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
+      settings: '<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
+      bell: '<path d="M10 5a2 2 0 0 1 4 0a7 7 0 0 1 4 6v3l2 2H4l2-2v-3a7 7 0 0 1 4-6"/><path d="M9 19a3 3 0 0 0 6 0"/>',
+      flag: '<path d="M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9z"/><path d="M5 21v-7"/>',
+      db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+      rss: '<path d="M5 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M4 4a16 16 0 0 1 16 16"/><path d="M4 11a9 9 0 0 1 9 9"/>',
+      info: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/>'
+    };
+    function svg(name, cls) {
+      return SVG_OPEN.replace('aria-hidden="true">', 'class="' + (cls || "") + '" aria-hidden="true">') + ICON[name] + "</svg>";
+    }
+    // 順序＝顯示順序。desktop:true 的會拉到桌機側欄（選單裡改為手機專屬）
+    var ITEMS = [
+      { href: "/account/", label: "登入／帳號", icon: "user", desktop: true },
+      { href: "/notify/", label: "App 通知", icon: "bell", desktop: true },
+      { href: "/submit/", label: "回報活動", icon: "flag", desktop: true },
+      { href: "/source/", label: "資料來源", icon: "db", desktop: true },
+      { href: "/subscribe/", label: "訂閱管道", icon: "rss" },
+      { href: "/about/", label: "關於竹梅", icon: "info" }
     ];
-    items.forEach(function (item) {
+    // 桌機側欄：依序插在「更多」前面
+    ITEMS.filter(function (it) { return it.desktop; }).forEach(function (it) {
       var a = document.createElement("a");
       a.className = "nav-item nav-desktop-extra";
-      a.href = item.href;
-      a.innerHTML = SVG_OPEN + item.icon + '</svg><span class="nav-label">' + item.label + "</span>";
+      a.href = it.href;
+      a.innerHTML = svg(it.icon) + '<span class="nav-label">' + it.label + "</span>";
       nav.insertBefore(a, more);
-      var duplicate = menu.querySelector('a[href="' + item.href + '"]');
-      if (duplicate) {
-        duplicate.textContent = item.label;
-        duplicate.classList.add("nav-mobile-extra");
-      }
     });
-    if (!menu.querySelector('a[href="/submit/"]')) {
-      var submitMenu = document.createElement("a");
-      submitMenu.href = "/submit/";
-      submitMenu.textContent = "回報活動";
-      submitMenu.className = "nav-mobile-extra";
-      var submitBefore = menu.querySelector('a[href="/about/"]') || menu.querySelector("#theme-toggle");
-      if (submitBefore && submitBefore.parentNode) submitBefore.parentNode.insertBefore(submitMenu, submitBefore);
-      else menu.appendChild(submitMenu);
+    // 「更多」選單：清掉靜態項目，照清單重建（外觀按鈕保留在最後）
+    var container = menu.querySelector(":scope > div") || menu;
+    container.querySelectorAll("a").forEach(function (a) { a.remove(); });
+    var tail = container.querySelector(".appear-open, #theme-toggle");
+    function menuItem(it) {
+      var a = document.createElement("a");
+      a.href = it.href;
+      a.className = it.desktop ? "nav-mobile-extra" : "";
+      a.innerHTML = svg(it.icon, "mi") + "<span>" + it.label + "</span>";
+      return a;
     }
-    if (!menu.querySelector('a[href="/account/"]')) {
-      var accountMenu = document.createElement("a");
-      accountMenu.href = "/account/";
-      accountMenu.textContent = "登入／帳號";
-      accountMenu.className = "nav-mobile-extra";
-      var about = menu.querySelector('a[href="/about/"]');
-      var accountBefore = about || menu.querySelector("#theme-toggle");
-      if (accountBefore && accountBefore.parentNode) accountBefore.parentNode.insertBefore(accountMenu, accountBefore);
-      else menu.appendChild(accountMenu);
-    }
+    ITEMS.forEach(function (it) { container.insertBefore(menuItem(it), tail); });
     fetch("/auth/me", { credentials: "same-origin" }).then(function (r) {
       return r.ok ? r.json() : null;
     }).then(function (data) {
       if (!data || !data.authenticated) return;
       var profileUrl = data.user && data.user.profileUrl;
       document.querySelectorAll('.site-nav a[href="/account/"], .nav-more-menu a[href="/account/"]').forEach(function (a) {
-        var label = a.querySelector(".nav-label");
+        var label = a.querySelector(".nav-label") || a.querySelector("span");
         if (label) label.textContent = "帳號";
-        else a.textContent = "帳號";
         if (profileUrl) a.href = profileUrl;
       });
-      if (profileUrl && menu && !menu.querySelector('a[href="/account/"]')) {
-        var settingsMenu = document.createElement("a");
-        settingsMenu.href = "/account/";
-        settingsMenu.textContent = "帳號設定";
-        var profileMenu = menu.querySelector('a[href="' + profileUrl + '"]');
-        if (profileMenu && profileMenu.parentNode) profileMenu.parentNode.insertBefore(settingsMenu, profileMenu.nextSibling);
-        else menu.appendChild(settingsMenu);
+      if (profileUrl) {
+        var after = container.querySelector('a[href="' + profileUrl + '"]');
+        var settings = menuItem({ href: "/account/", label: "帳號設定", icon: "settings" });
+        if (after && after.parentNode) after.parentNode.insertBefore(settings, after.nextSibling);
+        else container.insertBefore(settings, tail);
       }
     }).catch(function () {});
-    document.querySelectorAll('a[href="/notify/"]').forEach(function (a) {
-      if ((a.textContent || "").trim() === "推播與追蹤") a.textContent = "App 通知";
-      if (a.getAttribute("aria-label") === "推播與追蹤") a.setAttribute("aria-label", "App 通知");
-    });
   })();
 
   // ---- 貼文全文：長文預設摺疊 6 行，按「顯示全文」展開 ----
@@ -288,8 +274,8 @@
       navSearch.setAttribute("aria-label", "搜尋");
       navSearch.innerHTML = SVGO + '<path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>' +
         '<span class="nav-label">搜尋</span>';
-      var firstMore = nav.querySelector(".nav-more");
-      if (firstMore) nav.insertBefore(navSearch, firstMore);
+      var anchor = nav.querySelector(".nav-desktop-extra") || nav.querySelector(".nav-more");
+      if (anchor) nav.insertBefore(navSearch, anchor);
       else nav.appendChild(navSearch);
     }
 

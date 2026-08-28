@@ -91,6 +91,7 @@ a:hover { text-decoration: underline; }
   font-family: inherit; font-size: 0.92rem; font-weight: 600;
 }
 .nav-more-menu a:hover, .nav-more-menu button:hover { background: var(--color-surface-soft); text-decoration: none; }
+.nav-more-menu .mi { width: 20px; height: 20px; flex: none; margin-right: 12px; color: var(--color-text-secondary); }
 .nav-more-menu > div { display: flex; flex-direction: column; gap: 2px; }
 .nav-more-menu > div[hidden] { display: none; }
 
@@ -962,7 +963,7 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-row {
   display: grid;
   /* 連結欄不設上限時會吃掉標籤欄（長 handle 讓標籤被壓成直排）——給它上限並讓它換行 */
-  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 150px) 78px 52px 52px;
+  grid-template-columns: 46px minmax(170px, 1.2fr) minmax(130px, 1.4fr) minmax(0, 150px) 78px 52px 52px;
   gap: 10px; align-items: center;
   padding: 10px 6px; border-bottom: 1px solid var(--color-border-subtle);
 }
@@ -1011,8 +1012,13 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-ev { text-align: right; font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .src-uncovered .src-ev { color: var(--color-text-muted); font-weight: 400; }
 .chip-m { display: none; }
-@media (max-width: 1600px) {
-  /* compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
+@media (max-width: 1180px) {
+  /* 中等寬度：拿掉標籤欄與 ID，其餘維持表格排版 */
+  .src-row, .src-head { grid-template-columns: 40px minmax(150px, 1.2fr) minmax(120px, 1.3fr) 70px 48px 48px; }
+  .src-c-chips, .src-head .src-th-plain:not(.src-th-links) { display: none; }
+}
+@media (max-width: 700px) {
+  /* 手機 compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
   .src-row {
     grid-template-columns: 1fr auto auto;
     grid-template-areas: "name ev follow" "links upd follow";
@@ -1341,23 +1347,16 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   body.feed-locked .feed-cols {
     /* safe center：裝得下時置中；溢出時靠左起算，確保第一欄捲得到 */
     height: 100%; align-items: stretch; justify-content: safe center;
-    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 620px));
+    /* 欄寬固定（Threads 式）：視窗不夠寬就橫向捲，不縮欄 */
+    grid-template-columns: repeat(var(--ncols, 2), var(--feed-col-w));
     overflow-x: auto; overscroll-behavior-x: contain;
-  }
-  body.feed-locked .feed-cols.cols-many {
-    /* 第 4 欄起降一階：Threads 實測每欄 420px 固定寬 */
-    grid-template-columns: repeat(var(--ncols), 420px);
   }
   body.feed-locked .feed-cols .feed-col { position: static; height: auto; }
   /* 桌機欄位模式：篩選在各欄選單內，整列 tabs（含 ⚙）不需要 */
   body.feed-locked .feed-tabs-row { display: none; }
 }
-@media (min-width: 1280px) {
-  body.feed-locked .feed-cols {
-    grid-template-columns: repeat(var(--ncols, 2), minmax(480px, 620px));
-  }
-}
 .post-feed.feed-wide { max-width: 1160px; }
+:root { --feed-col-w: 460px; }
 .feed-cols {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; align-items: start;
 }
@@ -1457,14 +1456,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .addcol-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
 @media (min-width: 1080px) {
   body.feed-locked .feed-cols.has-deck-add {
-    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 1fr)) 84px;
-  }
-  body.feed-locked .feed-main[data-feed-cols="1"] .feed-cols.has-deck-add,
-  body.feed-locked .feed-main[data-feed-cols="2"] .feed-cols.has-deck-add {
-    grid-template-columns: repeat(var(--ncols, 2), minmax(340px, 620px)) 84px;
-  }
-  body.feed-locked .feed-cols.cols-many.has-deck-add {
-    grid-template-columns: repeat(var(--ncols), 420px) 84px;
+    grid-template-columns: repeat(var(--ncols, 2), var(--feed-col-w)) 84px;
   }
   .deck-add {
     position: relative; align-self: stretch; min-width: 84px; z-index: 20;
@@ -1513,7 +1505,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 /* 名錄表頭（點擊排序） */
 .src-head {
   display: grid;
-  grid-template-columns: 46px 268px minmax(150px, 1.4fr) minmax(0, 150px) 78px 52px 52px;
+  grid-template-columns: 46px minmax(170px, 1.2fr) minmax(130px, 1.4fr) minmax(0, 150px) 78px 52px 52px;
   gap: 10px; align-items: center;
   padding: 6px 6px; border-bottom: 2px solid var(--color-border-strong);
   position: sticky; top: 0; z-index: 5;
@@ -1531,13 +1523,11 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .src-th-on { color: var(--chumei-bamboo-text); }
 .src-th-left, .src-th-plain { text-align: left; }
 .src-th-links { text-align: right; }
-@media (max-width: 1600px) {
+@media (max-width: 1180px) { .src-th[data-sort="id"] { display: none; } }
+@media (max-width: 700px) {
   .src-head { display: flex; gap: 6px; padding: 6px 2px; top: 54px; }
   .src-th-plain, .src-th[data-sort="id"] { display: none; }
   .src-th { text-align: left; }
-}
-@media (min-width: 701px) and (max-width: 1600px) {
-  .src-head { top: 0; }
 }
 .chip-reg-req { background: var(--color-warning-surface); color: var(--color-warning-text); }
 .chip-reg-free { background: var(--color-success-surface); color: var(--color-success-text); }
@@ -1877,3 +1867,4 @@ button.btn:hover { background: var(--color-surface-soft); }
   font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--color-text-muted);
 }
 .feed-text-toggle:hover { color: var(--color-text-primary); }
+.appear-open > span { flex: 1; text-align: left; }
