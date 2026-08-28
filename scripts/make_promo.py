@@ -146,7 +146,7 @@ def hero(W, H, s, top_offset=0):
     bottom = H - 150
     ph = phone("home", pw, crop_h=bottom - py - round(pw * 0.07))
     paste_phone_fade(im, ph, (W - ph.width) // 2, py, fade=200)
-    text_center(im, H - 100, "竹梅.tw", 40, WHITE)
+    text_center(im, H - 92, "https://竹梅.tw", 32, MUTED)
     return im
 
 
@@ -182,7 +182,10 @@ def cover(s):
     d.text((90, 405), "陽明/交大、清大校園活動資訊一站看完", font=font(30), fill=MUTED)
     ph = phone("home", 400, crop_h=560)
     paste_phone_fade(im, ph, 720, 50, fade=180)
-    d.text((90, 500), "竹梅.tw", font=font(30), fill=WHITE)
+    domain = "https://竹梅.tw"
+    domain_font = font(24)
+    d.text((360 - d.textlength(domain, font=domain_font) / 2, 505),
+           domain, font=domain_font, fill=MUTED)
     return im
 
 
