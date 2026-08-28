@@ -1865,3 +1865,8 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   .post-feed.feed-pager.single-col .feed-col-head { display: none; }
 }
 .story-card[hidden], .story-item[hidden] { display: none !important; }
+button.btn { background: transparent; font: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; }
+button.btn:hover { background: var(--color-surface-soft); }
+.profile-page { padding: 28px 0 48px; }
+.profile-page .profile-head { margin-bottom: 28px; }
+@media (max-width: 640px) { .profile-page { padding-top: 16px; } }
