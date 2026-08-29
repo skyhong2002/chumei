@@ -198,17 +198,19 @@
     }
     // 順序＝顯示順序。desktop:true 的會拉到桌機側欄（選單裡改為手機專屬）
     var ITEMS = [
-      { href: "/account/", label: "登入／帳號", icon: "user", desktop: true },
-      { href: "/notify/", label: "App 通知", icon: "bell", desktop: true },
-      { href: "/submit/", label: "回報活動", icon: "flag", desktop: true },
-      { href: "/source/", label: "資料來源", icon: "db", desktop: true },
+      { href: "/account/", label: "登入／帳號", icon: "user", desktop: true, desktopOrder: 4 },
+      { href: "/notify/", label: "App 通知", icon: "bell", desktop: true, desktopOrder: 1 },
+      { href: "/submit/", label: "回報活動", icon: "flag", desktop: true, desktopOrder: 2 },
+      { href: "/source/", label: "資料來源", icon: "db", desktop: true, desktopOrder: 3 },
       { href: "/subscribe/", label: "訂閱管道", icon: "rss" },
       { href: "/about/", label: "關於竹梅", icon: "info" }
     ];
     // 桌機側欄：依序插在「更多」前面
-    ITEMS.filter(function (it) { return it.desktop; }).forEach(function (it) {
+    ITEMS.filter(function (it) { return it.desktop; }).sort(function (a, b) {
+      return a.desktopOrder - b.desktopOrder;
+    }).forEach(function (it) {
       var a = document.createElement("a");
-      a.className = "nav-item nav-desktop-extra";
+      a.className = "nav-item nav-desktop-extra" + (it.href === "/account/" ? " nav-account-entry" : "");
       a.href = it.href;
       a.innerHTML = svg(it.icon) + '<span class="nav-label">' + it.label + "</span>";
       nav.insertBefore(a, more);

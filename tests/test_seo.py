@@ -113,7 +113,9 @@ class SEOOutputTests(unittest.TestCase):
         css = (SITE / "assets" / "site.css").read_text()
         self.assertIn('label.textContent = handle ? "@" + handle : "帳號"', app)
         self.assertIn('avatar.className = "nav-account-avatar"', app)
+        self.assertIn("return a.desktopOrder - b.desktopOrder", app)
         self.assertIn(".nav-account-avatar {", css)
+        self.assertIn(".nav-account-entry { margin-top: auto; }", css)
 
 
 if __name__ == "__main__":

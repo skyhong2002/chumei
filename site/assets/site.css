@@ -151,6 +151,8 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 
 @media (min-width: 1080px) {
   body { padding-left: 260px; }
+  .nav-account-entry { margin-top: auto; }
+  .nav-more { margin-top: 0; }
   .nav-more-menu .nav-mobile-extra { display: none; }
 }
 @media (min-width: 700px) and (max-width: 1079px) {
