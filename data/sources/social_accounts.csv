@@ -12,15 +12,15 @@ threads,nycu.taiwan,國立陽明交通大學,nycu,official,綜合,true,search re
 threads,nycu_ctsa,交大學聯會(陽明交大學生會交通分會),nycu,official,綜合,true,search result threads.com/@nycu_ctsa profile+校園論壇貼文
 threads,nycu_ymsa,陽明學生會(陽明交大學生會陽明分會),nycu,official,綜合,true,search result threads.com/@nycu_ymsa profile 確認
 threads,nycualumni,陽明交大校友總會,nycu,official,綜合,true,search result threads.com/@nycualumni 多則貼文
-threads,nthu.sc,國立清華大學學生議會,nthu,official,綜合,true,same-as-ig-unverified; IG 同 handle 活躍
-threads,career.nthu,清華Career報報,nthu,official,職涯,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,nthu.sc,國立清華大學學生議會,nthu,official,綜合,link,2026-08-30 公開頁存在但 RSSHub 無法取得貼文；暫時僅顯示連結
+threads,career.nthu,清華Career報報,nthu,official,職涯,false,2026-08-30 RSSHub 找不到使用者且公開網址導向登入；停用先前同 IG handle 的推測
 threads,nycuoia,陽明交大國際處,nycu,official,國際,true,same-as-ig-unverified; IG 同 handle 活躍
 threads,meichu_prep_cmte,梅竹籌備委員會,both,club,賽事,true,same-as-ig-unverified; IG 同 handle 活躍
 threads,mc_hackathon,梅竹黑客松,both,club,學術,true,same-as-ig-unverified; IG 同 handle 活躍
 threads,tedxnthu_,TEDxNTHU,nthu,club,講座,true,same-as-ig-unverified; IG 同 handle
-threads,nycu_ctpd,交大熱舞社,nycu,club,舞蹈,true,same-as-ig-unverified; IG 同 handle 活躍
-threads,nthuecho,清大迴聲社(熱音),nthu,club,音樂,true,same-as-ig-unverified; IG 同 handle 活躍
-threads,nthu_eesa,電機系會,nthu,department,學術,true,same-as-ig-unverified; IG 同 handle 活躍
+threads,nycu_ctpd,交大熱舞社,nycu,club,舞蹈,false,2026-08-30 RSSHub 找不到使用者且公開網址導向登入；停用先前同 IG handle 的推測
+threads,nthuecho,清大迴聲社(熱音),nthu,club,音樂,link,2026-08-30 公開頁存在但 RSSHub 無法取得貼文；暫時僅顯示連結
+threads,nthu_eesa,電機系會,nthu,department,學術,false,2026-08-30 RSSHub 找不到使用者且公開網址導向登入；停用先前同 IG handle 的推測
 x,NTHU_TAIWAN,國立清華大學,nthu,official,綜合,true,search result twitter.com/NTHU_TAIWAN 官方帳號
 x,NYCU_official,國立陽明交通大學,nycu,official,綜合,true,search result x.com/nycu_official 官方帳號
 x,nthu_racing,NTHU Racing 清大賽車工廠,nthu,club,賽事,true,search result twitter.com/nthu_racing 活躍發賽事/隊伍動態

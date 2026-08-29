@@ -296,12 +296,14 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
         if not last_success and source["kind"] != "instagram_story":
             last_success = inbox_latest.get(source["sourceId"])
         next_due = None
+        instagram_cooldown = 0.0
         if source["kind"] in {"instagram_profile", "instagram_story"}:
             schedule = profile_schedule if source["kind"] == "instagram_profile" else story_schedule
             account = (schedule.get("accounts") or {}).get(source["username"], {})
             last_attempt = account.get("last_attempt") or last_attempt
             next_due = account.get("next_eligible")
             cooldown = float(schedule.get("global_cooldown_until") or 0)
+            instagram_cooldown = cooldown
             if cooldown > (next_due or 0):
                 next_due = cooldown
         elif source["kind"] == "facebook":
@@ -319,11 +321,13 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
             next_due = (float(last_attempt) + source["targetIntervalHours"] * 3600) if last_attempt else now
         if next_due is None:
             next_due = (float(last_success) + source["targetIntervalHours"] * 3600) if last_success else now
-        blocked = ""
-        if source["kind"] == "facebook" and apify.get("exhausted"):
-            blocked = "Apify 本期額度已用完"
         error = str(entry.get("lastError") or "")
-        state = "error" if error else ("blocked" if blocked else ("due" if next_due <= now else "ok"))
+        blocked = ""
+        if error and instagram_cooldown > now:
+            blocked = "Instagram 共用登入工作階段冷卻中"
+        elif source["kind"] == "facebook" and apify.get("exhausted"):
+            blocked = "Apify 本期額度已用完"
+        state = "blocked" if blocked else ("error" if error else ("due" if next_due <= now else "ok"))
         rows.append({
             **source, "lastAttempt": last_attempt, "lastSuccess": last_success,
             "nextDue": next_due, "averageIntervalHours": _average_interval(entry.get("successHistory", [])),

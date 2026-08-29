@@ -14,7 +14,7 @@ import time
 import requests
 
 from chumei_lib import SeenState, append_inbox, load_env, now_iso, read_sources_csv, ROOT
-from fetch_instagram import strip_html, parse_feed as _ig_parse  # 共用 HTML 清理
+from fetch_instagram import rsshub_error, strip_html
 from source_status import record_api_call, record_fetch
 
 RAW_SOURCE = "rsshub-social"
@@ -92,6 +92,9 @@ def main():
         try:
             url = base + ROUTES[platform].format(u=username)
             resp = requests.get(url, params={"limit": args.limit}, timeout=90)
+            error = rsshub_error(resp)
+            if error:
+                raise error
             resp.raise_for_status()
             if b"<rss" not in resp.content[:200]:
                 raise RuntimeError(f"non-RSS response ({resp.status_code})")

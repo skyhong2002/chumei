@@ -79,6 +79,36 @@ class SourceStatusTests(unittest.TestCase):
         self.assertEqual(payload["counts"]["blocked"], 1)
         self.assertEqual(payload["counts"]["fresh"], 0)
 
+    def test_active_instagram_cooldown_is_blocked_not_error(self):
+        instagram = {
+            "id": "instagram:test", "sourceId": "ig_test", "name": "Test", "username": "test",
+            "platform": "Instagram", "kind": "instagram_profile", "backend": "RSSHub → Instaloader",
+            "kindLabel": "貼文", "school": "other", "targetIntervalHours": 24.0,
+        }
+        empty_usage = {name: {"requests24h": 0, "requests30d": 0, "sources24h": 0,
+                              "errors24h": 0, "cost30dUsd": 0}
+                       for name in ("RSSHub", "Instaloader", "Apify")}
+
+        def read_state(path):
+            if path.name == "instagram_profile_schedule.json":
+                return {"global_cooldown_until": 2000, "accounts": {}}
+            return {}
+
+        with patch.object(source_status, "source_registry", return_value=[instagram]), \
+             patch.object(source_status, "load_ledger", return_value={
+                 "instagram:test": {"lastError": "401 rate limited"}
+             }), \
+             patch.object(source_status, "_inbox_last_success", return_value={}), \
+             patch.object(source_status, "_read_json", side_effect=read_state), \
+             patch.object(source_status, "apify_quota", return_value={"exhausted": False}), \
+             patch.object(source_status, "api_usage_summary", return_value=empty_usage):
+            payload = source_status.build_status_payload(now=1000)
+        row = payload["sources"][0]
+        self.assertEqual(row["status"], "blocked")
+        self.assertIn("冷卻", row["blockedReason"])
+        self.assertEqual(payload["counts"]["errors"], 0)
+        self.assertEqual(payload["counts"]["blocked"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

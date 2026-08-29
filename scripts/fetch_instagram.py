@@ -34,6 +34,23 @@ def strip_html(s):
     return html.unescape(s).strip()
 
 
+def rsshub_error(response):
+    """Turn RSSHub's HTML error page into a useful, stable exception."""
+    if response.status_code < 400:
+        return None
+    match = re.search(
+        r"Error Message:\s*<br\s*/?>\s*<code[^>]*>(.*?)</code>",
+        response.text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    detail = strip_html(match.group(1)) if match else ""
+    if detail:
+        return RuntimeError(f"RSSHub: {detail} (HTTP {response.status_code})")
+    return requests.HTTPError(
+        f"RSSHub HTTP {response.status_code} for {response.url}", response=response
+    )
+
+
 def parse_feed(xml_text):
     root = ET.fromstring(xml_text)
     for item in root.iter("item"):
@@ -61,6 +78,9 @@ def fetch_rsshub(base, username, limit):
     """回傳 (avatar_url, posts)。"""
     resp = requests.get(f"{base}/instagram/2/user/{username}", params={"limit": limit,
                         }, timeout=(10, 45))
+    error = rsshub_error(resp)
+    if error:
+        raise error
     resp.raise_for_status()
     if b"<rss" not in resp.content[:200]:
         raise RuntimeError(f"non-RSS response ({resp.status_code})")
@@ -306,16 +326,16 @@ def main():
             print(f"[{i+1}/{len(rows)}] @{username}: +{n}")
         except Exception as e:
             failed += 1
-            if auto_backend:
-                for service, ok in auto_backend.last_attempts:
-                    record_api_call(service, operation="instagram profile", ok=ok)
-                attempt_backend = auto_backend.last_attempts[-1][0] if auto_backend.last_attempts else "auto"
-            else:
-                attempt_backend = "RSSHub" if backend == "rsshub" else "Instaloader"
-                record_api_call(attempt_backend, operation="instagram profile", ok=False)
-            record_fetch(source_key, backend=attempt_backend, ok=False, error=e)
-            log_error(username, e)
             if not args.dry_run:
+                if auto_backend:
+                    for service, ok in auto_backend.last_attempts:
+                        record_api_call(service, operation="instagram profile", ok=ok)
+                    attempt_backend = auto_backend.last_attempts[-1][0] if auto_backend.last_attempts else "auto"
+                else:
+                    attempt_backend = "RSSHub" if backend == "rsshub" else "Instaloader"
+                    record_api_call(attempt_backend, operation="instagram profile", ok=False)
+                record_fetch(source_key, backend=attempt_backend, ok=False, error=e)
+                log_error(username, e)
                 mark_failure(schedule, username)
             print(f"[{i+1}/{len(rows)}] @{username}: ERROR {str(e)[:120]}", file=sys.stderr)
             if is_rate_limited(e):
