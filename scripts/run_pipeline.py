@@ -12,6 +12,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from apify_pool import pool_status, recommended_interval_hours
+from chumei_lib import read_sources_csv
+
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / ".venv" / "bin" / "python"
 STATE = ROOT / "state" / "pipeline.json"
@@ -66,11 +69,18 @@ def main():
             results["social"] = run_step("threads/x", ["fetch_social.py", "--limit", "5", "--sleep", "8"])
             state["last_social_run"] = time.time()
 
-        # FB 走 Apify 按結果計費；免費層每月 $5，一週一輪剛好打平（160h 門檻容忍排程抖動）
-        FB_MIN_INTERVAL_H = 160
+        # FB 走 Apify 按結果計費；依所有帳號剩餘額度、重置日與批次成本動態配速。
         fb_script = ROOT / "scripts" / "fetch_facebook.py"
         last_fb = state.get("last_fb_run", 0)
-        if fb_script.exists() and (time.time() - last_fb) > FB_MIN_INTERVAL_H * 3600:
+        fb_count = sum(
+            row.get("active", "true").strip().lower() not in {"false", "link"}
+            for row in read_sources_csv("fb_pages.csv")
+        )
+        fb_quota = pool_status(refresh=True)
+        fb_interval_h = recommended_interval_hours(fb_quota, source_count=fb_count)
+        state["facebook_interval_hours"] = fb_interval_h
+        if (fb_script.exists() and not fb_quota.get("exhausted")
+                and (time.time() - last_fb) > fb_interval_h * 3600):
             results["facebook"] = run_step("facebook", ["fetch_facebook.py", "--limit", "5"])
             state["last_fb_run"] = time.time()
 

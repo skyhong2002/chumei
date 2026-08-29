@@ -12,14 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-import requests
-
-from chumei_lib import INBOX_DIR, ROOT, load_env, read_sources_csv
+from apify_pool import pool_status, recommended_interval_hours
+from chumei_lib import INBOX_DIR, ROOT, read_sources_csv
 
 
 LEDGER_PATH = ROOT / "state" / "source_fetch_ledger.json"
 USAGE_PATH = ROOT / "state" / "api_usage.jsonl"
-APIFY_CACHE_PATH = ROOT / "state" / "apify_quota.json"
 HISTORY_LIMIT = 20
 
 
@@ -43,7 +41,7 @@ def _slug(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", raw.strip("/@ ")).lower().strip("_") or "facebook_page"
 
 
-def source_registry() -> list[dict]:
+def source_registry(*, facebook_interval_hours: float = 168.0) -> list[dict]:
     """Return every independently scheduled source, with stable public ids."""
     sources: list[dict] = []
     for row in read_sources_csv("ig_accounts.csv"):
@@ -78,7 +76,7 @@ def source_registry() -> list[dict]:
             "name": row.get("name") or slug, "username": slug,
             "platform": "Facebook", "kind": "facebook", "backend": "Apify",
             "kindLabel": "粉專貼文",
-            "school": row.get("school") or "other", "targetIntervalHours": 168.0,
+            "school": row.get("school") or "other", "targetIntervalHours": facebook_interval_hours,
         })
     for row in read_sources_csv("social_accounts.csv"):
         if not _active(row) or row.get("platform") not in {"threads", "x"}:
@@ -270,36 +268,8 @@ def method_summaries(rows: list[dict]) -> list[dict]:
 
 
 def apify_quota(refresh: bool = True) -> dict:
-    """Return sanitized account limits; never expose token or user identity."""
-    cached = _read_json(APIFY_CACHE_PATH)
-    token = load_env().get("APIFY_TOKEN", "").strip()
-    if not refresh or not token:
-        return cached
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    try:
-        limits_response = requests.get("https://api.apify.com/v2/users/me/limits", headers=headers, timeout=(5, 15))
-        limits_response.raise_for_status()
-        limits = limits_response.json().get("data", {})
-        cycle = limits.get("monthlyUsageCycle") or {}
-        configured = limits.get("limits") or {}
-        monthly = limits.get("current") or {}
-        result = {
-            "available": True, "checkedAt": time.time(),
-            "cycleStart": cycle.get("startAt"), "cycleEnd": cycle.get("endAt"),
-            "limitUsd": float(configured.get("maxMonthlyUsageUsd") or 0),
-            "usedUsd": float(monthly.get("monthlyUsageUsd") or 0),
-            "activeActorJobs": int(monthly.get("activeActorJobCount") or 0),
-        }
-        result["remainingUsd"] = round(max(0.0, result["limitUsd"] - result["usedUsd"]), 6)
-        result["exhausted"] = bool(result["limitUsd"] and result["usedUsd"] >= result["limitUsd"])
-        APIFY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        APIFY_CACHE_PATH.write_text(json.dumps(result, ensure_ascii=False, indent=1))
-        return result
-    except (requests.RequestException, ValueError, TypeError):
-        if cached:
-            cached["stale"] = True
-            return cached
-        return {"available": False, "checkedAt": time.time(), "exhausted": True}
+    """Return sanitized aggregate and per-account limits; tokens never leave the server."""
+    return pool_status(refresh=refresh)
 
 
 def build_status_payload(*, refresh_apify: bool = True, now: float | None = None) -> dict:
@@ -310,8 +280,13 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
     profile_schedule = _read_json(ROOT / "state" / "instagram_profile_schedule.json")
     story_schedule = _read_json(ROOT / "state" / "instagram_stories_schedule.json")
     apify = apify_quota(refresh=refresh_apify)
+    facebook_count = sum(
+        row.get("active", "true").strip().lower() not in {"false", "link"}
+        for row in read_sources_csv("fb_pages.csv")
+    )
+    facebook_interval = recommended_interval_hours(apify, source_count=facebook_count, now=now)
     rows = []
-    for source in source_registry():
+    for source in source_registry(facebook_interval_hours=facebook_interval):
         entry = ledger.get(source["id"], {})
         last_attempt = entry.get("lastAttempt")
         # Profile/feed inbox timestamps cannot prove that the independent story
@@ -331,7 +306,7 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
                 next_due = cooldown
         elif source["kind"] == "facebook":
             last_attempt = last_attempt or pipeline.get("last_fb_run")
-            next_due = (float(last_attempt) + 160 * 3600) if last_attempt else now
+            next_due = (float(last_attempt) + facebook_interval * 3600) if last_attempt else now
         elif source["kind"] in {"threads", "x"}:
             last_attempt = last_attempt or pipeline.get("last_social_run")
             next_due = (float(last_attempt) + 20 * 3600) if last_attempt else now

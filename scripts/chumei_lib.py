@@ -15,15 +15,19 @@ TZ_TAIPEI = timezone(timedelta(hours=8))
 
 def load_env():
     env = {}
-    path = ROOT / ".env"
-    if path.exists():
+    for path in (ROOT / ".env", ROOT / ".env.apify"):
+        if not path.exists():
+            continue
         for line in path.read_text().splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 env[k.strip()] = v.strip()
     merged = dict(env)
-    merged.update({k: v for k, v in os.environ.items() if k.startswith("CHUMEI_") or k == "APIFY_TOKEN"})
+    merged.update({
+        k: v for k, v in os.environ.items()
+        if k.startswith("CHUMEI_") or k == "APIFY_TOKEN" or k.startswith("APIFY_TOKEN_")
+    })
     return merged
 
 

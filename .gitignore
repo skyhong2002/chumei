@@ -1,4 +1,5 @@
 .env
+.env.apify
 state/
 data/feeds/
 site/data/

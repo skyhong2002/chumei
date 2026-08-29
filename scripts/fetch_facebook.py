@@ -15,7 +15,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
-from chumei_lib import SeenState, append_inbox, load_env, now_iso, read_sources_csv
+from apify_pool import choose_token, record_run
+from chumei_lib import SeenState, append_inbox, now_iso, read_sources_csv
 from source_status import record_api_call, record_fetch
 
 
@@ -232,14 +233,18 @@ def main() -> int:
         print("no active Facebook pages selected", file=sys.stderr)
         return 1
 
-    token = load_env().get("APIFY_TOKEN", "").strip()
-    if not token:
-        print("APIFY_TOKEN is missing from .env/environment", file=sys.stderr)
+    try:
+        account_label, token, _quota = choose_token(refresh=True)
+    except RuntimeError as exc:
+        for source in sources:
+            record_fetch(f"facebook:{page_slug(source['page'])}", backend="Apify", ok=False, error=exc)
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     try:
         run, raw_items = run_actor(token, sources, args.limit)
     except RuntimeError as exc:
+        record_run(account_label, cost_usd=None, source_count=len(sources), ok=False)
         for source in sources:
             record_fetch(f"facebook:{page_slug(source['page'])}", backend="Apify", ok=False, error=exc)
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -269,6 +274,7 @@ def main() -> int:
     written = append_inbox(RAW_SOURCE, fresh)
     seen.save()
     cost = usage_usd(run)
+    record_run(account_label, cost_usd=cost, source_count=len(sources), ok=True)
     record_api_call("Apify", operation="facebook actor batch", source_count=len(sources), request_count=0, ok=True, cost_usd=cost)
     items_by_source = {}
     for item in raw_items:
@@ -283,7 +289,7 @@ def main() -> int:
     print(
         f"done: {written} new items from {len(sources)} pages; "
         f"dataset={len(raw_items)}, actor_errors={actor_errors}, unmatched={unmatched}, "
-        f"run_id={run.get('id')}, usage={cost_text}"
+        f"account={account_label}, run_id={run.get('id')}, usage={cost_text}"
     )
     return 0
 
