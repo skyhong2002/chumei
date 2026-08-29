@@ -1,0 +1,113 @@
+import re
+import unittest
+from collections import defaultdict
+from html.parser import HTMLParser
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SITE = ROOT / "site"
+BASE_URL = "https://chumei.observe.tw"
+
+
+class SEOParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title_parts = []
+        self.h1_parts = []
+        self._in_title = False
+        self._h1 = None
+        self.meta = {}
+        self.canonicals = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "title":
+            self._in_title = True
+        elif tag == "h1":
+            self._h1 = []
+        elif tag == "meta":
+            key = attrs.get("name") or attrs.get("property")
+            if key:
+                self.meta[key] = attrs.get("content", "").strip()
+        elif tag == "link" and attrs.get("rel") == "canonical":
+            self.canonicals.append(attrs.get("href", "").strip())
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+        elif tag == "h1" and self._h1 is not None:
+            self.h1_parts.append("".join(self._h1).strip())
+            self._h1 = None
+
+    def handle_data(self, data):
+        if self._in_title:
+            self.title_parts.append(data)
+        if self._h1 is not None:
+            self._h1.append(data)
+
+    @property
+    def title(self):
+        return "".join(self.title_parts).strip()
+
+    @property
+    def h1(self):
+        return self.h1_parts[0] if self.h1_parts else ""
+
+
+def parse_pages():
+    pages = []
+    for path in sorted(SITE.rglob("index.html")):
+        parser = SEOParser()
+        parser.feed(path.read_text())
+        pages.append((path, parser))
+    return pages
+
+
+class SEOOutputTests(unittest.TestCase):
+    def test_every_page_has_queryless_canonical_and_preview_metadata(self):
+        pages = parse_pages()
+        # A clean checkout tracks the six static shells; a built production tree also includes
+        # event/source/org pages. The same contract applies to whichever pages are present.
+        self.assertGreater(len(pages), 5)
+        for path, page in pages:
+            with self.subTest(path=path.relative_to(SITE)):
+                self.assertEqual(len(page.canonicals), 1)
+                canonical = page.canonicals[0]
+                self.assertTrue(canonical.startswith(BASE_URL + "/"), canonical)
+                self.assertNotIn("?", canonical)
+                self.assertNotIn("#", canonical)
+                self.assertTrue(page.title)
+                self.assertTrue(page.h1)
+                self.assertTrue(page.meta.get("description"))
+                self.assertEqual(page.meta.get("og:title"), page.title)
+                self.assertEqual(page.meta.get("og:description"), page.meta.get("description"))
+                self.assertEqual(page.meta.get("og:url"), canonical)
+                self.assertTrue(page.meta.get("og:image"))
+                self.assertEqual(page.meta.get("twitter:title"), page.title)
+                self.assertEqual(page.meta.get("twitter:description"), page.meta.get("description"))
+
+    def test_title_h1_and_preview_description_are_unique_per_page(self):
+        pages = parse_pages()
+        for label, getter in (
+            ("title", lambda page: page.title),
+            ("h1", lambda page: page.h1),
+            ("description", lambda page: page.meta.get("description", "")),
+        ):
+            seen = defaultdict(list)
+            for path, page in pages:
+                seen[getter(page)].append(str(path.relative_to(SITE)))
+            duplicates = {value: paths for value, paths in seen.items() if len(paths) > 1}
+            self.assertFalse(duplicates, f"duplicate {label}: {list(duplicates.items())[:8]}")
+
+    def test_query_variants_update_content_but_not_canonical(self):
+        source = (SITE / "assets" / "app.js").read_text()
+        self.assertIn('new URLSearchParams(location.search)', source)
+        self.assertIn('base.h1 + "｜" + context', source)
+        self.assertIn('base.description + "目前條件：" + context', source)
+        self.assertIn('canonicalHref = canonicalHref.split("?", 1)[0].split("#", 1)[0]', source)
+        self.assertGreaterEqual(len(re.findall(r"pageSEO\.refresh\(", source)), 5)
+
+
+if __name__ == "__main__":
+    unittest.main()

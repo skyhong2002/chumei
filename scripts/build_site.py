@@ -702,6 +702,7 @@ def write_rss(path, events, title):
 
 def page_shell(title, desc, content, og_image=None, canonical=None):
     og_img = og_image or f"{BASE_URL}/assets/og-default.png"
+    canonical = (canonical or BASE_URL + "/").split("?", 1)[0].split("#", 1)[0]
     return f"""<!doctype html>
 <html lang="zh-Hant-TW" data-theme="dark">
 <head>
@@ -709,12 +710,17 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{esc(title)}</title>
 <meta name="description" content="{esc(desc)}">
-{f'<link rel="canonical" href="{canonical}">' if canonical else ''}
+<link rel="canonical" href="{canonical}">
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(desc)}">
 <meta property="og:image" content="{og_img}">
+<meta property="og:url" content="{canonical}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="竹梅活動觀測站">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{esc(title)}">
+<meta name="twitter:description" content="{esc(desc)}">
+<meta name="twitter:image" content="{og_img}">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#000000">
@@ -951,6 +957,21 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=()):
     except (TypeError, ValueError):
         pass
 
+    date_match = re.match(r"(\d{4})-(\d{2})-(\d{2})", st or "")
+    if date_match:
+        year, month, day = (int(part) for part in date_match.groups())
+        date_label = f"{year} 年 {month} 月 {day} 日"
+    else:
+        date_label = "日期待確認"
+    page_heading = f"{e['title']}｜{date_label}"
+    preview_parts = [
+        f"{date_label}「{e['title']}」",
+        e.get("organizer") or (org[1] if org else ""),
+        loc,
+        e.get("summary") or e.get("description") or "查看活動時間、地點與原始公告。",
+    ]
+    preview_desc = _one_line("。".join(part.strip("。") for part in preview_parts if part), 180)
+
     rows = [
         ("時間", fmt_dt(st, e.get("all_day")) + (f" – {fmt_dt(en, e.get('all_day'))}" if en else "")),
         ("地點", loc or "詳見原始貼文"),
@@ -1026,7 +1047,7 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=()):
   <div class="detail-body">
     <p class="chips"><span class="chip chip-{school}">{SCHOOL_LABEL.get(school, school)}</span>
     <span class="chip">{esc(e.get('category'))}</span></p>
-    <h1>{esc(e['title'])}</h1>
+    <h1>{esc(page_heading)}</h1>
     <p class="lede">{esc(e.get('summary'))}</p>
     <dl class="meta">{meta_html}</dl>
     <div class="actions">{actions}</div>
@@ -1053,10 +1074,102 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=()):
 <script type="application/ld+json">{jsonld}</script>
 </article>"""
     return page_shell(
-        f"{e['title']}｜竹梅活動觀測站", e.get("summary") or e["title"], content,
+        f"{page_heading}｜竹梅活動觀測站", preview_desc, content,
         og_image=(BASE_URL + e["poster_image"]) if e.get("poster_image") else None,
         canonical=f"{BASE_URL}/event/{e['id']}/",
     )
+
+
+def refresh_legacy_event_seo(current_ids):
+    """保留舊活動網址，同時讓未再由目前資料重建的頁面符合最新 SEO 契約。"""
+    event_root = SITE / "event"
+    if not event_root.exists():
+        return 0
+
+    def replace_meta(source, attr, key, content):
+        rendered = f'<meta {attr}="{key}" content="{esc(content)}">'
+        pattern = re.compile(
+            rf'<meta\s+{attr}=["\']{re.escape(key)}["\'][^>]*>', re.I
+        )
+        if pattern.search(source):
+            return pattern.sub(rendered, source, count=1)
+        return source.replace("</head>", rendered + "\n</head>", 1)
+
+    changed = 0
+    for path in sorted(event_root.glob("*/index.html")):
+        event_id = path.parent.name
+        if event_id in current_ids:
+            continue
+        source = path.read_text()
+        match = re.search(r'<script type="application/ld\+json">(.*?)</script>', source, re.S)
+        if not match:
+            continue
+        try:
+            structured = json.loads(html.unescape(match.group(1)))
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        title = str(structured.get("name") or "歷史活動").strip()
+        start = str(structured.get("startDate") or "")
+        date_match = re.match(r"(\d{4})-(\d{2})-(\d{2})", start)
+        if date_match:
+            year, month, day = (int(part) for part in date_match.groups())
+            date_label = f"{year} 年 {month} 月 {day} 日"
+        else:
+            date_label = "日期待確認"
+        page_heading = f"{title}｜{date_label}｜歷史頁 {event_id.removeprefix('evt_')}"
+        organizer = structured.get("organizer") or {}
+        location = structured.get("location") or {}
+        preview_desc = _one_line("。".join(filter(None, [
+            f"{date_label}「{title}」",
+            str(organizer.get("name") or "").strip(),
+            str(location.get("name") or "").strip(),
+            str(structured.get("description") or "查看歷史活動資訊與原始公告。").strip("。"),
+            f"竹梅歷史活動頁 {event_id}",
+        ])), 180)
+        canonical = f"{BASE_URL}/event/{event_id}/"
+        page_title = f"{page_heading}｜竹梅活動觀測站"
+
+        source = re.sub(r"<title>.*?</title>", f"<title>{esc(page_title)}</title>", source, count=1, flags=re.S)
+        h1_pattern = re.compile(r"(<h1(?:\s[^>]*)?>).*?(</h1>)", re.S)
+        if h1_pattern.search(source):
+            source = h1_pattern.sub(
+                lambda match: match.group(1) + esc(page_heading) + match.group(2),
+                source,
+                count=1,
+            )
+        else:
+            # 早期產物曾因 regex replacement 的數字反向引用損壞開頭標籤；就地修復舊頁。
+            source = re.sub(
+                r'(<p class="chips">.*?</p>)\s*.*?</h1>',
+                lambda match: match.group(1) + "\n    <h1>" + esc(page_heading) + "</h1>",
+                source,
+                count=1,
+                flags=re.S,
+            )
+        canonical_tag = f'<link rel="canonical" href="{canonical}">'
+        canonical_pattern = re.compile(r'<link\s+rel=["\']canonical["\'][^>]*>', re.I)
+        if canonical_pattern.search(source):
+            source = canonical_pattern.sub(canonical_tag, source, count=1)
+        else:
+            source = source.replace("</head>", canonical_tag + "\n</head>", 1)
+        source = replace_meta(source, "name", "description", preview_desc)
+        source = replace_meta(source, "property", "og:title", page_title)
+        source = replace_meta(source, "property", "og:description", preview_desc)
+        source = replace_meta(source, "property", "og:url", canonical)
+        source = replace_meta(source, "property", "og:type", "website")
+        source = replace_meta(source, "property", "og:site_name", "竹梅活動觀測站")
+        source = replace_meta(source, "name", "twitter:card", "summary_large_image")
+        source = replace_meta(source, "name", "twitter:title", page_title)
+        source = replace_meta(source, "name", "twitter:description", preview_desc)
+        og_image = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)', source, re.I)
+        image_url = og_image.group(1) if og_image else f"{BASE_URL}/assets/og-default.png"
+        source = replace_meta(source, "property", "og:image", image_url)
+        source = replace_meta(source, "name", "twitter:image", image_url)
+        path.write_text(source)
+        changed += 1
+    print(f"legacy event SEO: {changed} pages refreshed")
+    return changed
 
 
 def _norm_org(s):
@@ -2122,6 +2235,7 @@ def main():
         (d / "index.html").write_text(detail_page(
             e, org=org, org_sections=org_sections, alt_posts=alt_posts, related=related))
 
+    refresh_legacy_event_seo({e["id"] for e in events})
     org_ids = source_page(events, entries)
     prerender_feed(build_posts_data(events, sid_to_entry))
     prerender_events(events)

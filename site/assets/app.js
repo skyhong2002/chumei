@@ -2,6 +2,99 @@
 (function () {
   "use strict";
 
+  // ---- SEO：Canonical 固定為無 query 的正式網址；篩選 query 仍有自己的標題、H1 與預覽文案 ----
+  var pageSEO = (function () {
+    var title = document.querySelector("title");
+    var h1 = document.querySelector("h1");
+    var description = document.querySelector('meta[name="description"]');
+    var canonical = document.querySelector('link[rel="canonical"]');
+    var base = {
+      title: title ? title.textContent.trim() : "竹梅活動觀測站",
+      h1: h1 ? h1.textContent.trim() : "竹梅活動觀測站",
+      description: description ? description.getAttribute("content") || "" : ""
+    };
+    var canonicalHref = (canonical && canonical.getAttribute("href")) ||
+      ("https://chumei.observe.tw" + location.pathname);
+    canonicalHref = canonicalHref.split("?", 1)[0].split("#", 1)[0];
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", canonicalHref);
+
+    var KEY_LABEL = {
+      q: "搜尋", kind: "內容", follow: "單位", school: "學校", campus: "校區",
+      platform: "平台", cat: "類型", tag: "標籤", org: "主辦", status: "收錄狀態",
+      time: "時間", sort: "排序", dir: "方向", reg: "報名", fee: "費用"
+    };
+    var VALUE_LABEL = {
+      "kind:events": "僅活動貼文", "kind:club": "社團", "kind:gov": "自治組織",
+      "kind:dept": "系所", "kind:unit": "校方單位", "kind:bulletin": "公告系統",
+      "kind:ext": "校外單位", "follow:on": "已追蹤單位", "school:nthu": "清大",
+      "school:nycu": "陽明交大", "school:nycu-guangfu": "交大校區",
+      "school:nycu-yangming": "陽明校區", "school:both": "兩校聯合",
+      "campus:nthu-main": "清大校本部", "campus:nthu-nanda": "清大南大校區",
+      "campus:nycu-guangfu": "交大光復校區", "campus:nycu-boai": "交大博愛校區",
+      "campus:nycu-yangming": "陽明校區", "campus:online": "線上",
+      "platform:instagram": "Instagram", "platform:facebook": "Facebook",
+      "platform:threads": "Threads", "platform:x": "X", "platform:bulletin": "校園公告",
+      "status:covered": "已收錄", "status:uncovered": "尚未收錄",
+      "time:24h": "24 小時內", "time:3d": "3 天內", "time:7d": "7 天內",
+      "time:30d": "30 天內", "time:upcoming": "未來全部", "time:all": "全部日期",
+      "sort:going": "熱門優先", "sort:time": "時間優先", "sort:follow": "追蹤數優先",
+      "sort:events": "活動數優先", "sort:updated": "最近更新", "sort:name": "名稱",
+      "sort:id": "名錄編號", "dir:asc": "正序", "dir:desc": "倒序",
+      "org:official": "校方", "org:department": "系所", "org:club": "社團",
+      "org:external": "校外單位", "reg:required": "需報名", "reg:free": "自由入場",
+      "fee:free": "免費", "fee:paid": "付費"
+    };
+
+    function setMeta(selector, attr, value) {
+      var el = document.querySelector(selector);
+      if (!el) {
+        el = document.createElement("meta");
+        var pair = selector.match(/^meta\[(name|property)="([^"]+)"\]$/);
+        if (!pair) return;
+        el.setAttribute(pair[1], pair[2]);
+        document.head.appendChild(el);
+      }
+      el.setAttribute(attr, value);
+    }
+    function contextParts() {
+      var params = new URLSearchParams(location.search);
+      var rows = [];
+      params.forEach(function (value, key) {
+        if (!KEY_LABEL[key] || !value || value === "all") return;
+        var shown = VALUE_LABEL[key + ":" + value] || value;
+        rows.push([key, value, key === "q" ? "搜尋「" + shown + "」" : KEY_LABEL[key] + "：" + shown]);
+      });
+      rows.sort(function (a, b) { return a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]); });
+      return rows.map(function (row) { return row[2]; });
+    }
+    function refresh(resultSummary) {
+      var parts = contextParts();
+      var context = parts.join("、");
+      var nextTitle = context ? context + "｜" + base.title : base.title;
+      var nextH1 = context ? base.h1 + "｜" + context : base.h1;
+      var nextDescription = context
+        ? base.description + "目前條件：" + context + "。" + (resultSummary || "")
+        : base.description;
+      document.title = nextTitle;
+      if (h1) h1.textContent = nextH1;
+      setMeta('meta[name="description"]', "content", nextDescription);
+      setMeta('meta[property="og:title"]', "content", nextTitle);
+      setMeta('meta[property="og:description"]', "content", nextDescription);
+      setMeta('meta[property="og:url"]', "content", canonicalHref);
+      setMeta('meta[name="twitter:title"]', "content", nextTitle);
+      setMeta('meta[name="twitter:description"]', "content", nextDescription);
+    }
+    window.addEventListener("popstate", function () { refresh(); });
+    return { refresh: refresh, canonical: canonicalHref, contextParts: contextParts };
+  })();
+  window.chumeiSEO = pageSEO;
+  pageSEO.refresh();
+
   // ---- 外觀（Appearance，Threads 式子面板）：主題＋字標順序 ----
   (function () {
     function applyTheme(v) {
@@ -1084,6 +1177,7 @@
         });
         if (/[?&]swipedebug=1/.test(location.search)) qs.set("swipedebug", "1");  // 診斷旗標別被洗掉
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+        pageSEO.refresh();
       }
       function render(more) {
         if (!more) shown = 30;
@@ -1399,6 +1493,7 @@
           qs.set(k, state[k]);
         });
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+        pageSEO.refresh(list.length + " 個單位符合條件。");
       }
       table.addEventListener("click", function (ev) {
         var th = ev.target.closest(".src-th");
@@ -2228,12 +2323,13 @@
       setTimeout(function () { m.resize(); }, 60);
     }
 
-    function syncUrl() {
+    function syncUrl(resultCount) {
       var qs = new URLSearchParams();
       Object.keys(state).forEach(function (k) {
         if (state[k] && state[k] !== "all" && !(k === "time" && state[k] === "7d")) qs.set(k, state[k]);
       });
       history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+      pageSEO.refresh(resultCount + " 場活動符合條件。");
     }
 
     window.addEventListener("chumei-going-change", function () {
@@ -2268,7 +2364,7 @@
       updateChipCounts();
       if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
       renderMap(list);
-      syncUrl();
+      syncUrl(list.length);
     }
 
     var eventsById = {};
@@ -2473,6 +2569,7 @@
       var qs = new URLSearchParams();
       Object.keys(state).forEach(function (k) { if (state[k] && state[k] !== "all") qs.set(k, state[k]); });
       history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+      pageSEO.refresh(total + " 場活動符合條件。");
     }
 
     var earlier = document.getElementById("cal-earlier");
