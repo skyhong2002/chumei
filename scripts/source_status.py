@@ -59,11 +59,13 @@ def source_registry() -> list[dict]:
         sources.append({
             **common, "id": f"instagram:{username}", "sourceId": f"ig_{username}",
             "kind": "instagram_profile", "backend": "RSSHub → Instaloader",
+            "kindLabel": "貼文",
             "targetIntervalHours": 24.0,
         })
         sources.append({
             **common, "id": f"story:{username}", "sourceId": f"ig_{username}",
             "kind": "instagram_story", "backend": "Instaloader",
+            "kindLabel": "限時動態",
             "targetIntervalHours": 18.0,
         })
     for row in read_sources_csv("fb_pages.csv"):
@@ -73,8 +75,9 @@ def source_registry() -> list[dict]:
         slug = _slug(page)
         sources.append({
             "id": f"facebook:{slug}", "sourceId": f"fb_{slug}",
-            "name": row.get("name") or slug, "username": page,
+            "name": row.get("name") or slug, "username": slug,
             "platform": "Facebook", "kind": "facebook", "backend": "Apify",
+            "kindLabel": "粉專貼文",
             "school": row.get("school") or "other", "targetIntervalHours": 168.0,
         })
     for row in read_sources_csv("social_accounts.csv"):
@@ -87,6 +90,7 @@ def source_registry() -> list[dict]:
             "name": row.get("name") or username, "username": username,
             "platform": "Threads" if platform == "threads" else "X",
             "kind": platform, "backend": "RSSHub",
+            "kindLabel": "公開貼文",
             "school": row.get("school") or "other", "targetIntervalHours": 24.0,
         })
     for row in read_sources_csv("bulletin_sources.csv"):
@@ -104,6 +108,7 @@ def source_registry() -> list[dict]:
             "id": f"bulletin:{source_id}", "sourceId": source_id,
             "name": row.get("name") or source_id, "username": source_id,
             "platform": "校園公告", "kind": kind, "backend": backend,
+            "kindLabel": "公告",
             "school": row.get("school") or "other", "targetIntervalHours": 3.0,
         })
     # NYCU LIFE is a first-class API fetch but is not duplicated in bulletin_sources.csv.
@@ -112,6 +117,7 @@ def source_registry() -> list[dict]:
             "id": "bulletin:nycu_life_api", "sourceId": "nycu_life_api",
             "name": "NYCU LIFE 活動 API", "username": "nycu_life_api",
             "platform": "校園公告", "kind": "nycu_life", "backend": "JSON API",
+            "kindLabel": "活動 API",
             "school": "nycu", "targetIntervalHours": 3.0,
         })
     return sources
