@@ -192,7 +192,8 @@
       db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
       rss: '<path d="M5 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M4 4a16 16 0 0 1 16 16"/><path d="M4 11a9 9 0 0 1 9 9"/>',
       status: '<path d="M3 12h4l2.5-6l5 12l2.5-6h4"/>',
-      info: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/>'
+      info: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/>',
+      logout: '<path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12"/><path d="M18 9l3 3l-3 3"/>'
     };
     function svg(name, cls) {
       return SVG_OPEN.replace('aria-hidden="true">', 'class="' + (cls || "") + '" aria-hidden="true">') + ICON[name] + "</svg>";
@@ -229,6 +230,17 @@
       if (it.account) a.setAttribute("data-account-link", "");
       a.innerHTML = svg(it.icon, "mi") + "<span>" + it.label + "</span>";
       return a;
+    }
+    function logoutItem() {
+      var form = document.createElement("form");
+      form.method = "post";
+      form.action = "/auth/logout";
+      form.className = "nav-logout";
+      var button = document.createElement("button");
+      button.type = "submit";
+      button.innerHTML = svg("logout", "mi") + "<span>登出</span>";
+      form.appendChild(button);
+      return form;
     }
     ITEMS.forEach(function (it) { container.insertBefore(menuItem(it), tail); });
     fetch("/auth/me", { credentials: "same-origin" }).then(function (r) {
@@ -269,6 +281,7 @@
         if (after && after.parentNode) after.parentNode.insertBefore(settings, after.nextSibling);
         else container.insertBefore(settings, tail);
       }
+      container.insertBefore(logoutItem(), tail);
     }).catch(function () {});
   })();
 

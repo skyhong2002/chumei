@@ -74,7 +74,9 @@ GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 SESSION_COOKIE = "chumei_session"
-EVENT_ID_RE = re.compile(r"evt_[0-9a-f]{6,32}")
+# 活動 ID 除了歷史的 hex digest，也包含官方來源命名空間（例如 evt_nyculife_xxx）。
+# 僅允許小寫英數與底線，總長度最多 64 字元。
+EVENT_ID_RE = re.compile(r"evt_[a-z0-9_]{6,60}")
 HANDLE_RE = re.compile(r"[a-z0-9_]{3,20}")
 RESERVED_HANDLES = {"admin", "chumei", "account", "submit", "auth", "about", "event", "org", "source"}
 OAUTH_STATE_COOKIE = "chumei_oauth_state"
@@ -1729,8 +1731,6 @@ def _account_html(
         <p class="account-links"><a href="/submit/">回報新連結 →</a></p>
         </section>""")
 
-        sections.append('<form method="post" action="/auth/logout" class="account-logout">'
-                        '<button class="btn account-action" type="submit">登出</button></form>')
     else:
         sections.append(_login_card_html(nycu_ok, google_ok, return_to))
 
@@ -1743,11 +1743,17 @@ def _account_html(
     else:
         lede = "<p>登入後可以追蹤單位、加入「我會去」的活動、回報連結，並擁有自己的個人頁。</p>"
     page_title = title if user or title != "帳號設定" else "登入"
+    logout_form = ('<form method="post" action="/auth/logout" class="account-logout account-logout-top">'
+                   '<button class="btn account-action" type="submit">登出</button></form>'
+                   if user else "")
     content = f"""
 <section class="account-page">
-  <div class="hero">
-    <h1>{html.escape(page_title)}</h1>
-    {lede}
+  <div class="hero account-hero-row">
+    <div>
+      <h1>{html.escape(page_title)}</h1>
+      {lede}
+    </div>
+    {logout_form}
   </div>
   {alert}
   {"".join(sections)}
@@ -2286,7 +2292,7 @@ def create_app(
         return {"ok": True, "authenticated": bool(user), **snapshot}
 
     def _event_id(request: Request) -> str:
-        return str(request.path_params.get("event_id") or "")[:64]
+        return str(request.path_params.get("event_id") or "")
 
     async def events_going(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))

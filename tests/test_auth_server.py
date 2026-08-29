@@ -284,6 +284,16 @@ class AuthServerTests(unittest.TestCase):
         with closing(sqlite3.connect(self.db_path)) as conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM user_event_going").fetchone()[0], 0)
 
+    def test_event_going_accepts_namespaced_official_event_ids(self):
+        self._login()
+        event_id = "evt_nyculife_sw7pr8ujz5hv"
+
+        marked = self.client.put(f"/auth/events/{event_id}")
+
+        self.assertEqual(marked.status_code, 200)
+        self.assertEqual(marked.json()["counts"][event_id], 1)
+        self.assertIn(event_id, marked.json()["going"])
+
     def _google_login(self, return_to="/account/"):
         start = self.client.get(
             "/auth/google/start", params={"return_to": return_to}, follow_redirects=False
@@ -354,6 +364,8 @@ class AuthServerTests(unittest.TestCase):
         settings = self.client.get("/account/").text
         self.assertIn("我的回報", settings)
         self.assertIn("登出", settings)
+        self.assertIn('class="account-logout account-logout-top"', settings)
+        self.assertLess(settings.index("account-logout-top"), settings.index('<section class="account-card account-section">'))
         self.assertIn('href="/@student123"', settings)
 
     def test_profile_avatar_uses_gravatar_and_google_has_priority(self):
