@@ -97,8 +97,9 @@ Caddy 的 auth matcher 包含 `/@*`。
 帳號還提供：
 - **名稱與代號**：`POST /auth/profile`（display_name、handle、public）；handle 小寫英數底線 3–20 字、全站唯一，
   首次登入從 Email 自動產生（撞名加數字），舊帳號在服務啟動時補齊。
-- **頭貼**：公開個人頁、帳號頁與登入後導覽列會共用同一張頭貼；Google OAuth 的頭貼優先，
-  沒有時依登入 Email 取得 Gravatar，皆無法取得才顯示名稱首字。外部圖片由 `/auth/avatar/{handle}` 同源代理。
+- **頭貼**：公開個人頁、帳號頁與登入後導覽列會共用同一張頭貼，依序嘗試 Google OAuth 頭貼、
+  Google Email 的 Gravatar、NYCU Portal Email 的 Gravatar，皆無法取得才顯示名稱首字。外部圖片由
+  `/auth/avatar/{handle}` 同源代理。
 - **私密行事曆**：`GET /auth/calendar/{token}.ics` 輸出該帳號「我要去」的活動（token 在帳號頁，
   `POST /auth/calendar/rotate` 換新）。
 - **推播綁帳號**：`push_server` 用 session cookie 解析 `state/auth.sqlite3`，把訂閱記上 `user_id`。

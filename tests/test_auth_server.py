@@ -360,8 +360,10 @@ class AuthServerTests(unittest.TestCase):
         gravatar = auth_server._gravatar_url("student123@nycu.edu.tw")
         me = self.client.get("/auth/me").json()["user"]
         self.assertEqual(me["avatarUrl"], "/auth/avatar/student123")
-        self.assertEqual(me["avatarSource"], "gravatar")
-        self.assertEqual(self.store.user_by_handle("student123")["avatar_url"], gravatar)
+        self.assertEqual(me["avatarSource"], "nycu_gravatar")
+        profile = self.store.user_by_handle("student123")
+        self.assertEqual(profile["avatar_url"], gravatar)
+        self.assertEqual(profile["_avatar_candidates"], [(gravatar, "nycu_gravatar")])
         self.assertIn('src="/auth/avatar/student123"', self.client.get("/@student123").text)
 
         self._link("google")
@@ -371,6 +373,12 @@ class AuthServerTests(unittest.TestCase):
         )
         self.assertEqual(me["avatarSource"], "google")
         self.assertIn('src="/auth/avatar/student123"', self.client.get("/@student123").text)
+
+        profile = self.store.user_by_handle("student123")
+        self.assertEqual(
+            [source for _url, source in profile["_avatar_candidates"]],
+            ["google", "google_gravatar", "nycu_gravatar"],
+        )
 
     def test_avatar_proxy_serves_images_from_the_same_origin(self):
         self._google_login()
@@ -387,6 +395,33 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "private, max-age=300")
         self.assertEqual(
             get.call_args.args[0], "https://lh3.googleusercontent.com/a/google-avatar"
+        )
+
+    def test_avatar_proxy_falls_back_through_google_and_nycu_gravatars(self):
+        self._login()
+        self._link("google")
+        profile = self.store.user_by_handle("student123")
+        candidates = profile["_avatar_candidates"]
+        self.assertEqual(
+            [source for _url, source in candidates],
+            ["google", "google_gravatar", "nycu_gravatar"],
+        )
+
+        missing = mock.Mock()
+        missing.raise_for_status.side_effect = auth_server.requests.HTTPError("missing")
+        found = mock.Mock(
+            content=b"nycu-gravatar",
+            headers={"content-type": "image/png"},
+        )
+        found.raise_for_status.return_value = None
+        responses = [missing, missing, found]
+        with mock.patch.object(auth_server.requests, "get", side_effect=responses) as get:
+            response = self.client.get("/auth/avatar/student123")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"nycu-gravatar")
+        self.assertEqual(
+            [call.args[0] for call in get.call_args_list],
+            [url for url, _source in candidates],
         )
 
     def test_unsafe_google_avatar_url_is_not_rendered(self):

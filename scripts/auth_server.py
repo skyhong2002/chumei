@@ -423,22 +423,45 @@ class AuthStore:
         return row
 
     @staticmethod
-    def _avatar_for_user(
+    def _avatar_candidates_for_user(
         conn: sqlite3.Connection, user_id: str, fallback_email: str | None = None
-    ) -> tuple[str | None, str | None]:
+    ) -> list[tuple[str, str]]:
         identities = conn.execute(
             "SELECT provider, email, avatar_url FROM oauth_identities WHERE user_id = ? "
             "ORDER BY CASE provider WHEN 'google' THEN 0 ELSE 1 END, created_at",
             (user_id,),
         ).fetchall()
-        for identity in identities:
-            if identity["provider"] == "google":
-                avatar_url = _safe_avatar_url(identity["avatar_url"])
-                if avatar_url:
-                    return avatar_url, "google"
-        email = next((i["email"] for i in identities if i["email"]), fallback_email)
-        gravatar = _gravatar_url(email)
-        return (gravatar, "gravatar") if gravatar else (None, None)
+        candidates: list[tuple[str, str]] = []
+        seen: set[str] = set()
+
+        def add(url: str | None, source: str) -> None:
+            if url and url not in seen:
+                candidates.append((url, source))
+                seen.add(url)
+
+        google = [i for i in identities if i["provider"] == "google"]
+        nycu = [i for i in identities if i["provider"] == "nycu"]
+        for identity in google:
+            add(_safe_avatar_url(identity["avatar_url"]), "google")
+        for identity in google:
+            add(_gravatar_url(identity["email"]), "google_gravatar")
+        for identity in nycu:
+            add(_gravatar_url(identity["email"]), "nycu_gravatar")
+        if not identities:
+            add(_gravatar_url(fallback_email), "gravatar")
+        return candidates
+
+    @classmethod
+    def _attach_avatar(cls, conn: sqlite3.Connection, user: dict) -> dict:
+        candidates = cls._avatar_candidates_for_user(
+            conn, user["id"], user.get("email")
+        )
+        user["_avatar_candidates"] = candidates
+        if candidates:
+            user["avatar_url"], user["avatar_source"] = candidates[0]
+        else:
+            user["avatar_url"], user["avatar_source"] = None, None
+        return user
 
     def get_or_create_user(
         self,
@@ -610,10 +633,7 @@ class AuthStore:
             ).fetchone()
             if not row:
                 return None
-            user = dict(row)
-            user["avatar_url"], user["avatar_source"] = self._avatar_for_user(
-                conn, user["id"], user.get("email")
-            )
+            user = self._attach_avatar(conn, dict(row))
         return user
 
     def calendar_token(self, user_id: str, rotate: bool = False) -> str:
@@ -672,10 +692,7 @@ class AuthStore:
             ).fetchone()
             if not row:
                 return None
-            user = dict(row)
-            user["avatar_url"], user["avatar_source"] = self._avatar_for_user(
-                conn, user["id"], user.get("email")
-            )
+            user = self._attach_avatar(conn, dict(row))
         return user
 
     def delete_session(self, raw_token: str | None) -> None:
@@ -1129,7 +1146,9 @@ def _going_html(going_ids: list[str]) -> str:
 def _avatar_html(user: dict, size: str = "") -> str:
     initial = (user.get("display_name") or user.get("handle") or "竹")[:1].upper()
     avatar_url = _safe_avatar_url(user.get("avatar_url")) or (
-        user.get("avatar_url") if user.get("avatar_source") == "gravatar" else None
+        user.get("avatar_url")
+        if str(user.get("avatar_source") or "").endswith("gravatar")
+        else None
     )
     handle = str(user.get("handle") or "")
     avatar_src = f"/auth/avatar/{quote(handle, safe='')}" if avatar_url and handle else ""
@@ -1406,6 +1425,7 @@ def create_app(
     google_oauth_client = google_oauth_client or GoogleOAuthClient()
     submissions = submissions or SubmissionStore(config.database_path)
     avatar_cache: dict[str, tuple[float, bytes, str]] = {}
+    avatar_failures: dict[str, float] = {}
 
     providers = {
         "nycu": {
@@ -1473,17 +1493,11 @@ def create_app(
             and not (viewer and viewer["id"] == profile["id"])
         ):
             return Response(status_code=404)
-        source_url = profile.get("avatar_url")
-        if not source_url:
+        candidates = profile.get("_avatar_candidates") or []
+        if not candidates:
             return Response(status_code=404)
-        cached = avatar_cache.get(source_url)
-        if cached and cached[0] > time.monotonic():
-            return Response(
-                cached[1], media_type=cached[2],
-                headers={"Cache-Control": "private, max-age=300"},
-            )
 
-        def fetch_avatar() -> tuple[bytes, str]:
+        def fetch_avatar(source_url: str) -> tuple[bytes, str]:
             upstream = requests.get(
                 source_url,
                 headers={"User-Agent": "ChumeiAvatar/1.0"},
@@ -1497,17 +1511,29 @@ def create_app(
                 raise ValueError("avatar response is too large")
             return upstream.content, content_type
 
-        try:
-            body, content_type = await run_in_threadpool(fetch_avatar)
-        except (requests.RequestException, ValueError):
-            return Response(status_code=404)
-        avatar_cache[source_url] = (
-            time.monotonic() + AVATAR_CACHE_SECONDS, body, content_type
-        )
-        return Response(
-            body, media_type=content_type,
-            headers={"Cache-Control": "private, max-age=300"},
-        )
+        now = time.monotonic()
+        for source_url, _source in candidates:
+            cached = avatar_cache.get(source_url)
+            if cached and cached[0] > now:
+                return Response(
+                    cached[1], media_type=cached[2],
+                    headers={"Cache-Control": "private, max-age=300"},
+                )
+            if avatar_failures.get(source_url, 0) > now:
+                continue
+            try:
+                body, content_type = await run_in_threadpool(fetch_avatar, source_url)
+            except (requests.RequestException, ValueError):
+                avatar_failures[source_url] = now + AVATAR_CACHE_SECONDS
+                continue
+            avatar_cache[source_url] = (
+                now + AVATAR_CACHE_SECONDS, body, content_type
+            )
+            return Response(
+                body, media_type=content_type,
+                headers={"Cache-Control": "private, max-age=300"},
+            )
+        return Response(status_code=404)
 
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
