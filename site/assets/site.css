@@ -1524,6 +1524,19 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .chip-fee-paid { background: var(--color-category-orange-surface); color: var(--color-category-orange-text); }
 .org-more { margin-top: 32px; border-top: 1px solid var(--color-border-subtle); padding-top: 16px; }
 .org-more h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.related-events { margin-top: 32px; border-top: 1px solid var(--color-border-subtle); padding-top: 16px; }
+.related-events h2 { font-size: 1.05rem; margin: 0 0 4px; }
+.related-events .src-desc { margin: 0 0 8px; }
+.related-event-title { min-width: 0; }
+.related-event-reason {
+  flex-shrink: 0; margin-left: auto; padding: 2px 9px; border-radius: var(--radius-pill);
+  background: var(--color-surface-soft); color: var(--color-text-muted); font-size: .75rem; font-weight: 600;
+}
+@media (max-width: 520px) {
+  .related-event a { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; }
+  .related-event .org-ev-date { grid-column: 1 / -1; }
+  .related-event-reason { grid-column: 2; grid-row: 2; align-self: center; }
+}
 .story-card .sc-meta { display: flex; gap: 8px; align-items: center; }
 .story-card img.sc-avatar {
   width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;

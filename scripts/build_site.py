@@ -9,6 +9,7 @@ import re
 import sys
 from collections import Counter
 from datetime import datetime, date, timedelta, timezone
+from difflib import SequenceMatcher
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -849,7 +850,88 @@ def calendar_details(e):
     return "\n".join(lines).strip()
 
 
-def detail_page(e, org=None, org_sections=(), alt_posts=()):
+def _related_title(t):
+    """Normalize titles for recommendations without treating school/year boilerplate as similarity."""
+    t = norm_title(t).replace("社博", "社團博覽會")
+    for boilerplate in ("國立陽明交通大學", "陽明交通大學", "陽明交大", "國立清華大學", "清華大學", "清大", "交大"):
+        t = t.replace(norm_title(boilerplate), "")
+    return re.sub(r"\d+", "", t)
+
+
+def related_events(event, events, limit=8):
+    """Conservative event recommendations with a short, user-visible relation reason."""
+    try:
+        base_dt = datetime.fromisoformat(event["start_at"])
+    except (KeyError, TypeError, ValueError):
+        return []
+    base_title = _related_title(event.get("title"))
+    base_venue = norm_title(event.get("venue"))
+    base_org = event.get("org_id")
+    ranked = []
+    for candidate in events:
+        if candidate.get("id") == event.get("id"):
+            continue
+        if base_org is not None and candidate.get("org_id") == base_org:
+            continue  # already represented by the existing "more from this organizer" section
+        try:
+            candidate_dt = datetime.fromisoformat(candidate["start_at"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        day_gap = abs((candidate_dt.date() - base_dt.date()).days)
+        if day_gap > 45:
+            continue
+
+        candidate_title = _related_title(candidate.get("title"))
+        if not base_title or not candidate_title:
+            continue
+        longest = SequenceMatcher(None, base_title, candidate_title).find_longest_match().size
+        base_pairs, candidate_pairs = _bigrams(base_title), _bigrams(candidate_title)
+        title_jaccard = len(base_pairs & candidate_pairs) / max(1, len(base_pairs | candidate_pairs))
+        title_related = longest >= 4 or title_jaccard >= 0.35
+
+        candidate_venue = norm_title(candidate.get("venue"))
+        same_venue = bool(
+            base_venue and candidate_venue
+            and (base_venue in candidate_venue or candidate_venue in base_venue or _similar(base_venue, candidate_venue))
+        )
+        same_day = day_gap == 0
+        if not title_related and not (same_day and same_venue):
+            continue
+
+        score = 6 if longest >= 6 else 4 if longest >= 4 else 2
+        if same_day:
+            score += 3
+        elif day_gap <= 7:
+            score += 1
+        if event.get("campus") and event.get("campus") == candidate.get("campus"):
+            score += 2
+        if event.get("start_at") == candidate.get("start_at"):
+            score += 3
+        elif same_day and abs((candidate_dt - base_dt).total_seconds()) <= 2 * 3600:
+            score += 1
+        if same_venue:
+            score += 2
+        if event.get("category") and event.get("category") == candidate.get("category"):
+            score += 1
+        if score < 8:
+            continue
+
+        shared_social_expo = "社團博覽會" in base_title and "社團博覽會" in candidate_title
+        if shared_social_expo and same_day and event.get("campus") == candidate.get("campus"):
+            reason = "同場社博"
+        elif same_day and same_venue:
+            reason = "同日同地點"
+        elif event.get("start_at") == candidate.get("start_at"):
+            reason = "同時段"
+        else:
+            reason = "相似系列"
+        ranked.append((score, abs((candidate_dt - base_dt).total_seconds()), candidate["start_at"], candidate, reason))
+
+    ranked.sort(key=lambda row: (-row[0], row[1], row[2], row[3].get("title") or ""))
+    return [(candidate, reason) for _, _, _, candidate, reason in ranked[:limit]]
+
+
+def detail_page(e, org=None, org_sections=(), alt_posts=(), related=()):
     st, en = e.get("start_at"), e.get("end_at")
     loc = join_loc(e)
     gcal = ""
@@ -949,6 +1031,15 @@ def detail_page(e, org=None, org_sections=(), alt_posts=()):
     <dl class="meta">{meta_html}</dl>
     <div class="actions">{actions}</div>
     <div class="desc">{''.join(f'<p>{esc(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
+    {(f'<section class="related-events"><h2>可能相關的活動</h2>'
+      f'<p class="src-desc">依標題、日期、時間、校區與場地自動整理，實際關係以主辦單位公告為準。</p>'
+      f'<ul class="org-evs">'
+      + ''.join(f'<li class="org-ev related-event"><a href="/event/{candidate["id"]}/">'
+                f'<span class="org-ev-date">{fmt_dt(candidate["start_at"], candidate.get("all_day"))}</span>'
+                f'<span class="related-event-title">{esc(candidate["title"])}</span>'
+                f'<span class="related-event-reason">{esc(reason)}</span></a></li>'
+                for candidate, reason in related)
+      + '</ul></section>') if related else ''}
     {''.join(
       (f'<section class="org-more"><h2>來自 <a href="/org/{oid}/">{esc(oname)}</a> 的更多活動</h2><ul class="org-evs">'
        + "".join(f'<li class="org-ev"><a href="/event/{s2["id"]}/"><span class="org-ev-date">{fmt_dt(s2["start_at"], s2.get("all_day"))}</span>{esc(s2["title"])}</a></li>' for s2 in sibs)
@@ -1459,7 +1550,6 @@ def _feed_same_post(a, b):
     short, long_ = (a, b) if len(a) <= len(b) else (b, a)
     if len(short) >= 40 and short[:120] in long_:
         return True
-    from difflib import SequenceMatcher
     return SequenceMatcher(None, a[:400], b[:400]).ratio() > 0.85
 
 
@@ -2028,7 +2118,9 @@ def main():
                               "label": (f'{ent2["name"]}（{plat}{when}）' if ent2 else plat + when.lstrip("，"))})
         d = SITE / "event" / e["id"]
         d.mkdir(parents=True, exist_ok=True)
-        (d / "index.html").write_text(detail_page(e, org=org, org_sections=org_sections, alt_posts=alt_posts))
+        related = related_events(e, events)
+        (d / "index.html").write_text(detail_page(
+            e, org=org, org_sections=org_sections, alt_posts=alt_posts, related=related))
 
     org_ids = source_page(events, entries)
     prerender_feed(build_posts_data(events, sid_to_entry))

@@ -171,5 +171,63 @@ class SourceTableTests(unittest.TestCase):
         self.assertNotIn('data-sort="events">收錄 ↓</button>', rendered)
 
 
+class RelatedEventsTests(unittest.TestCase):
+    @staticmethod
+    def event(event_id, title, start_at, campus="nycu-guangfu", venue=None, category="市集", org_id=None):
+        return {
+            "id": event_id,
+            "title": title,
+            "start_at": start_at,
+            "campus": campus,
+            "venue": venue,
+            "category": category,
+            "org_id": org_id,
+        }
+
+    def test_social_expo_page_lists_other_booths_but_not_unrelated_same_time_event(self):
+        parent = self.event(
+            "parent", "2026 陽明交大社團博覽會", "2026-09-09T17:30:00+08:00", org_id=1)
+        art = self.event(
+            "art", "交大美術社｜9/9 圖書館前社博攤位", "2026-09-09T17:30:00+08:00",
+            venue="圖書館前", org_id=2)
+        dog = self.event(
+            "dog", "汪汪社社團博覽會攤位", "2026-09-09T17:30:00+08:00",
+            venue="工程三館前 40 號攤位", org_id=3)
+        unrelated = self.event(
+            "talk", "半導體職涯講座", "2026-09-09T17:30:00+08:00",
+            venue="工程三館", category="演講", org_id=4)
+        other_campus = self.event(
+            "yangming", "陽明瑜珈社社團博覽會攤位", "2026-08-31T11:00:00+08:00",
+            campus="nycu-yangming", org_id=5)
+
+        related = build_site.related_events(parent, [parent, art, dog, unrelated, other_campus])
+
+        self.assertEqual([event["id"] for event, _ in related], ["art", "dog"])
+        self.assertTrue(all(reason == "同場社博" for _, reason in related))
+
+    def test_same_organizer_is_left_to_existing_more_from_organizer_section(self):
+        first = self.event("first", "Conversation Circle 秋季開幕場", "2026-09-22T12:00:00+08:00", org_id=8)
+        second = self.event("second", "Conversation Circle 秋季第二場", "2026-10-13T12:00:00+08:00", org_id=8)
+
+        self.assertEqual(build_site.related_events(first, [first, second]), [])
+
+    def test_detail_page_renders_relation_reason_and_disclaimer(self):
+        event = self.event("parent", "社團博覽會", "2026-09-09T17:30:00+08:00")
+        event.update({
+            "end_at": None, "all_day": False, "school": "nycu", "summary": "社團博覽會",
+            "description": "", "organizer": "課外組", "organizer_type": "official", "reg": None,
+            "price": None, "fee": None, "registration_url": None, "registration_deadline": None,
+            "source": {"url": "https://example.com/post"}, "extraction": {"needs_review": False},
+        })
+        booth = self.event("booth", "美術社社博攤位", "2026-09-09T17:30:00+08:00")
+
+        rendered = build_site.detail_page(event, related=[(booth, "同場社博")])
+
+        self.assertIn("可能相關的活動", rendered)
+        self.assertIn("實際關係以主辦單位公告為準", rendered)
+        self.assertIn("美術社社博攤位", rendered)
+        self.assertIn("同場社博", rendered)
+
+
 if __name__ == "__main__":
     unittest.main()
