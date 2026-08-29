@@ -1696,10 +1696,16 @@ def _account_html(
             sections.append(f"""<section class="account-card account-section">
         <h2>我要去行事曆</h2>
         <p class="account-hint">把這個私密連結加到 Google／Apple 行事曆，按過「我要去」的活動會自動出現、取消也會消失（行事曆每幾小時同步一次）。</p>
-        <div class="account-cal-row">
-          <input readonly value="{cal_url}" aria-label="行事曆訂閱連結" onclick="this.select()">
-          <a class="btn account-action" href="{webcal}">開啟 Apple 行事曆</a>
-          <a class="btn account-action" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">加到 Google 日曆</a>
+        <div class="account-calendar-actions" aria-label="加入行事曆">
+          <a class="btn btn-primary account-action" href="{webcal}">訂閱到 Apple 行事曆</a>
+          <a class="btn account-action" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">訂閱到 Google 日曆</a>
+        </div>
+        <div class="account-private-link">
+          <div class="account-private-link-text">
+            <span>私密訂閱連結</span>
+            <code title="{cal_url}">{cal_url}</code>
+          </div>
+          <button class="btn saved-feed-copy" type="button" data-copy="{cal_url}">複製連結</button>
         </div>
         <p class="account-hint">Apple 行事曆會自動命名為「{html.escape(cal_name)}」；Google 日曆一律拿網址當名稱，加入後請到該行事曆的設定把名稱改成
           <code class="account-copy" title="點一下複製" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent)">{html.escape(cal_name)}</code>。</p>

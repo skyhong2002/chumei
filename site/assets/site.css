@@ -310,6 +310,29 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .account-cal-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
 .account-cal-row input { flex: 1 1 260px; font-size: 0.82rem; }
 .account-cal-row .btn { white-space: nowrap; }
+.account-calendar-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 14px; }
+.account-calendar-actions .account-action,
+.account-card .account-calendar-actions a.account-action + a.account-action { margin: 0; }
+.account-private-link {
+  display: flex; align-items: center; gap: 14px; min-width: 0;
+  padding: 11px 12px 11px 14px; margin: 0 0 14px;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+}
+.account-private-link-text { flex: 1 1 auto; min-width: 0; }
+.account-private-link-text span {
+  display: block; margin-bottom: 2px; color: var(--color-text-muted);
+  font-size: 0.72rem; font-weight: 650;
+}
+.account-private-link-text code {
+  display: block; overflow: hidden; color: var(--color-text-secondary);
+  font-size: 0.78rem; text-overflow: ellipsis; white-space: nowrap;
+}
+.account-private-link button.btn {
+  flex: none; min-height: 36px; padding: 0 14px; background: var(--color-surface);
+  font-size: 0.82rem; white-space: nowrap;
+}
+.account-private-link button.btn:hover { background: var(--color-canvas); }
 .account-copy { cursor: copy; padding: 1px 6px; border-radius: 6px; background: var(--color-surface-soft); font-size: 0.86em; }
 .saved-feed { padding: 14px 0; border-top: 1px solid var(--color-border-subtle); }
 .saved-feed:first-of-type { border-top: 0; padding-top: 0; }
@@ -356,6 +379,10 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .account-links { display: flex; gap: 18px; margin: 16px 0 0; font-size: 0.88rem; }
 @media (max-width: 640px) {
   .account-event-org { display: none; }
+  .account-calendar-actions { display: grid; grid-template-columns: 1fr; }
+  .account-calendar-actions .account-action { width: 100%; justify-content: center; }
+  .account-private-link { align-items: stretch; flex-direction: column; gap: 10px; }
+  .account-private-link button.btn { width: 100%; justify-content: center; }
 }
 .submit-form { display: grid; gap: 6px; margin-top: 18px; }
 .submit-label { font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px; }

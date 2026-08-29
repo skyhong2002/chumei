@@ -588,6 +588,11 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("BEGIN:VTIMEZONE", feed.text)
         self.assertIn("X-WR-CALDESC:", feed.text)
         self.assertIn("X-APPLE-CALENDAR-COLOR:", feed.text)
+        account = self.client.get("/account/").text
+        self.assertIn("訂閱到 Apple 行事曆", account)
+        self.assertIn("訂閱到 Google 日曆", account)
+        self.assertIn("私密訂閱連結", account)
+        self.assertIn('data-copy="https://chumei.observe.tw/auth/calendar/', account)
         self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "sky_cal"})
         self.assertIn("X-WR-CALNAME:竹梅 sky_cal 已追蹤",
                       self.client.get(f"/auth/calendar/{token}.ics").text)
