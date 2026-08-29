@@ -1,7 +1,9 @@
-"""Render the curated 390x844 home screenshot used by make_promo.py.
+"""Render the curated 390x844 mobile screenshots used by make_promo.py.
 
 The promo fixture intentionally keeps a stable launch-day story row and two real
 feed posts so later site updates do not silently change the marketing artwork.
+The events screenshot is captured after a small real page scroll so the map sits
+near the middle of the phone without post-processing the screenshot crop.
 """
 
 import base64
@@ -17,7 +19,9 @@ from chumei_lib import ROOT
 
 SITE = ROOT / "site"
 PROMO = ROOT / "state" / "promo"
-OUTPUT = PROMO / "shot-home.png"
+HOME_OUTPUT = PROMO / "shot-home.png"
+EVENTS_OUTPUT = PROMO / "shot-events.png"
+EVENTS_SCROLL_Y = 200
 
 
 def data_url(path: Path) -> str:
@@ -162,14 +166,22 @@ def render():
             page.evaluate("document.fonts.ready")
             page.wait_for_timeout(700)
             page.wait_for_function("[...document.images].every(image => image.complete)")
-            page.screenshot(path=str(OUTPUT))
+            page.screenshot(path=str(HOME_OUTPUT))
+
+            page.goto(base_url + "/events/", wait_until="networkidle")
+            page.wait_for_selector("#map .maplibregl-canvas")
+            page.wait_for_timeout(1000)
+            page.evaluate("y => scrollTo(0, y)", EVENTS_SCROLL_Y)
+            page.wait_for_timeout(300)
+            page.screenshot(path=str(EVENTS_OUTPUT))
             browser.close()
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
 
-    print(f"ok → {OUTPUT}")
+    print(f"ok → {HOME_OUTPUT}")
+    print(f"ok → {EVENTS_OUTPUT} (scrollY={EVENTS_SCROLL_Y})")
 
 
 if __name__ == "__main__":
