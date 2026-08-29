@@ -219,6 +219,18 @@ class ProcessTests(unittest.TestCase):
             process_submissions.process_one(self.store, sub, self.ctx)
         return self.store.get(sub["id"])
 
+    def test_tracked_facebook_urls_are_indexed_by_page_handle(self):
+        rows = {
+            "ig_accounts.csv": [],
+            "fb_pages.csv": [{"page": "https://www.facebook.com/nycuwlef"}],
+            "social_accounts.csv": [],
+        }
+        with mock.patch.object(
+            process_submissions, "read_sources_csv", side_effect=lambda name: rows[name]
+        ):
+            handles = process_submissions.load_tracked_handles()
+        self.assertIn("nycuwlef", handles["facebook"])
+
     def test_tracked_profile_and_untracked_profile(self):
         with mock.patch.object(process_submissions, "SOURCE_SUGGESTIONS", Path(self.tempdir.name) / "s.jsonl"):
             tracked = self._run("https://www.instagram.com/nthu_sa/")

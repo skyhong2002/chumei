@@ -95,11 +95,13 @@ def load_inbox_index():
 
 
 def load_tracked_handles():
+    from fetch_facebook import page_slug
+
     handles = {"instagram": set(), "facebook": set(), "threads": set(), "twitter": set()}
     for r in read_sources_csv("ig_accounts.csv"):
         handles["instagram"].add(r["username"].strip().lstrip("@").lower())
     for r in read_sources_csv("fb_pages.csv"):
-        handles["facebook"].add(r["page"].strip().lower())
+        handles["facebook"].add(page_slug(r["page"]))
     for r in read_sources_csv("social_accounts.csv"):
         handles.setdefault(r["platform"].strip().lower(), set()).add(r["username"].strip().lstrip("@").lower())
     return handles
