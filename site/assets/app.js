@@ -512,14 +512,18 @@
         });
         if (seenYangming && !seenGuangfu) return "nycu-yangming";
         if (seenGuangfu && !seenYangming) return "nycu-guangfu";
-        // 無明確校區的舊資料，以單位名稱判斷；仍無法判定時沿用交大河道。
+        // 無明確校區的資料，以單位名稱判斷；仍無法判定就兩個校區的河道都放，不硬塞給交大。
         if (/^陽明(?!交大)/.test(p.source_name || "")) return "nycu-yangming";
-        return "nycu-guangfu";
+        if (/^交大|^NCTU/i.test(p.source_name || "")) return "nycu-guangfu";
+        return "nycu";
       }
       function matches(p, f) {
         if (f.kind === "events" && !p.events.length) return false;
         if (f.follow === "on" && !followedOrg(p.org_id)) return false;
-        if (f.school && f.school !== "all" && p.school !== "both" && postSchool(p) !== f.school) return false;
+        if (f.school && f.school !== "all" && p.school !== "both") {
+          var ps = postSchool(p);
+          if (ps !== f.school && !(ps === "nycu" && f.school.indexOf("nycu-") === 0)) return false;
+        }
         if (f.platform && f.platform !== "all" && p.platform !== f.platform) return false;
         if (f.cat && f.cat !== "all" && !p.events.some(function (e) { return (e.category || "其他") === f.cat; })) return false;
         if (f.org && f.org !== "all" && p.org_type !== f.org) return false;

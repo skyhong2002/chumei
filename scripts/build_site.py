@@ -225,6 +225,47 @@ def load_venues():
     return rows
 
 
+# 校區判定規則（依序，先命中先贏）：
+#   1. 場地字串明講校區：陽明校區／YM Campus／山下 → 陽明；光復校區／Guangfu／交大校區 → 光復；博愛校區 → 博愛。
+#   2. 主辦單位在名錄裡有校區（陽明分會、陽明○○社、交大○○系學會⋯）：
+#      陽明單位 → 一律陽明（活動中心、體育館、大禮堂兩校區都有，抽取器常猜成光復）；
+#      交大單位 → 只在抽取器沒判斷出校區時補成光復。
+#   3. 線上／校外（online／other）不動；其餘維持抽取器的判斷。
+_VENUE_YANGMING = re.compile(r"陽明\s*校區|YM\s*Campus|Yangming|山下", re.I)
+_VENUE_GUANGFU = re.compile(r"光復\s*校區|Guangfu|交大\s*校區|^光復\b", re.I)
+_VENUE_BOAI = re.compile(r"博愛\s*校區|Boai", re.I)
+
+
+def infer_campus(events, sid_to_entry):
+    """回傳 (改動數, 明細)；明細供 build log 追蹤。"""
+    changed = []
+    for e in events:
+        if e.get("school") not in ("nycu", "both"):
+            continue
+        before = e.get("campus")
+        if before in ("online", "other"):
+            continue
+        venue = e.get("venue") or ""
+        after = before
+        if _VENUE_YANGMING.search(venue):
+            after = "nycu-yangming"
+        elif _VENUE_GUANGFU.search(venue):
+            after = "nycu-guangfu"
+        elif _VENUE_BOAI.search(venue):
+            after = "nycu-boai"
+        else:
+            ent = sid_to_entry.get((e.get("source") or {}).get("source_id")) or {}
+            org_campus = ent.get("campus")
+            if org_campus == "yangming":
+                after = "nycu-yangming"
+            elif org_campus == "guangfu" and not before:
+                after = "nycu-guangfu"
+        if after != before:
+            e["campus"] = after
+            changed.append((e["id"], before, after, e.get("title", "")[:24]))
+    return changed
+
+
 def attach_geo(events, venues):
     """venue 字串 → 建築座標；無精確場館時退回校區約略位置。"""
     def match(venue, cands):
@@ -1873,6 +1914,22 @@ def main():
     n_screenshot_events = sum(e.get("image_kind") == "source_screenshot" for e in events)
     print(f"source screenshots: {n_screenshots} created, {n_screenshot_events} events attached")
     attach_reg_status(events)
+
+    # 名錄歸戶提前：活動 JSON 帶 org_id/org_name（前端追蹤靠它），校區判定也要先知道主辦單位在哪個校區
+    entries = build_sources_data(events)
+    sid_to_entry = {}
+    for ent in entries:
+        for sid in ent.get("sids", []):
+            sid_to_entry[sid] = ent
+    for e in events:
+        ent = sid_to_entry.get((e.get("source") or {}).get("source_id"))
+        if ent is not None:
+            e["org_id"], e["org_name"] = ent["id"], ent["name"]
+    campus_changes = infer_campus(events, sid_to_entry)
+    print(f"campus: {len(campus_changes)} events re-assigned by venue/organizer rule")
+    for eid, before, after, title in campus_changes[:20]:
+        print(f"  {eid} {before} → {after}  {title}")
+
     venues = load_venues()
     n_geo = attach_geo(events, venues)
     print(f"geo: {n_geo}/{sum(1 for e in events if e.get('venue'))} venue-matched ({len(venues)} registry rows)")
@@ -1895,17 +1952,6 @@ def main():
             ts = post_ts.get((src.get("source_id"), src.get("post_id")))
             if ts:
                 src["posted_at"] = ts
-
-    # 名錄歸戶提前：活動 JSON 帶 org_id/org_name，前端愛心（追蹤單位）靠它
-    entries = build_sources_data(events)
-    sid_to_entry = {}
-    for ent in entries:
-        for sid in ent.get("sids", []):
-            sid_to_entry[sid] = ent
-    for e in events:
-        ent = sid_to_entry.get((e.get("source") or {}).get("source_id"))
-        if ent is not None:
-            e["org_id"], e["org_name"] = ent["id"], ent["name"]
 
     bundle = {"generated_at": now_iso(), "events": events,
               "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL, "org": ORG_LABEL}}
