@@ -221,7 +221,7 @@ def main():
         ("活動資訊，一條河道", "IG、FB、校內公告自動彙整\n不用逐一追蹤", "home", GRAD_CHU, 0),
         ("直接看日曆", "日期、時間、地點一眼看懂\n一鍵加入或訂閱行事曆", "calendar", GRAD_MEI, 0),
         ("限動也幫你收好", "陽明/交大、清大社團限動集中看\n24 小時內消息不漏接", "stories", GRAD_CHU, 0),
-        ("地圖找附近活動", "依校區、日期、類型快速篩選\n直接看活動在哪裡", "events", GRAD_MEI, 280),
+        ("地圖找附近活動", "依校區、日期、類型快速篩選\n直接看活動在哪裡", "events", GRAD_MEI, 520),
     ]
     for i, (t, sub, shot, g, crop) in enumerate(slides, 1):
         slide(t, sub, shot, grad=g, crop_top=crop, index=f"{i} / {len(slides)}").save(OUT / f"slide-{i}.png")
