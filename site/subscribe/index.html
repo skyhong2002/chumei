@@ -2,6 +2,7 @@
 .sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
 .sub-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);text-decoration:none;color:var(--color-text-primary)}
+.prose>.sub-card+.sub-card{margin-top:14px}
 .sub-card:hover{border-color:var(--color-border-strong);text-decoration:none}
 .sub-card .icon{width:44px;height:44px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .sub-card .icon svg{width:26px;height:26px;fill:#fff}
