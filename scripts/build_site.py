@@ -700,6 +700,22 @@ def write_rss(path, events, title):
     )
 
 
+SHARED_FOOTER = """<footer class="site-footer">
+  <div class="footer-intro">
+    <a class="footer-brand" href="/" aria-label="竹梅活動觀測站首頁"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span>活動觀測站</span></a>
+    <p>彙整清大、陽明交大公開活動資訊；時間、地點與報名方式以主辦單位公告為準。</p>
+  </div>
+  <nav class="footer-nav" aria-label="頁尾導覽">
+    <section><h2>瀏覽</h2><a href="/">最新</a><a href="/events/">活動</a><a href="/calendar/">日曆</a><a href="/stories/">限動</a></section>
+    <section><h2>使用</h2><a href="/notify/">App 通知</a><a href="/submit/">回報活動</a><a href="/subscribe/">訂閱管道</a></section>
+    <section><h2>資訊</h2><a href="/source/">資料來源</a><a href="/status/">系統狀態</a><a href="/about/">關於竹梅</a></section>
+    <section><h2>帳號</h2><a href="/account/" data-account-link><span data-account-label>登入／帳號</span></a></section>
+  </nav>
+</footer>"""
+
+SHARED_FAB = '<a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>'
+
+
 def page_shell(title, desc, content, og_image=None, canonical=None):
     og_img = og_image or f"{BASE_URL}/assets/og-default.png"
     canonical = (canonical or BASE_URL + "/").split("?", 1)[0].split("#", 1)[0]
@@ -756,14 +772,34 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <main>
 {content}
 </main>
-<footer class="site-footer">
-  <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
-  <p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/status/">系統狀態</a> ・ <a href="/about/">關於與回報</a></p>
-</footer>
-<a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
+{SHARED_FOOTER}
+{SHARED_FAB}
 <script src="/assets/app.js"></script>
 </body>
 </html>"""
+
+
+def canonicalize_shared_shell():
+    """Keep static shells aligned; the Threads-style homepage has no footer."""
+    footer_re = re.compile(r'<footer class="site-footer">.*?</footer>', re.S)
+    fab_re = re.compile(r'<a class="fab"[^>]*>.*?</a>', re.S)
+    changed = 0
+    for path in SITE.rglob("*.html"):
+        src = path.read_text(encoding="utf-8")
+        if 'class="site-header"' not in src or "</main>" not in src:
+            continue
+        if path == SITE / "index.html":
+            out = footer_re.sub("", src, count=1)
+        elif footer_re.search(src):
+            out = footer_re.sub(SHARED_FOOTER, src, count=1)
+        else:
+            out = src.replace("</main>", f"</main>\n{SHARED_FOOTER}", 1)
+        out = fab_re.sub("", out)
+        out = out.replace("</body>", f"{SHARED_FAB}\n</body>", 1)
+        if out != src:
+            path.write_text(out, encoding="utf-8")
+            changed += 1
+    print(f"shared shell: {changed} HTML files normalized")
 
 
 def version_static_assets():
@@ -2242,6 +2278,7 @@ def main():
     prerender_events(events)
     prerender_calendar(events)
     prerender_stories()
+    canonicalize_shared_shell()
     version_static_assets()
 
     urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/submit/", f"{BASE_URL}/source/", f"{BASE_URL}/status/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \

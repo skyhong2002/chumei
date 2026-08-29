@@ -191,6 +191,7 @@
       flag: '<path d="M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9z"/><path d="M5 21v-7"/>',
       db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
       rss: '<path d="M5 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M4 4a16 16 0 0 1 16 16"/><path d="M4 11a9 9 0 0 1 9 9"/>',
+      status: '<path d="M3 12h4l2.5-6l5 12l2.5-6h4"/>',
       info: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/>'
     };
     function svg(name, cls) {
@@ -198,12 +199,13 @@
     }
     // 順序＝顯示順序。desktop:true 的會拉到桌機側欄（選單裡改為手機專屬）
     var ITEMS = [
-      { href: "/account/", label: "登入／帳號", icon: "user", desktop: true, desktopOrder: 4 },
       { href: "/notify/", label: "App 通知", icon: "bell", desktop: true, desktopOrder: 1 },
       { href: "/submit/", label: "回報活動", icon: "flag", desktop: true, desktopOrder: 2 },
       { href: "/source/", label: "資料來源", icon: "db", desktop: true, desktopOrder: 3 },
       { href: "/subscribe/", label: "訂閱管道", icon: "rss" },
-      { href: "/about/", label: "關於竹梅", icon: "info" }
+      { href: "/status/", label: "系統狀態", icon: "status" },
+      { href: "/about/", label: "關於竹梅", icon: "info" },
+      { href: "/account/", label: "登入／帳號", icon: "user", desktop: true, desktopOrder: 4, account: true }
     ];
     // 桌機側欄：依序插在「更多」前面
     ITEMS.filter(function (it) { return it.desktop; }).sort(function (a, b) {
@@ -212,6 +214,7 @@
       var a = document.createElement("a");
       a.className = "nav-item nav-desktop-extra" + (it.href === "/account/" ? " nav-account-entry" : "");
       a.href = it.href;
+      if (it.account) a.setAttribute("data-account-link", "");
       a.innerHTML = svg(it.icon) + '<span class="nav-label">' + it.label + "</span>";
       nav.insertBefore(a, more);
     });
@@ -223,6 +226,7 @@
       var a = document.createElement("a");
       a.href = it.href;
       a.className = it.desktop ? "nav-mobile-extra" : "";
+      if (it.account) a.setAttribute("data-account-link", "");
       a.innerHTML = svg(it.icon, "mi") + "<span>" + it.label + "</span>";
       return a;
     }
@@ -237,8 +241,8 @@
       var displayName = String(user.displayName || handle || "竹梅使用者");
       var initial = Array.from(displayName.trim())[0] || "竹";
       var avatarUrl = String(user.avatarUrl || "");
-      document.querySelectorAll('.site-nav a[href="/account/"], .nav-more-menu a[href="/account/"]').forEach(function (a) {
-        var label = a.querySelector(".nav-label") || a.querySelector("span");
+      document.querySelectorAll('[data-account-link], .site-nav a[href="/account/"], .nav-more-menu a[href="/account/"]').forEach(function (a) {
+        var label = a.querySelector("[data-account-label]") || a.querySelector(".nav-label") || a.querySelector("span");
         if (label) label.textContent = handle ? "@" + handle : "帳號";
         var oldIcon = a.querySelector("svg");
         if (oldIcon) {

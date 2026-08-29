@@ -20,8 +20,8 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-title" content="竹梅">
-<link rel="stylesheet" href="/assets/tokens.css">
-<link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169">
+<link rel="stylesheet" href="/assets/site.css?v=87698e9ccada">
 <link rel="alternate" type="application/rss+xml" title="竹梅活動 RSS" href="/feeds/all.xml">
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -93,10 +93,21 @@
 
 </main>
 <footer class="site-footer">
-  <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
-  <p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/status/">系統狀態</a> ・ <a href="/about/">關於與回報</a></p>
+  <div class="footer-intro">
+    <a class="footer-brand" href="/" aria-label="竹梅活動觀測站首頁"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span>活動觀測站</span></a>
+    <p>彙整清大、陽明交大公開活動資訊；時間、地點與報名方式以主辦單位公告為準。</p>
+  </div>
+  <nav class="footer-nav" aria-label="頁尾導覽">
+    <section><h2>瀏覽</h2><a href="/">最新</a><a href="/events/">活動</a><a href="/calendar/">日曆</a><a href="/stories/">限動</a></section>
+    <section><h2>使用</h2><a href="/notify/">App 通知</a><a href="/submit/">回報活動</a><a href="/subscribe/">訂閱管道</a></section>
+    <section><h2>資訊</h2><a href="/source/">資料來源</a><a href="/status/">系統狀態</a><a href="/about/">關於竹梅</a></section>
+    <section><h2>帳號</h2><a href="/account/" data-account-link><span data-account-label>登入／帳號</span></a></section>
+  </nav>
 </footer>
+
+<script src="/assets/app.js?v=4dec3f2e0b97"></script>
+
+
 <a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
-<script src="/assets/app.js"></script>
 </body>
 </html>

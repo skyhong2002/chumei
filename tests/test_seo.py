@@ -65,6 +65,30 @@ def parse_pages():
 
 
 class SEOOutputTests(unittest.TestCase):
+    def test_every_shell_uses_the_same_footer_links(self):
+        expected = [
+            "/", "/", "/events/", "/calendar/", "/stories/", "/notify/",
+            "/submit/", "/subscribe/", "/source/", "/status/", "/about/",
+            "/account/",
+        ]
+        checked = 0
+        for path in sorted(SITE.rglob("index.html")):
+            source = path.read_text()
+            if 'class="site-header"' not in source:
+                continue
+            with self.subTest(path=path.relative_to(SITE)):
+                self.assertEqual(source.count('class="fab"'), 1)
+                footers = re.findall(
+                    r'<footer class="site-footer">(.*?)</footer>', source, re.S
+                )
+                if path == SITE / "index.html":
+                    self.assertEqual(footers, [])
+                    continue
+                self.assertEqual(len(footers), 1)
+                self.assertEqual(re.findall(r'href="([^"]+)"', footers[0]), expected)
+            checked += 1
+        self.assertGreater(checked, 5)
+
     def test_every_page_has_queryless_canonical_and_preview_metadata(self):
         pages = parse_pages()
         # A clean checkout tracks the six static shells; a built production tree also includes
@@ -116,8 +140,12 @@ class SEOOutputTests(unittest.TestCase):
         self.assertIn("var avatarUrl = String(user.avatarUrl || \"\")", app)
         self.assertIn('img.referrerPolicy = "no-referrer"', app)
         self.assertIn("return a.desktopOrder - b.desktopOrder", app)
+        self.assertIn('{ href: "/status/", label: "系統狀態", icon: "status" }', app)
+        self.assertIn("[data-account-link]", app)
         self.assertIn(".nav-account-avatar {", css)
         self.assertIn(".nav-account-entry { margin-top: auto; }", css)
+        self.assertIn(".footer-nav {", css)
+        self.assertIn(".footer-nav section {", css)
 
 
 if __name__ == "__main__":
