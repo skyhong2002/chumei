@@ -1,6 +1,6 @@
-"""IG fetcher：透過本機 RSSHub 的 /instagram/2/user/:username route 抓公開貼文。
+"""IG fetcher：透過 RSSHub／Instaloader 抓公開貼文。
 
-節制原則：每帳號 limit 5、帳號間 sleep、一天跑一輪就好（IG cookie 帳號的額度是共用資源）。
+節制原則：持久化帳號排程、小批次、隨機等待與指數退避（IG cookie 額度是共用資源）。
 """
 
 import argparse
@@ -16,10 +16,15 @@ from email.utils import parsedate_to_datetime
 
 import requests
 
-from chumei_lib import SeenState, append_inbox, load_env, now_iso, read_sources_csv, ROOT
+from chumei_lib import (SeenState, TZ_TAIPEI, append_inbox, load_env, now_iso,
+                        read_sources_csv, ROOT)
+from ig_schedule import (clear_global_rate_limit, is_rate_limited, load_schedule,
+                         mark_failure, mark_success, save_schedule, select_due,
+                         set_global_rate_limit)
 
 RAW_SOURCE = "rsshub"
 ERROR_LOG = ROOT / "state" / "seen" / "instagram_errors.jsonl"
+SCHEDULE_STATE = ROOT / "state" / "instagram_profile_schedule.json"
 
 
 def strip_html(s):
@@ -53,7 +58,8 @@ def parse_feed(xml_text):
 
 def fetch_rsshub(base, username, limit):
     """回傳 (avatar_url, posts)。"""
-    resp = requests.get(f"{base}/instagram/2/user/{username}", params={"limit": limit}, timeout=90)
+    resp = requests.get(f"{base}/instagram/2/user/{username}", params={"limit": limit,
+                        }, timeout=(10, 45))
     resp.raise_for_status()
     if b"<rss" not in resp.content[:200]:
         raise RuntimeError(f"non-RSS response ({resp.status_code})")
@@ -142,6 +148,26 @@ def fetch_account(backend, base, username, limit):
         return fetch_instaloader(username, limit)
 
 
+class AutoBackend:
+    """Per-run RSSHub circuit breaker with Instaloader fallback."""
+
+    def __init__(self, base):
+        self.base = base
+        self.rsshub_open = False
+
+    def fetch(self, username, limit):
+        if not self.rsshub_open:
+            try:
+                return fetch_rsshub(self.base, username, limit)
+            except Exception as e:
+                # A failed shared route is unlikely to recover for the next
+                # account seconds later. Probe again on the next launchd run.
+                self.rsshub_open = True
+                print(f"    rsshub unavailable ({str(e)[:60]}); circuit open for this batch",
+                      file=sys.stderr)
+        return fetch_instaloader(username, limit)
+
+
 def log_error(username, err):
     ERROR_LOG.parent.mkdir(parents=True, exist_ok=True)
     with ERROR_LOG.open("a", encoding="utf-8") as f:
@@ -152,30 +178,79 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--accounts", help="逗號分隔，只抓這些 username")
     ap.add_argument("--limit", type=int, default=5, help="每帳號抓最新幾篇")
-    ap.add_argument("--sleep", type=float, default=8.0, help="帳號間隔秒數")
-    ap.add_argument("--max-accounts", type=int, default=0, help="這一輪最多處理幾個帳號（0=全部）")
+    ap.add_argument("--sleep", type=float, help="相容舊參數：固定帳號間隔秒數")
+    ap.add_argument("--sleep-min", type=float, default=25, help="帳號間最短等待秒數")
+    ap.add_argument("--sleep-max", type=float, default=45, help="帳號間最長等待秒數")
+    ap.add_argument("--batch-size", type=int, default=8, help="每小批帳號數")
+    ap.add_argument("--batches", type=int, default=2, help="每輪最多跑幾個小批")
+    ap.add_argument("--batch-buffer-min", type=float, default=300, help="小批間最短緩衝秒數")
+    ap.add_argument("--batch-buffer-max", type=float, default=480, help="小批間最長緩衝秒數")
+    ap.add_argument("--account-interval-hours", type=float, default=48,
+                    help="同一帳號成功後至少間隔幾小時再抓")
+    ap.add_argument("--max-accounts", type=int, default=0,
+                    help="覆寫這一輪帳號上限（0=使用 batch-size × batches）")
     ap.add_argument("--backend", choices=["auto", "rsshub", "instaloader"],
                     help="預設讀 CHUMEI_IG_BACKEND，再預設 auto")
+    ap.add_argument("--force", action="store_true", help="忽略帳號排程與全域冷卻，僅供人工診斷")
     ap.add_argument("--dry-run", action="store_true", help="只印出抓到的貼文，不寫 inbox／seen-state／頭貼")
     args = ap.parse_args()
+
+    if args.batch_size < 1 or args.batches < 1:
+        ap.error("batch-size and batches must be positive")
+    if min(args.sleep_min, args.sleep_max, args.batch_buffer_min, args.batch_buffer_max) < 0:
+        ap.error("sleep and batch buffer values must not be negative")
+    if args.sleep is not None and args.sleep < 0:
+        ap.error("sleep must not be negative")
 
     env = load_env()
     base = env.get("CHUMEI_RSSHUB_BASE", "http://127.0.0.1:1200")
     backend = args.backend or env.get("CHUMEI_IG_BACKEND", "auto")
+    if backend not in {"auto", "rsshub", "instaloader"}:
+        ap.error(f"invalid CHUMEI_IG_BACKEND: {backend}")
     rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() not in ("false", "link")]
     if args.accounts:
         wanted = set(args.accounts.split(","))
         rows = [r for r in rows if r["username"] in wanted]
+    row_by_username = {r["username"].strip().lstrip("@"): r for r in rows}
+    schedule = load_schedule(SCHEDULE_STATE)
+    now_ts = time.time()
+    cooldown = schedule.get("global_cooldown_until", 0)
+    if cooldown > now_ts and not (args.force or args.accounts):
+        print(f"instagram: cooling down until {datetime.fromtimestamp(cooldown, TZ_TAIPEI).isoformat(timespec='minutes')}")
+        return 0
+    maximum = args.max_accounts or args.batch_size * args.batches
+    selected = (list(row_by_username) if args.accounts else
+                select_due(list(row_by_username), schedule, maximum, now=now_ts, force=args.force))
     if args.max_accounts:
-        rows = rows[: args.max_accounts]
+        selected = selected[:args.max_accounts]
+    rows = [row_by_username[u] for u in selected]
+    if not rows:
+        print("instagram: no accounts due")
+        return 0
+
+    if args.sleep is not None:
+        args.sleep_min = args.sleep_max = args.sleep
+    if args.sleep_min > args.sleep_max or args.batch_buffer_min > args.batch_buffer_max:
+        ap.error("sleep/batch buffer minimum must not exceed maximum")
+    print(f"instagram schedule: {len(rows)}/{len(row_by_username)} accounts, "
+          f"{args.batch_size} per batch, account wait {args.sleep_min:g}-{args.sleep_max:g}s, "
+          f"batch buffer {args.batch_buffer_min:g}-{args.batch_buffer_max:g}s")
 
     seen = SeenState(RAW_SOURCE)
     total_new, failed = 0, 0
+    auto_backend = AutoBackend(base) if backend == "auto" else None
     for i, row in enumerate(rows):
+        if i and i % args.batch_size == 0:
+            wait = random.uniform(args.batch_buffer_min, args.batch_buffer_max)
+            print(f"batch buffer: {wait:.0f}s", flush=True)
+            time.sleep(wait)
         username = row["username"].strip().lstrip("@")
         source_id = f"ig_{username}"
         try:
-            avatar_url, posts = fetch_account(backend, base, username, args.limit)
+            if auto_backend:
+                avatar_url, posts = auto_backend.fetch(username, args.limit)
+            else:
+                avatar_url, posts = fetch_account(backend, base, username, args.limit)
             if args.dry_run:
                 print(f"[{i+1}/{len(rows)}] @{username}: {len(posts)} posts"
                       + f"{' (avatar ok)' if avatar_url else ''}")
@@ -204,13 +279,28 @@ def main():
             n = append_inbox(RAW_SOURCE, fresh)
             seen.save()
             total_new += n
+            mark_success(schedule, username, interval_hours=args.account_interval_hours)
+            clear_global_rate_limit(schedule)
+            save_schedule(SCHEDULE_STATE, schedule)
             print(f"[{i+1}/{len(rows)}] @{username}: +{n}")
         except Exception as e:
             failed += 1
             log_error(username, e)
+            if not args.dry_run:
+                mark_failure(schedule, username)
             print(f"[{i+1}/{len(rows)}] @{username}: ERROR {str(e)[:120]}", file=sys.stderr)
+            if is_rate_limited(e):
+                if not args.dry_run:
+                    until = set_global_rate_limit(schedule)
+                    save_schedule(SCHEDULE_STATE, schedule)
+                    until_text = datetime.fromtimestamp(until, TZ_TAIPEI).isoformat(timespec="minutes")
+                    print(f"instagram rate-limited; stopping batch, cooldown until {until_text}",
+                          file=sys.stderr)
+                return 1
+            if not args.dry_run:
+                save_schedule(SCHEDULE_STATE, schedule)
         if i < len(rows) - 1:
-            time.sleep(args.sleep + random.uniform(0, 3))
+            time.sleep(random.uniform(args.sleep_min, args.sleep_max))
 
     print(f"done: {total_new} new items, {failed} failures / {len(rows)} accounts")
     return 0 if failed < max(1, len(rows) // 2) else 1

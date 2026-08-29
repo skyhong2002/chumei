@@ -1,7 +1,7 @@
 """IG 限時動態 fetcher：instaloader ＋ bamboo-rsshub 的 IG session cookie。
 
 - userid 解析走 topsearch（快取 state/ig_userids.json，每輪最多解析 --resolve-limit 個）。
-- get_stories 批量查詢所有 userid（instaloader 內部分批），一輪只花個位數請求。
+- get_stories 每輪只查一批最多 48 個 userid，launchd 跨輪輪替。
 - 媒體立即下載到 site/assets/stories/（IG CDN 連結很快過期），縮到 720px。
 - 限動 24 小時過期：輸出 site/data/stories.json 只含未過期項目；過期 48h 後刪媒體。
 """
@@ -18,11 +18,15 @@ from pathlib import Path
 import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
+from ig_schedule import (clear_global_rate_limit, is_rate_limited, load_schedule,
+                         mark_failure, mark_success, save_schedule, select_due,
+                         set_global_rate_limit)
 
 USERID_CACHE = ROOT / "state" / "ig_userids.json"
 STORIES_STATE = ROOT / "state" / "stories.json"
 MEDIA_DIR = ROOT / "site" / "assets" / "stories"
 OUT = ROOT / "site" / "data" / "stories.json"
+SCHEDULE_STATE = ROOT / "state" / "instagram_stories_schedule.json"
 
 
 def load_session():
@@ -32,7 +36,10 @@ def load_session():
     kv = dict(re.findall(r"(\w+)=([^;]+)", cookie))
     if "sessionid" not in kv:
         raise RuntimeError("IG_COOKIE 裡沒有 sessionid（bamboo-rsshub 容器沒跑？）")
-    L = instaloader.Instaloader(quiet=True)
+    # Application-level scheduling owns long retries.  Do not multiply a
+    # denied request into three immediate attempts inside Instaloader.
+    L = instaloader.Instaloader(quiet=True, max_connection_attempts=1,
+                               request_timeout=45, fatal_status_codes=[401, 429])
     L.load_session(kv.get("ds_user_id", "ig"), {k: kv[k] for k in ("sessionid", "csrftoken", "ds_user_id", "mid") if k in kv})
     return L
 
@@ -81,57 +88,108 @@ def save_media(item):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--resolve-limit", type=int, default=15, help="這一輪最多解析幾個新 userid")
+    ap.add_argument("--batch-size", type=int, default=48, help="每輪最多查幾個帳號（IG 單次最多 50）")
+    ap.add_argument("--account-interval-hours", type=float, default=18,
+                    help="同一帳號至少間隔幾小時再查")
+    ap.add_argument("--force", action="store_true", help="忽略帳號排程與全域冷卻，僅供人工診斷")
     ap.add_argument("--check", action="store_true", help="只驗證 session")
     args = ap.parse_args()
 
+    if not 1 <= args.batch_size <= 50:
+        ap.error("batch-size must be between 1 and 50")
+
+    schedule = load_schedule(SCHEDULE_STATE)
+    now_ts = time.time()
+    cooldown = schedule.get("global_cooldown_until", 0)
+    if cooldown > now_ts and not (args.force or args.check):
+        print(f"stories: cooling down until {datetime.fromtimestamp(cooldown, TZ_TAIPEI).isoformat(timespec='minutes')}")
+        return 0
+
     L = load_session()
-    me = L.test_login()
+    try:
+        me = L.test_login()
+    except Exception as e:
+        me = None
+        print(f"session check failed: {str(e)[:120]}", file=sys.stderr)
+    if not me:
+        print("session invalid: Instagram web login is not authenticated", file=sys.stderr)
+        if args.check:
+            return 1
+        until = set_global_rate_limit(schedule)
+        save_schedule(SCHEDULE_STATE, schedule)
+        print(f"stories: global cooldown until {datetime.fromtimestamp(until, TZ_TAIPEI).isoformat(timespec='minutes')}",
+              file=sys.stderr)
+        return 1
     print(f"session ok (@{me})")
     if args.check:
         return 0
 
     rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() not in ("false", "link")]
     meta = {r["username"].strip().lstrip("@"): r for r in rows}
-    cache = resolve_userids(L, rows, args.resolve_limit)
-    uid_to_name = {v: k for k, v in cache.items() if v}
-    userids = list(uid_to_name)
+    selected = select_due(list(meta), schedule, args.batch_size, now=now_ts, force=args.force)
+    if not selected:
+        print("stories: no accounts due")
+        return 0
+    selected_rows = [meta[u] for u in selected]
+    print(f"stories batch: {len(selected)}/{len(rows)} accounts")
+    cache = resolve_userids(L, selected_rows, args.resolve_limit)
+    userids = [cache[u] for u in selected if cache.get(u)]
+    unresolved = [u for u in selected if not cache.get(u)]
+    for username in unresolved:
+        mark_failure(schedule, username, base_hours=24, cap_hours=168, jitter_hours=6)
     if not userids:
         print("no userids resolved yet")
-        return 0
+        save_schedule(SCHEDULE_STATE, schedule)
+        return 1
 
     state = json.loads(STORIES_STATE.read_text()) if STORIES_STATE.exists() else {}
     now = datetime.now(timezone.utc)
     n_new = 0
-    for story in L.get_stories(userids=userids):
-        try:
-            username = story.owner_username
-            row = meta.get(username, {})
-            items = list(story.get_items())
-        except Exception as e:  # 單一帳號的 reel 資料異常（過期/API 不一致）不影響整輪
-            print(f"  story fetch fail (owner {getattr(story, 'owner_id', '?')}): {str(e)[:80]}", file=sys.stderr)
+    try:
+        for story in L.get_stories(userids=userids):
+            try:
+                username = story.owner_username
+                row = meta.get(username, {})
+                items = list(story.get_items())
+            except Exception as e:  # 單一帳號的 reel 資料異常（過期/API 不一致）不影響整輪
+                print(f"  story fetch fail (owner {getattr(story, 'owner_id', '?')}): {str(e)[:80]}", file=sys.stderr)
+                continue
+            for item in items:
+                key = str(item.mediaid)
+                if key in state:
+                    continue
+                media = save_media(item)
+                if not media:
+                    continue
+                taken = item.date_utc.replace(tzinfo=timezone.utc)
+                from chumei_lib import AVATAR_DIR
+                av = f"/assets/avatars/ig_{username}.jpg" if (AVATAR_DIR / f"ig_{username}.jpg").exists() else None
+                state[key] = {
+                    "username": username,
+                    "avatar": av,
+                    "name": row.get("name") or username,
+                    "school": row.get("school") or "other",
+                    "taken_at": taken.isoformat(timespec="seconds"),
+                    "expires_at": (taken + timedelta(hours=24)).isoformat(timespec="seconds"),
+                    "is_video": item.is_video,
+                    "media": media,
+                    "ig_url": f"https://www.instagram.com/stories/{username}/{item.mediaid}/",
+                }
+                n_new += 1
+    except Exception as e:
+        until = set_global_rate_limit(schedule)
+        save_schedule(SCHEDULE_STATE, schedule)
+        reason = "rate-limited" if is_rate_limited(e) else "batch failed"
+        print(f"stories {reason}; stopped batch, cooldown until "
+              f"{datetime.fromtimestamp(until, TZ_TAIPEI).isoformat(timespec='minutes')}", file=sys.stderr)
+        raise
+
+    for username in selected:
+        if not cache.get(username):
             continue
-        for item in items:
-            key = str(item.mediaid)
-            if key in state:
-                continue
-            media = save_media(item)
-            if not media:
-                continue
-            taken = item.date_utc.replace(tzinfo=timezone.utc)
-            from chumei_lib import AVATAR_DIR
-            av = f"/assets/avatars/ig_{username}.jpg" if (AVATAR_DIR / f"ig_{username}.jpg").exists() else None
-            state[key] = {
-                "username": username,
-                "avatar": av,
-                "name": row.get("name") or username,
-                "school": row.get("school") or "other",
-                "taken_at": taken.isoformat(timespec="seconds"),
-                "expires_at": (taken + timedelta(hours=24)).isoformat(timespec="seconds"),
-                "is_video": item.is_video,
-                "media": media,
-                "ig_url": f"https://www.instagram.com/stories/{username}/{item.mediaid}/",
-            }
-            n_new += 1
+        mark_success(schedule, username, interval_hours=args.account_interval_hours, jitter_hours=3)
+    clear_global_rate_limit(schedule)
+    save_schedule(SCHEDULE_STATE, schedule)
 
     # 過期清理：顯示期 24h，媒體多留一天後刪檔
     active, expired = {}, []

@@ -1,6 +1,6 @@
 """竹梅 pipeline orchestrator：fetch → extract → build → Telegram。
 
-設計原則：單一來源掛掉不影響整輪；IG 一天最多跑一輪（cookie 額度是共用資源）。
+設計原則：單一來源掛掉不影響整輪；IG 每輪只跑一小批，帳號級排程與退避由 fetcher 保存。
 launchd 每 3 小時呼叫一次即可。
 """
 
@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / ".venv" / "bin" / "python"
 STATE = ROOT / "state" / "pipeline.json"
-IG_MIN_INTERVAL_H = 20
+IG_MIN_INTERVAL_H = 20  # Threads / X 使用；Instagram 已改為帳號級分批排程。
 
 
 def run_step(name, args):
@@ -47,13 +47,14 @@ def main():
         results["rpage"] = run_step("rpage", ["fetch_rpage.py", "--max-pages", "2"])
         results["wp"] = run_step("wp", ["fetch_wp.py"])
 
-        last_ig = state.get("last_ig_run", 0)
-        due = (time.time() - last_ig) > IG_MIN_INTERVAL_H * 3600
-        if args.force_ig or (due and not args.skip_ig):
-            results["instagram"] = run_step("instagram", ["fetch_instagram.py", "--limit", "5", "--sleep", "8"])
-            state["last_ig_run"] = time.time()
+        if not args.skip_ig:
+            ig_args = ["fetch_instagram.py", "--limit", "5"]
+            if args.force_ig:
+                ig_args.append("--force")
+            results["instagram"] = run_step("instagram", ig_args)
+            state["last_ig_batch_run"] = time.time()
         else:
-            print(f"instagram: skipped (last run {(time.time()-last_ig)/3600:.1f}h ago)")
+            print("instagram: skipped (--skip-ig)")
 
         # Threads / X 同樣走 RSSHub，跟 IG 一樣一天一輪
         last_social = state.get("last_social_run", 0)

@@ -60,7 +60,9 @@ Telegram publisher 由 `CHUMEI_TELEGRAM_ENABLED=true` 啟用。Token 與頻道 I
 .venv/bin/python scripts/publish_telegram.py --dry-run
 ```
 
-Instagram 抓取有兩個後端（`CHUMEI_IG_BACKEND` 或 `fetch_instagram.py --backend`）：`rsshub`（本機 RSSHub 網頁端點）與 `instaloader`（同一組 IG cookie 走 app 端點 `feed/user/<id>`，user id 快取在 `state/ig_userids.json`）；預設 `auto` 先走 RSSHub、失敗自動退到 instaloader。`--dry-run` 只印貼文不寫入。
+Instagram 抓取有兩個後端（`CHUMEI_IG_BACKEND` 或 `fetch_instagram.py --backend`）：`rsshub`（本機 RSSHub 網頁端點）與 `instaloader`（同一組 IG cookie 走 app 端點 `feed/user/<id>`，user id 快取在 `state/ig_userids.json`）；預設 `auto` 先走 RSSHub、共享 route 失敗時該輪開啟 circuit breaker，改走 instaloader。
+
+IG 採持久化分批排程：launchd 每 3 小時觸發時，一般貼文最多跑 2 批、每批 8 個帳號，帳號間隨機等待 25–45 秒、批次間緩衝 5–8 分鐘；同帳號成功後至少 48 小時才再排入。限時動態每輪只查 48 個帳號，約 21 小時輪完名冊。遇到 401／429 會立即停止該批並以 12–72 小時指數退避，狀態分別保存在 `state/instagram_profile_schedule.json` 與 `state/instagram_stories_schedule.json`。`--dry-run` 只印貼文，不寫入 inbox、seen-state 或排程狀態。
 
 首次正常執行會把現有近期活動記為 baseline，不會洗版。此後每輪 pipeline 最多推送 10 則貼文；22:00–07:59 自動靜音。
 
