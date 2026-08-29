@@ -21,7 +21,7 @@ SITE = ROOT / "site"
 PROMO = ROOT / "state" / "promo"
 HOME_OUTPUT = PROMO / "shot-home.png"
 EVENTS_OUTPUT = PROMO / "shot-events.png"
-EVENTS_SCROLL_Y = 200
+EVENTS_SCROLL_Y = 650
 
 
 def data_url(path: Path) -> str:
