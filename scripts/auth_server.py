@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import html
 import json
 import re
@@ -33,6 +34,8 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlparse
 
@@ -78,8 +81,25 @@ OAUTH_STATE_COOKIE = "chumei_oauth_state"
 SESSION_AGE_SECONDS = 30 * 24 * 60 * 60
 OAUTH_STATE_AGE_SECONDS = 10 * 60
 FETCH_REQUEST_DAILY_LIMIT = 5
+SAVED_FEED_LIMIT = 10
+SAVED_FEED_NAME_MAX = 40
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
 AVATAR_CACHE_SECONDS = 5 * 60
+
+CATEGORY_FILTERS = {
+    "talk": "演講", "workshop": "工作坊", "show": "表演", "expo": "展覽",
+    "contest": "比賽", "camp": "營隊", "recruit": "徵才", "market": "市集",
+    "sport": "運動", "social": "聚會", "other": "其他",
+}
+CAMPUS_FILTERS = {
+    "nthu-main": "清大校本部", "nthu-nanda": "清大南大",
+    "nycu-guangfu": "交大光復", "nycu-boai": "交大博愛",
+    "nycu-yangming": "陽明校區", "online": "線上", "other": "其他地點",
+}
+ORGANIZER_FILTERS = {
+    "official": "校方", "department": "系所", "club": "社團", "external": "校外",
+}
+SCHOOL_FILTERS = {"all": "清交", "nthu": "清大", "nycu": "陽明交大"}
 
 
 def _now() -> int:
@@ -162,6 +182,7 @@ class AuthConfig:
     client_secret: str
     google_client_id: str = ""
     google_client_secret: str = ""
+    feed_signing_key: str = ""
     public_base_url: str = "https://chumei.observe.tw"
     database_path: Path = ROOT / "state" / "auth.sqlite3"
     cookie_secure: bool = True
@@ -181,11 +202,21 @@ class AuthConfig:
             google_client_id = _keychain_value("tw.observe.chumei.google-oauth-client-id")
         if not google_client_secret:
             google_client_secret = _keychain_value("tw.observe.chumei.google-oauth-secret")
+        feed_signing_key = env.get("CHUMEI_FEED_SIGNING_KEY", "").strip()
+        if not feed_signing_key:
+            feed_signing_key = _keychain_value("tw.observe.chumei.feed-signing-key")
+        if not feed_signing_key and client_secret:
+            # Domain-separated fallback keeps deployment zero-touch while avoiding raw token storage.
+            # An explicit feed key remains preferable because rotating OAuth credentials then has no effect.
+            feed_signing_key = hashlib.sha256(
+                ("chumei-saved-feed-v1\0" + client_secret).encode("utf-8")
+            ).hexdigest()
         return cls(
             client_id=client_id,
             client_secret=client_secret,
             google_client_id=google_client_id,
             google_client_secret=google_client_secret,
+            feed_signing_key=feed_signing_key,
             public_base_url=env.get(
                 "CHUMEI_AUTH_PUBLIC_BASE_URL", "https://chumei.observe.tw"
             ).rstrip("/"),
@@ -342,6 +373,17 @@ class AuthStore:
                     ON source_fetch_requests(status, created_at);
                 CREATE INDEX IF NOT EXISTS source_fetch_requests_user
                     ON source_fetch_requests(user_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS user_saved_feeds (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    public_id TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    rule_json TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS user_saved_feeds_user
+                    ON user_saved_feeds(user_id, created_at, id);
                 """
             )
             columns = {r[1] for r in conn.execute("PRAGMA table_info(oauth_states)")}
@@ -554,6 +596,10 @@ class AuthStore:
                 )
                 conn.execute(
                     "UPDATE OR IGNORE user_event_going SET user_id = ? WHERE user_id = ?",
+                    (user_id, other_id),
+                )
+                conn.execute(
+                    "UPDATE user_saved_feeds SET user_id = ? WHERE user_id = ?",
                     (user_id, other_id),
                 )
                 conn.execute(
@@ -887,6 +933,89 @@ class AuthStore:
             },
         }
 
+    @staticmethod
+    def _saved_feed_row(row: sqlite3.Row | dict) -> dict:
+        item = dict(row)
+        try:
+            item["rule"] = json.loads(item.pop("rule_json"))
+        except (json.JSONDecodeError, TypeError):
+            item["rule"] = {"school": "all", "categories": [], "campuses": [],
+                            "organizers": [], "followed": False}
+            item.pop("rule_json", None)
+        return item
+
+    def saved_feeds_for_user(self, user_id: str) -> list[dict]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM user_saved_feeds WHERE user_id = ? ORDER BY created_at, id",
+                (user_id,),
+            ).fetchall()
+        return [self._saved_feed_row(row) for row in rows]
+
+    def saved_feed_by_public_id(self, public_id: str) -> dict | None:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM user_saved_feeds WHERE public_id = ?", (public_id,)
+            ).fetchone()
+        return self._saved_feed_row(row) if row else None
+
+    def create_saved_feed(self, user_id: str, name: str, rule: dict) -> tuple[str, dict | None]:
+        now = _now()
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            count = conn.execute(
+                "SELECT COUNT(*) FROM user_saved_feeds WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+            if count >= SAVED_FEED_LIMIT:
+                return "limit", None
+            feed_id = "feed_" + uuid.uuid4().hex[:16]
+            public_id = secrets.token_urlsafe(12)
+            conn.execute(
+                "INSERT INTO user_saved_feeds(id,user_id,public_id,name,rule_json,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (feed_id, user_id, public_id, name,
+                 json.dumps(rule, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+                 now, now),
+            )
+            row = conn.execute(
+                "SELECT * FROM user_saved_feeds WHERE id = ?", (feed_id,)
+            ).fetchone()
+        return "ok", self._saved_feed_row(row)
+
+    def update_saved_feed(self, user_id: str, feed_id: str, name: str, rule: dict) -> dict | None:
+        with self._connection() as conn:
+            changed = conn.execute(
+                "UPDATE user_saved_feeds SET name = ?, rule_json = ?, updated_at = ? "
+                "WHERE id = ? AND user_id = ?",
+                (name, json.dumps(rule, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+                 _now(), feed_id, user_id),
+            ).rowcount
+            row = conn.execute(
+                "SELECT * FROM user_saved_feeds WHERE id = ? AND user_id = ?",
+                (feed_id, user_id),
+            ).fetchone() if changed else None
+        return self._saved_feed_row(row) if row else None
+
+    def delete_saved_feed(self, user_id: str, feed_id: str) -> bool:
+        with self._connection() as conn:
+            return bool(conn.execute(
+                "DELETE FROM user_saved_feeds WHERE id = ? AND user_id = ?",
+                (feed_id, user_id),
+            ).rowcount)
+
+    def rotate_saved_feed(self, user_id: str, feed_id: str) -> dict | None:
+        with self._connection() as conn:
+            changed = conn.execute(
+                "UPDATE user_saved_feeds SET public_id = ?, updated_at = ? "
+                "WHERE id = ? AND user_id = ?",
+                (secrets.token_urlsafe(12), _now(), feed_id, user_id),
+            ).rowcount
+            row = conn.execute(
+                "SELECT * FROM user_saved_feeds WHERE id = ? AND user_id = ?",
+                (feed_id, user_id),
+            ).fetchone() if changed else None
+        return self._saved_feed_row(row) if row else None
+
 
 class NYCUOAuthClient:
     def __init__(self, http=requests):
@@ -1007,6 +1136,163 @@ def _events_by_id() -> dict:
     return _events_cache["byid"]
 
 
+def _normalize_feed_rule(raw: object, *, allow_followed: bool = True) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError("rule must be an object")
+    school = str(raw.get("school") or "all")
+    if school not in SCHOOL_FILTERS:
+        raise ValueError("unknown school")
+
+    def values(key: str, allowed: dict[str, str]) -> list[str]:
+        source = raw.get(key) or []
+        if not isinstance(source, list):
+            raise ValueError(f"{key} must be a list")
+        out = []
+        for value in source:
+            value = str(value)
+            if value not in allowed:
+                raise ValueError(f"unknown {key} value")
+            if value not in out:
+                out.append(value)
+        return out
+
+    followed_value = raw.get("followed", False)
+    if not isinstance(followed_value, bool):
+        raise ValueError("followed must be a boolean")
+    followed = followed_value if allow_followed else False
+    return {
+        "school": school,
+        "categories": values("categories", CATEGORY_FILTERS),
+        "campuses": values("campuses", CAMPUS_FILTERS),
+        "organizers": values("organizers", ORGANIZER_FILTERS),
+        "followed": followed,
+    }
+
+
+def _feed_rule_from_query(query) -> dict:
+    def csv_values(key: str) -> list[str]:
+        raw = str(query.get(key) or "")[:400]
+        return [value for value in raw.split(",") if value]
+
+    return _normalize_feed_rule({
+        "school": query.get("school") or "all",
+        "categories": csv_values("categories"),
+        "campuses": csv_values("campuses"),
+        "organizers": csv_values("organizers"),
+    }, allow_followed=False)
+
+
+def _feed_rule_summary(rule: dict) -> str:
+    parts = [SCHOOL_FILTERS[rule["school"]]]
+    if rule["categories"]:
+        parts.append("／".join(CATEGORY_FILTERS[v] for v in rule["categories"]))
+    if rule["campuses"]:
+        parts.append("／".join(CAMPUS_FILTERS[v] for v in rule["campuses"]))
+    if rule["organizers"]:
+        parts.append("／".join(ORGANIZER_FILTERS[v] for v in rule["organizers"]))
+    if rule.get("followed"):
+        parts.append("我追蹤的單位")
+    if len(parts) == 1:
+        parts.append("全部活動")
+    return "・".join(parts)
+
+
+def _event_matches_feed(event: dict, rule: dict, followed_org_ids: set[int] | None = None) -> bool:
+    school = rule["school"]
+    if school != "all" and event.get("school") not in (school, "both"):
+        return False
+    if rule["categories"]:
+        category = event.get("category") or "其他"
+        category_slug = next(
+            (slug for slug, label in CATEGORY_FILTERS.items() if slug != "other" and label == category),
+            "other",
+        )
+        if category_slug not in rule["categories"]:
+            return False
+    if rule["campuses"] and event.get("campus") not in rule["campuses"]:
+        return False
+    if rule["organizers"] and event.get("organizer_type") not in rule["organizers"]:
+        return False
+    if rule.get("followed"):
+        try:
+            org_id = int(event.get("org_id"))
+        except (TypeError, ValueError):
+            return False
+        if org_id not in (followed_org_ids or set()):
+            return False
+    return True
+
+
+def _filtered_feed_events(rule: dict, followed_org_ids: set[int] | None = None) -> list[dict]:
+    return [
+        event for event in _events_by_id().values()
+        if _event_matches_feed(event, rule, followed_org_ids)
+    ]
+
+
+def _saved_feed_token(public_id: str, signing_key: str) -> str:
+    if not signing_key:
+        return ""
+    digest = hmac.new(signing_key.encode("utf-8"), public_id.encode("ascii"), hashlib.sha256).digest()
+    signature = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")[:24]
+    return f"{public_id}.{signature}"
+
+
+def _saved_feed_public_id(token: str, signing_key: str) -> str | None:
+    if not signing_key or "." not in token or len(token) > 100:
+        return None
+    public_id, _signature = token.rsplit(".", 1)
+    expected = _saved_feed_token(public_id, signing_key)
+    return public_id if expected and hmac.compare_digest(token, expected) else None
+
+
+def _feed_ics(events: list[dict], name: str, url: str) -> str:
+    today = datetime.now(timezone(timedelta(hours=8))).date().isoformat()
+    upcoming = sorted(
+        (e for e in events if str(e.get("start_at") or "")[:10] >= today),
+        key=lambda e: e.get("start_at") or "",
+    )
+    body = "\r\n".join(filter(None, (event_ics(event) for event in upcoming)))
+    return ics_calendar(
+        body, f"竹梅｜{name}",
+        "竹梅活動觀測站的自訂活動訂閱；修改條件後會在同一個網址自動更新。",
+        url,
+    )
+
+
+def _feed_rss(events: list[dict], name: str) -> str:
+    items = []
+    for event in list(reversed(events))[:80]:
+        link = f"https://chumei.observe.tw/event/{event['id']}/"
+        start = str(event.get("start_at") or "")
+        meta = "｜".join(
+            value for value in (start[:16].replace("T", " "), event.get("venue"),
+                                event.get("organizer")) if value
+        )
+        description = html.escape(meta + ("\n" if meta else "") + str(event.get("summary") or ""))
+        pub = ""
+        try:
+            published = datetime.fromisoformat(str(event.get("first_seen") or start))
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=timezone(timedelta(hours=8)))
+            pub = format_datetime(published)
+        except (TypeError, ValueError):
+            pass
+        items.append(
+            f"<item><title>{html.escape(str(event.get('title') or '未命名活動'))}</title>"
+            f"<link>{link}</link><guid isPermaLink=\"true\">{link}</guid>"
+            + (f"<pubDate>{pub}</pubDate>" if pub else "")
+            + f"<description>{description}</description></item>"
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>'
+        f"<title>{html.escape('竹梅｜' + name)}</title>"
+        "<link>https://chumei.observe.tw/</link>"
+        "<description>竹梅｜清大×交大校園活動觀測站</description><language>zh-tw</language>"
+        + "".join(items) + "</channel></rss>"
+    )
+
+
 def _fmt_time(ts: int | None) -> str:
     if not ts:
         return ""
@@ -1108,6 +1394,51 @@ def _calendar_ics(going_ids: list[str], owner: str = "") -> str:
     events.sort(key=lambda e: e.get("start_at") or "")
     body = "\r\n".join(filter(None, (event_ics(e) for e in events)))
     return ics_calendar(body, name, desc, "https://chumei.observe.tw/account/")
+
+
+def _saved_feed_payload(item: dict, config: AuthConfig) -> dict:
+    token = _saved_feed_token(item["public_id"], config.feed_signing_key)
+    stem = f"{config.public_base_url}/feeds/s/{token}" if token else ""
+    return {
+        "id": item["id"],
+        "name": item["name"],
+        "rule": item["rule"],
+        "summary": _feed_rule_summary(item["rule"]),
+        "ics": f"{stem}.ics" if stem else "",
+        "rss": f"{stem}.xml" if stem else "",
+        "createdAt": item["created_at"],
+        "updatedAt": item["updated_at"],
+    }
+
+
+def _saved_feeds_html(feeds: list[dict], configured: bool) -> str:
+    if not configured:
+        return '<p class="account-empty">自訂訂閱服務正在設定中，既有「我要去」行事曆仍可正常使用。</p>'
+    rows = []
+    for feed in feeds:
+        feed_id = html.escape(feed["id"])
+        name = html.escape(feed["name"])
+        summary = html.escape(feed["summary"])
+        ics_url = html.escape(feed["ics"], quote=True)
+        rss_url = html.escape(feed["rss"], quote=True)
+        webcal = ics_url.replace("https://", "webcal://", 1)
+        rows.append(f"""<article class="saved-feed">
+          <div class="saved-feed-head"><div><strong>{name}</strong><p>{summary}</p></div>
+            <a class="account-bind" href="/subscribe/?edit={feed_id}#custom">編輯 →</a></div>
+          <div class="account-cal-row saved-feed-links">
+            <input readonly value="{ics_url}" aria-label="{name} 行事曆網址" onclick="this.select()">
+            <a class="btn" href="{webcal}">Apple 日曆</a>
+            <a class="btn" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">Google 日曆</a>
+            <button class="btn saved-feed-copy" type="button" data-copy="{rss_url}">複製 RSS</button>
+          </div>
+          <div class="saved-feed-manage">
+            <form method="post" action="/auth/saved-feeds/{feed_id}/rotate" onsubmit="return confirm('換新網址後，舊的行事曆與 RSS 訂閱會立即失效。要繼續嗎？')"><button type="submit">換新網址</button></form>
+            <form method="post" action="/auth/saved-feeds/{feed_id}/delete" onsubmit="return confirm('確定刪除這組訂閱？已加入外部 App 的網址也會失效。')"><button type="submit">刪除</button></form>
+          </div>
+        </article>""")
+    listing = "".join(rows) if rows else '<p class="account-empty">還沒有自訂訂閱。建立後可以隨時修改條件，不必重新加入行事曆。</p>'
+    add_label = "再建立一組" if feeds else "建立第一組訂閱"
+    return listing + f'<p class="account-links"><a href="/subscribe/#custom">{add_label} →</a></p>'
 
 
 def _going_html(going_ids: list[str]) -> str:
@@ -1239,11 +1570,12 @@ def _profile_html(
     )
 
 
-def _login_card_html(nycu_ok: bool, google_ok: bool) -> str:
+def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/") -> str:
     if nycu_ok or google_ok:
-        nycu_btn = ('<a class="btn btn-primary account-action" href="/auth/nycu/start">使用陽明交大 OAuth 登入</a>'
+        encoded_return = quote(_safe_return_to(return_to), safe="/")
+        nycu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to={encoded_return}">使用陽明交大 OAuth 登入</a>'
                     if nycu_ok else "")
-        google_btn = ('<a class="btn account-action" href="/auth/google/start">使用 Google 帳號登入</a>'
+        google_btn = (f'<a class="btn account-action" href="/auth/google/start?return_to={encoded_return}">使用 Google 帳號登入</a>'
                       if google_ok else "")
         return f"""<section class="account-card">
         <p class="eyebrow">OAuth-only account</p>
@@ -1271,6 +1603,9 @@ def _account_html(
     my_submissions: list[dict] | None = None,
     identities: list[dict] | None = None,
     calendar_token: str | None = None,
+    saved_feeds: list[dict] | None = None,
+    saved_feeds_configured: bool = False,
+    return_to: str = "/account/",
     message_ok: bool = False,
 ) -> str:
     """帳號設定 /account/：個人檔案、登入方式、行事曆、回報、登出。未登入＝登入頁。"""
@@ -1344,14 +1679,22 @@ def _account_html(
         {bind_hint}
         </section>""")
 
-        # ---- 行事曆
+        # ---- 自訂活動訂閱
+        feeds = saved_feeds or []
+        sections.append(f"""<section class="account-card account-section">
+        <h2>我的活動訂閱{f'<span class="account-count">{len(feeds)}</span>' if feeds else ''}</h2>
+        <p class="account-hint">每組訂閱都能同時提供行事曆與 RSS；修改條件後原網址會自動更新。網址等同存取權，請不要公開貼出。</p>
+        {_saved_feeds_html(feeds, saved_feeds_configured)}
+        </section>""")
+
+        # ---- 我要去行事曆
         if calendar_token:
             cal_owner = user.get("handle") or user.get("display_name") or ""
             cal_name = f"竹梅 {cal_owner} 已追蹤" if cal_owner else "竹梅 已追蹤"
             cal_url = f"https://chumei.observe.tw/auth/calendar/{html.escape(calendar_token)}.ics"
             webcal = cal_url.replace("https://", "webcal://", 1)
             sections.append(f"""<section class="account-card account-section">
-        <h2>行事曆訂閱</h2>
+        <h2>我要去行事曆</h2>
         <p class="account-hint">把這個私密連結加到 Google／Apple 行事曆，按過「我要去」的活動會自動出現、取消也會消失（行事曆每幾小時同步一次）。</p>
         <div class="account-cal-row">
           <input readonly value="{cal_url}" aria-label="行事曆訂閱連結" onclick="this.select()">
@@ -1383,7 +1726,7 @@ def _account_html(
         sections.append('<form method="post" action="/auth/logout" class="account-logout">'
                         '<button class="btn account-action" type="submit">登出</button></form>')
     else:
-        sections.append(_login_card_html(nycu_ok, google_ok))
+        sections.append(_login_card_html(nycu_ok, google_ok, return_to))
 
     alert = (f'<div class="account-alert{" ok" if message_ok else ""}">{html.escape(message)}</div>'
              if message else "")
@@ -1403,6 +1746,17 @@ def _account_html(
   {alert}
   {"".join(sections)}
 </section>
+<script>
+document.addEventListener("click",function(event){{
+  var button=event.target.closest(".saved-feed-copy");
+  if(!button||!navigator.clipboard)return;
+  var original=button.textContent;
+  navigator.clipboard.writeText(button.dataset.copy).then(function(){{
+    button.textContent="已複製 ✓";
+    setTimeout(function(){{button.textContent=original;}},1200);
+  }});
+}});
+</script>
 """
     return page_shell(
         f"{page_title}｜竹梅活動觀測站",
@@ -1460,8 +1814,10 @@ def create_app(
         "bad_handle": "帳號代號只能用小寫英數與底線，3–20 字。",
         "bad_name": "顯示名稱不能空白。",
         "rotated": "已換新的行事曆連結，記得重新訂閱。",
+        "feed_rotated": "已換新的自訂訂閱網址，記得在行事曆或 RSS 閱讀器重新加入。",
+        "feed_deleted": "已刪除自訂訂閱，舊網址也已失效。",
     }
-    OK_CODES = {"ok", "merged", "already", "unlinked", "rotated"}
+    OK_CODES = {"ok", "merged", "already", "unlinked", "rotated", "feed_rotated", "feed_deleted"}
     LINK_MESSAGES = {
         "ok": "綁定完成！之後用學校或 Google 帳號登入，都會回到同一個竹梅帳號。",
         "merged": "綁定完成，另一個帳號的追蹤、參加標記與回報都合併進來了。",
@@ -1539,15 +1895,25 @@ def create_app(
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         kwargs = {}
         if user:
+            saved = [
+                _saved_feed_payload(item, config)
+                for item in store.saved_feeds_for_user(user["id"])
+            ] if config.feed_signing_key else []
             kwargs = {
                 "my_submissions": submissions.list_for_user(user["id"], 8),
                 "identities": store.identities_for_user(user["id"]),
                 "calendar_token": store.calendar_token(user["id"]),
+                "saved_feeds": saved,
+                "saved_feeds_configured": bool(config.feed_signing_key),
                 "message": (LINK_MESSAGES.get(request.query_params.get("link") or "")
-                            or PROFILE_MESSAGES.get(request.query_params.get("profile") or "")),
+                            or PROFILE_MESSAGES.get(request.query_params.get("profile") or "")
+                            or PROFILE_MESSAGES.get(request.query_params.get("feeds") or "")),
                 "message_ok": (request.query_params.get("link") in OK_CODES
-                               or request.query_params.get("profile") in OK_CODES),
+                               or request.query_params.get("profile") in OK_CODES
+                               or request.query_params.get("feeds") in OK_CODES),
             }
+        else:
+            kwargs["return_to"] = _safe_return_to(request.query_params.get("return_to"))
         return HTMLResponse(
             _account_html(user, config.configured, config.google_configured, **kwargs)
         )
@@ -1789,6 +2155,126 @@ def create_app(
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         return JSONResponse(follow_payload(user))
 
+    def feed_payload(item: dict) -> dict:
+        return _saved_feed_payload(item, config)
+
+    def parse_feed_input(body: object) -> tuple[str, dict]:
+        if not isinstance(body, dict):
+            raise ValueError("invalid json")
+        name = " ".join(str(body.get("name") or "").split())[:SAVED_FEED_NAME_MAX]
+        rule = _normalize_feed_rule(body.get("rule"))
+        if not name:
+            name = _feed_rule_summary(rule)[:SAVED_FEED_NAME_MAX]
+        return name, rule
+
+    async def saved_feeds(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        if not config.feed_signing_key:
+            return JSONResponse(
+                {"ok": False, "error": "saved feeds are not configured"}, status_code=503
+            )
+        if request.method == "GET":
+            return JSONResponse({
+                "ok": True,
+                "limit": SAVED_FEED_LIMIT,
+                "feeds": [feed_payload(item) for item in store.saved_feeds_for_user(user["id"])],
+            })
+        try:
+            name, rule = parse_feed_input(await request.json())
+        except (json.JSONDecodeError, ValueError):
+            return JSONResponse({"ok": False, "error": "invalid feed"}, status_code=400)
+        code, item = store.create_saved_feed(user["id"], name, rule)
+        if code == "limit":
+            return JSONResponse(
+                {"ok": False, "error": "saved feed limit reached", "limit": SAVED_FEED_LIMIT},
+                status_code=429,
+            )
+        return JSONResponse({"ok": True, "feed": feed_payload(item)}, status_code=201)
+
+    async def saved_feed_item(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        feed_id = str(request.path_params.get("feed_id") or "")
+        if request.method == "DELETE":
+            deleted = store.delete_saved_feed(user["id"], feed_id)
+            return JSONResponse({"ok": deleted}, status_code=200 if deleted else 404)
+        try:
+            name, rule = parse_feed_input(await request.json())
+        except (json.JSONDecodeError, ValueError):
+            return JSONResponse({"ok": False, "error": "invalid feed"}, status_code=400)
+        item = store.update_saved_feed(user["id"], feed_id, name, rule)
+        if not item:
+            return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+        return JSONResponse({"ok": True, "feed": feed_payload(item)})
+
+    async def saved_feed_rotate(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return RedirectResponse("/account/", 303)
+        feed_id = str(request.path_params.get("feed_id") or "")
+        item = store.rotate_saved_feed(user["id"], feed_id)
+        if "application/json" in (request.headers.get("accept") or ""):
+            return JSONResponse(
+                {"ok": bool(item), "feed": feed_payload(item) if item else None},
+                status_code=200 if item else 404,
+            )
+        return RedirectResponse("/account/?feeds=feed_rotated" if item else "/account/", 303)
+
+    async def saved_feed_delete(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return RedirectResponse("/account/", 303)
+        feed_id = str(request.path_params.get("feed_id") or "")
+        deleted = store.delete_saved_feed(user["id"], feed_id)
+        return RedirectResponse("/account/?feeds=feed_deleted" if deleted else "/account/", 303)
+
+    def feed_response(fmt: str, events: list[dict], name: str, url: str) -> Response:
+        if fmt == "ics":
+            return Response(
+                _feed_ics(events, name, url), media_type="text/calendar; charset=utf-8",
+                headers={"Content-Disposition": 'inline; filename="chumei-custom.ics"'},
+            )
+        if fmt == "xml":
+            return Response(
+                _feed_rss(events, name), media_type="application/rss+xml; charset=utf-8",
+                headers={"Content-Disposition": 'inline; filename="chumei-custom.xml"'},
+            )
+        return PlainTextResponse("not found", status_code=404)
+
+    async def public_custom_feed(request: Request):
+        try:
+            rule = _feed_rule_from_query(request.query_params)
+        except ValueError:
+            return PlainTextResponse("invalid feed filters", status_code=400)
+        name = _feed_rule_summary(rule)
+        return feed_response(
+            str(request.path_params.get("format") or ""),
+            _filtered_feed_events(rule), name, str(request.url),
+        )
+
+    async def signed_saved_feed(request: Request):
+        token = str(request.path_params.get("token") or "")
+        public_id = _saved_feed_public_id(token, config.feed_signing_key)
+        item = store.saved_feed_by_public_id(public_id) if public_id else None
+        if not item:
+            return PlainTextResponse("not found", status_code=404)
+        followed = set()
+        if item["rule"].get("followed"):
+            followed = {
+                org["id"] for org in store.follow_snapshot(item["user_id"])["following"]
+            }
+        return feed_response(
+            str(request.path_params.get("format") or ""),
+            _filtered_feed_events(item["rule"], followed), item["name"], str(request.url),
+        )
+
     def event_payload(user: dict | None) -> dict:
         snapshot = store.event_snapshot(user["id"] if user else None)
         return {"ok": True, "authenticated": bool(user), **snapshot}
@@ -1930,6 +2416,7 @@ def create_app(
                 "service": "chumei-auth",
                 "configured": config.configured,
                 "googleConfigured": config.google_configured,
+                "savedFeedsConfigured": bool(config.feed_signing_key),
             }
         )
 
@@ -1946,6 +2433,10 @@ def create_app(
             Route("/auth/me", me, methods=["GET"]),
             Route("/auth/fetch-requests", fetch_requests, methods=["GET", "POST"]),
             Route("/auth/follows", follows, methods=["GET"]),
+            Route("/auth/saved-feeds", saved_feeds, methods=["GET", "POST"]),
+            Route("/auth/saved-feeds/{feed_id}", saved_feed_item, methods=["PATCH", "DELETE"]),
+            Route("/auth/saved-feeds/{feed_id}/rotate", saved_feed_rotate, methods=["POST"]),
+            Route("/auth/saved-feeds/{feed_id}/delete", saved_feed_delete, methods=["POST"]),
             Route("/auth/events", events_going, methods=["GET"]),
             Route("/auth/events/{event_id}", event_going_set, methods=["PUT", "DELETE"]),
             Route("/auth/follows/sync", follows_sync, methods=["POST"]),
@@ -1957,6 +2448,8 @@ def create_app(
             Route("/auth/profile", profile, methods=["POST"]),
             Route("/auth/calendar/rotate", calendar_rotate, methods=["POST"]),
             Route("/auth/calendar/{token}.ics", calendar_feed, methods=["GET"]),
+            Route("/feeds/custom.{format}", public_custom_feed, methods=["GET"]),
+            Route("/feeds/s/{token}.{format}", signed_saved_feed, methods=["GET"]),
             Route("/auth/logout", logout, methods=["POST"]),
             Route("/auth/health", health, methods=["GET"]),
         ]

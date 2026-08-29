@@ -77,6 +77,7 @@ Keychain（service：`tw.observe.chumei.nycu-oauth-client-id` 與
 CHUMEI_NYCU_OAUTH_CLIENT_ID=
 CHUMEI_NYCU_OAUTH_CLIENT_SECRET=
 CHUMEI_AUTH_PUBLIC_BASE_URL=https://chumei.observe.tw
+CHUMEI_FEED_SIGNING_KEY=
 ```
 
 Google 登入開放任何 Google 帳號（給清大朋友與校友用）：在 GCP Console 建 OAuth 2.0
@@ -102,13 +103,19 @@ Caddy 的 auth matcher 包含 `/@*`。
   `/auth/avatar/{handle}` 同源代理。
 - **私密行事曆**：`GET /auth/calendar/{token}.ics` 輸出該帳號「我要去」的活動（token 在帳號頁，
   `POST /auth/calendar/rotate` 換新）。
+- **可儲存的自訂訂閱**：登入後可把學校、類型、校區、主辦與「只看追蹤單位」組成最多 10 組
+  具名訂閱；每組同時提供 `/feeds/s/{signed-token}.ics` 與 `.xml`。修改條件不換網址，使用者也可
+  主動換發或刪除。匿名多維組合由 `/feeds/custom.{ics,xml}` 的 query parameters 即時產生，既有
+  `/feeds/` 與 `/feeds/c/` 靜態網址維持相容。正式機的簽章金鑰放在 Keychain service
+  `tw.observe.chumei.feed-signing-key`，開發環境可用 `CHUMEI_FEED_SIGNING_KEY`；未另外設定時，
+  服務會從既有 NYCU OAuth client secret 做用途隔離後衍生，避免把可用 token 存進資料庫。
 - **推播綁帳號**：`push_server` 用 session cookie 解析 `state/auth.sqlite3`，把訂閱記上 `user_id`。
   綁定後發送時追蹤單位以帳號現況為準（跨裝置同步）、mode／rules 儲存時同步到同帳號其他裝置，
   `publish_push` 會在「我要去」的活動前一天推提醒（每帳號每場一次，記在 `state/push/publish.json` 的 `reminders`）。
 - **只看追蹤**：首頁河道欄、活動列表、日曆與限動牆都有「追蹤」篩選；登入且有追蹤的人第一次進首頁會自動多一欄「追蹤」河道。
 
 服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將
-`/auth/*` 與 `/account*` 反代到該埠。帳號資料只包含 OAuth identity 與雜湊後的
+`/auth/*`、`/account*`、`/feeds/custom.*` 與 `/feeds/s/*` 反代到該埠。帳號資料只包含 OAuth identity 與雜湊後的
 Session token，以及使用者主動追蹤的單位關聯，存於被 Git 忽略的
 `state/auth.sqlite3`；不保存學校密碼，也不公開個別帳號的追蹤名單。
 

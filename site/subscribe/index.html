@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>校園活動訂閱管道｜竹梅活動觀測站</title><meta name="description" content="選擇 Web Push、Telegram、RSS、ICS 行事曆或查詢 Bot，訂閱適合自己的清大與陽明交大校園活動更新。"><link rel="canonical" href="https://chumei.observe.tw/subscribe/"><meta property="og:title" content="校園活動訂閱管道｜竹梅活動觀測站"><meta property="og:description" content="選擇 Web Push、Telegram、RSS、ICS 行事曆或查詢 Bot，訂閱適合自己的清大與陽明交大校園活動更新。"><meta property="og:image" content="https://chumei.observe.tw/assets/og-default.png"><meta property="og:url" content="https://chumei.observe.tw/subscribe/"><meta property="og:type" content="website"><meta property="og:site_name" content="竹梅活動觀測站"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="校園活動訂閱管道｜竹梅活動觀測站"><meta name="twitter:description" content="選擇 Web Push、Telegram、RSS、ICS 行事曆或查詢 Bot，訂閱適合自己的清大與陽明交大校園活動更新。"><meta name="twitter:image" content="https://chumei.observe.tw/assets/og-default.png"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=87698e9ccada"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
+<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>校園活動訂閱管道｜竹梅活動觀測站</title><meta name="description" content="選擇 Web Push、Telegram、RSS、ICS 行事曆或查詢 Bot，訂閱適合自己的清大與陽明交大校園活動更新。"><link rel="canonical" href="https://chumei.observe.tw/subscribe/"><meta property="og:title" content="校園活動訂閱管道｜竹梅活動觀測站"><meta property="og:description" content="選擇 Web Push、Telegram、RSS、ICS 行事曆或查詢 Bot，訂閱適合自己的清大與陽明交大校園活動更新。"><meta property="og:image" content="https://chumei.observe.tw/assets/og-default.png"><meta property="og:url" content="https://chumei.observe.tw/subscribe/"><meta property="og:type" content="website"><meta property="og:site_name" content="竹梅活動觀測站"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="校園活動訂閱管道｜竹梅活動觀測站"><meta name="twitter:description" content="選擇 Web Push、Telegram、RSS、ICS 行事曆或查詢 Bot，訂閱適合自己的清大與陽明交大校園活動更新。"><meta name="twitter:image" content="https://chumei.observe.tw/assets/og-default.png"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=4bfe7d7e1bb6"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
 .sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
 .sub-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);text-decoration:none;color:var(--color-text-primary)}
@@ -12,6 +12,20 @@
 .sub-note{font-size:.9rem;color:var(--color-text-muted)}
 .sub-combo{margin:10px 0}
 .sub-combo>summary{cursor:pointer;color:var(--color-text-secondary)}
+.combo-builder{margin-top:16px}
+.combo-builder .fchip[aria-pressed="true"]{border-color:var(--color-text-brand);color:var(--color-text-brand);background:var(--color-surface-soft)}
+.combo-actions{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:10px;align-items:end;margin:18px 0}
+.combo-actions label{display:grid;gap:5px;color:var(--color-text-muted);font-size:.82rem}
+.combo-actions input{box-sizing:border-box;width:100%;padding:10px 12px;border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-canvas);color:var(--color-text-primary);font:inherit}
+.combo-actions .btn{margin:0;white-space:nowrap}
+.combo-actions button.btn-primary{background:var(--color-action-primary);border-color:var(--color-action-primary);color:var(--color-action-on-primary)}
+.combo-actions button.btn-primary:hover{background:var(--color-action-primary-hover)}
+.combo-status{grid-column:1/-1;margin:0;color:var(--color-text-muted);font-size:.88rem}
+.combo-status.is-error{color:var(--color-danger-text,#ffb4b4)}
+.combo-result{padding:14px 16px;border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.combo-result h3{margin:0 0 8px;font-size:.95rem}
+.combo-result .feed-list{margin-bottom:0}
+@media(max-width:640px){.combo-actions{grid-template-columns:1fr}.combo-actions .btn{width:100%}}
 </style></head><body><header class="site-header">
   <a class="brand" href="/" aria-label="竹梅活動觀測站"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span class="brand-sub">活動觀測站</span></a>
   <nav class="site-nav" aria-label="主導覽">
@@ -65,68 +79,125 @@
 <li>清大活動<br><code>https://chumei.observe.tw/feeds/nthu.ics</code></li>
 <li>陽明交大活動<br><code>https://chumei.observe.tw/feeds/nycu.ics</code></li>
 </ul>
-<details class="sub-combo"><summary>自訂組合——學校 × 類型／校區／主辦，拼出你自己的訂閱網址</summary>
+<details class="sub-combo" id="custom"><summary>自訂組合——學校 × 類型 × 校區 × 主辦，拼出你自己的訂閱</summary>
 <section class="filters combo-builder" aria-label="訂閱組合">
   <div class="filter-row"><span class="label">學校</span><span id="cb-school" class="fgroup"></span></div>
-  <div class="filter-row"><span class="label">範圍</span><span id="cb-any" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">類型</span><span id="cb-cat" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">校區</span><span id="cb-campus" class="fgroup"></span></div>
   <div class="filter-row"><span class="label">主辦</span><span id="cb-org" class="fgroup"></span></div>
+  <div class="filter-row" id="cb-follow-row" hidden><span class="label">追蹤</span><span id="cb-follow" class="fgroup"></span></div>
 </section>
-<ul class="feed-list" id="cb-out"></ul>
+<p class="sub-note">同一列可複選（其中任一項），不同列會同時套用。全部不選代表不限。</p>
+<div class="combo-actions">
+  <label>訂閱名稱<input id="cb-name" maxlength="40" placeholder="清交・全部活動"></label>
+  <button class="btn btn-primary" id="cb-save" type="button">登入後儲存</button>
+  <p class="combo-status" id="cb-status" role="status">登入後可儲存多組訂閱；日後修改條件，不必重新加入行事曆。</p>
+</div>
+<div class="combo-result"><h3>公開網址</h3><ul class="feed-list" id="cb-out"></ul></div>
+<div class="combo-result" id="cb-saved" hidden><h3>已儲存到你的帳號</h3><ul class="feed-list" id="cb-saved-out"></ul><p><a href="/account/">管理我的活動訂閱 →</a></p></div>
 <script>
 (function(){
-  var CAT={"演講":"talk","工作坊":"workshop","表演":"show","展覽":"expo","比賽":"contest","營隊":"camp","徵才":"recruit","市集":"market","運動":"sport","聚會":"social","其他":"other"};
+  var CAT={"talk":"演講","workshop":"工作坊","show":"表演","expo":"展覽","contest":"比賽","camp":"營隊","recruit":"徵才","market":"市集","sport":"運動","social":"聚會","other":"其他"};
   var CAMPUS={"nthu-main":"清大校本部","nthu-nanda":"清大南大","nycu-guangfu":"交大光復","nycu-boai":"交大博愛","nycu-yangming":"陽明校區","online":"線上","other":"其他地點"};
-  var ORG={"official":"校方","dept":"系所","club":"社團","ext":"校外"};
-  var school="all", dim="";
-  var dimHosts=["cb-any","cb-cat","cb-campus","cb-org"];
+  var ORG={"official":"校方","department":"系所","club":"社團","external":"校外"};
+  var SCHOOL={"all":"清交","nthu":"清大","nycu":"陽明交大"};
+  var rule={school:"all",categories:[],campuses:[],organizers:[],followed:false};
+  var authenticated=false, editId="", nameTouched=false;
   function esc(t){var d=document.createElement("span");d.textContent=t;return d.innerHTML;}
-  function syncDim(){
-    dimHosts.forEach(function(id){
-      document.getElementById(id).querySelectorAll(".fchip").forEach(function(b){
-        b.setAttribute("aria-pressed", String(b.dataset.value===dim));
-      });
+  function summary(){
+    var parts=[SCHOOL[rule.school]];
+    [["categories",CAT],["campuses",CAMPUS],["organizers",ORG]].forEach(function(pair){
+      if(rule[pair[0]].length)parts.push(rule[pair[0]].map(function(v){return pair[1][v];}).join("／"));
     });
+    if(rule.followed)parts.push("我追蹤的單位");
+    if(parts.length===1)parts.push("全部活動");
+    return parts.join("・");
   }
-  function mkChips(id, options, onpick){
+  function syncName(){
+    var input=document.getElementById("cb-name");
+    input.placeholder=summary();
+    if(!nameTouched&&!editId)input.value="";
+  }
+  function mkChips(id, options, onpick, multi){
     var host=document.getElementById(id);
     options.forEach(function(o){
       var b=document.createElement("button");
       b.className="fchip"; b.dataset.value=o[0];
       b.innerHTML='<span class="fchip-label">'+esc(o[1])+"</span>";
       b.setAttribute("aria-pressed","false");
-      b.addEventListener("click", function(){ onpick(o[0]); });
+      b.addEventListener("click", function(){onpick(o[0]);syncButtons();out();});
       host.appendChild(b);
     });
   }
-  function out(){
-    var base="https://chumei.observe.tw/feeds/";
-    var ics, rss;
-    if(!dim){ var n=(school==="all"?"all":school); ics=base+n+".ics"; rss=base+n+".xml"; }
-    else { var n2=school+"-"+dim; ics=base+"c/"+n2+".ics"; rss=base+"c/"+n2+".xml"; }
-    document.getElementById("cb-out").innerHTML=
-      '<li>行事曆訂閱<br><code>'+ics+'</code> <button class="fchip cb-copy" data-t="'+ics+'"><span class="fchip-label">複製</span></button></li>'+
-      '<li>RSS<br><code>'+rss+'</code> <button class="fchip cb-copy" data-t="'+rss+'"><span class="fchip-label">複製</span></button></li>';
-  }
-  mkChips("cb-school", [["all","清交都要"],["nthu","清大"],["nycu","陽明交大"]], function(v){
-    school=v;
-    document.getElementById("cb-school").querySelectorAll(".fchip").forEach(function(b){
-      b.setAttribute("aria-pressed", String(b.dataset.value===v));
+  function toggle(list,value){var i=list.indexOf(value);if(i<0)list.push(value);else list.splice(i,1);}
+  function syncButtons(){
+    document.querySelectorAll("#cb-school .fchip").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.value===rule.school));});
+    [["cb-cat","categories"],["cb-campus","campuses"],["cb-org","organizers"]].forEach(function(pair){
+      document.querySelectorAll("#"+pair[0]+" .fchip").forEach(function(b){b.setAttribute("aria-pressed",String(rule[pair[1]].indexOf(b.dataset.value)>=0));});
     });
-    out();
-  });
-  mkChips("cb-any", [["","不限（該校全部活動）"]], function(v){ dim=v; syncDim(); out(); });
-  mkChips("cb-cat", Object.keys(CAT).map(function(k){return ["cat-"+CAT[k], k];}), function(v){ dim=v; syncDim(); out(); });
-  mkChips("cb-campus", Object.keys(CAMPUS).map(function(k){return ["campus-"+k, CAMPUS[k]];}), function(v){ dim=v; syncDim(); out(); });
-  mkChips("cb-org", Object.keys(ORG).map(function(k){return ["org-"+k, ORG[k]];}), function(v){ dim=v; syncDim(); out(); });
-  document.getElementById("cb-school").querySelector('.fchip[data-value="all"]').setAttribute("aria-pressed","true");
-  syncDim(); out();
-  document.getElementById("cb-out").addEventListener("click", function(ev){
-    var b=ev.target.closest(".cb-copy");
+    var fb=document.querySelector("#cb-follow .fchip");if(fb)fb.setAttribute("aria-pressed",String(rule.followed));
+  }
+  function publicUrls(){
+    var base="https://chumei.observe.tw/feeds/", has=rule.categories.length||rule.campuses.length||rule.organizers.length;
+    if(!has){var simple=rule.school==="all"?"all":rule.school;return [base+simple+".ics",base+simple+".xml"];}
+    var p=new URLSearchParams();p.set("school",rule.school);
+    if(rule.categories.length)p.set("categories",rule.categories.join(","));
+    if(rule.campuses.length)p.set("campuses",rule.campuses.join(","));
+    if(rule.organizers.length)p.set("organizers",rule.organizers.join(","));
+    return [base+"custom.ics?"+p.toString(),base+"custom.xml?"+p.toString()];
+  }
+  function out(){
+    syncName();
+    var host=document.getElementById("cb-out");
+    if(rule.followed){host.innerHTML='<li>「我追蹤的單位」會隨帳號變動，只能使用下方儲存後產生的私密網址。</li>';return;}
+    var urls=publicUrls();
+    host.innerHTML='<li>行事曆訂閱<br><code>'+esc(urls[0])+'</code> <button class="fchip cb-copy" data-copy="'+esc(urls[0])+'"><span class="fchip-label">複製</span></button></li>'+
+      '<li>RSS<br><code>'+esc(urls[1])+'</code> <button class="fchip cb-copy" data-copy="'+esc(urls[1])+'"><span class="fchip-label">複製</span></button></li>';
+  }
+  mkChips("cb-school",[["all","清交都要"],["nthu","清大"],["nycu","陽明交大"]],function(v){rule.school=v;});
+  mkChips("cb-cat",Object.keys(CAT).map(function(k){return[k,CAT[k]];}),function(v){toggle(rule.categories,v);});
+  mkChips("cb-campus",Object.keys(CAMPUS).map(function(k){return[k,CAMPUS[k]];}),function(v){toggle(rule.campuses,v);});
+  mkChips("cb-org",Object.keys(ORG).map(function(k){return[k,ORG[k]];}),function(v){toggle(rule.organizers,v);});
+  mkChips("cb-follow",[["followed","只看我追蹤的單位"]],function(){rule.followed=!rule.followed;});
+  document.getElementById("cb-name").addEventListener("input",function(){nameTouched=true;});
+  document.addEventListener("click",function(ev){
+    var b=ev.target.closest("[data-copy]");
     if(!b) return;
-    navigator.clipboard.writeText(b.dataset.t).then(function(){ b.querySelector(".fchip-label").textContent="已複製 ✓"; setTimeout(function(){ b.querySelector(".fchip-label").textContent="複製"; },1200); });
+    navigator.clipboard.writeText(b.dataset.copy).then(function(){var label=b.querySelector(".fchip-label");var old=b.textContent;if(label)label.textContent="已複製 ✓";else b.textContent="已複製 ✓";setTimeout(function(){if(label)label.textContent="複製";else b.textContent=old;},1200);});
   });
+  function applyFeed(feed){
+    editId=feed.id||"";rule=feed.rule;nameTouched=true;document.getElementById("cb-name").value=feed.name||"";
+    document.getElementById("cb-save").textContent="儲存修改";syncButtons();out();
+  }
+  function loadDraft(){try{var d=JSON.parse(localStorage.getItem("chumei-feed-draft")||"null");if(d&&d.rule){rule=d.rule;document.getElementById("cb-name").value=d.name||"";nameTouched=!!d.name;localStorage.removeItem("chumei-feed-draft");}}catch(e){}}
+  function setStatus(text,error){var s=document.getElementById("cb-status");s.textContent=text;s.classList.toggle("is-error",!!error);}
+  fetch("/auth/me").then(function(r){return r.json();}).then(function(me){
+    authenticated=!!me.authenticated;
+    document.getElementById("cb-follow-row").hidden=!authenticated;
+    if(location.search.indexOf("resume=1")>=0)loadDraft();
+    if(!authenticated){syncButtons();out();return;}
+    document.getElementById("cb-save").textContent="儲存到我的帳號";
+    var wanted=new URLSearchParams(location.search).get("edit");
+    if(wanted){
+      document.getElementById("custom").open=true;
+      fetch("/auth/saved-feeds").then(function(r){return r.json();}).then(function(data){var feed=(data.feeds||[]).find(function(f){return f.id===wanted;});if(feed)applyFeed(feed);else setStatus("找不到這組訂閱，可能已經刪除。",true);});
+    }else{syncButtons();out();}
+  }).catch(function(){syncButtons();out();});
+  document.getElementById("cb-save").addEventListener("click",function(){
+    var name=document.getElementById("cb-name").value.trim()||summary();
+    if(!authenticated){
+      try{localStorage.setItem("chumei-feed-draft",JSON.stringify({name:name,rule:rule}));}catch(e){}
+      location.href="/account/?return_to="+encodeURIComponent("/subscribe/?resume=1#custom");return;
+    }
+    var button=this;button.disabled=true;setStatus("正在儲存…");
+    fetch(editId?"/auth/saved-feeds/"+encodeURIComponent(editId):"/auth/saved-feeds",{method:editId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,rule:rule})})
+      .then(function(r){return r.json().then(function(data){if(!r.ok)throw new Error(data.error||"儲存失敗");return data;});})
+      .then(function(data){var feed=data.feed;editId=feed.id;document.getElementById("cb-save").textContent="儲存修改";document.getElementById("cb-saved").hidden=false;document.getElementById("cb-saved-out").innerHTML='<li>行事曆訂閱<br><code>'+esc(feed.ics)+'</code> <button class="fchip" data-copy="'+esc(feed.ics)+'"><span class="fchip-label">複製</span></button></li><li>RSS<br><code>'+esc(feed.rss)+'</code> <button class="fchip" data-copy="'+esc(feed.rss)+'"><span class="fchip-label">複製</span></button></li>';setStatus("已儲存；之後修改條件，這兩個網址會保持不變。");})
+      .catch(function(err){setStatus(err.message||"儲存失敗，請稍後再試。",true);})
+      .finally(function(){button.disabled=false;});
+  });
+  if(location.hash==="#custom"||location.search)document.getElementById("custom").open=true;
+  syncButtons();out();
 })();
 </script>
 </details>

@@ -311,6 +311,21 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .account-cal-row input { flex: 1 1 260px; font-size: 0.82rem; }
 .account-cal-row .btn { white-space: nowrap; }
 .account-copy { cursor: copy; padding: 1px 6px; border-radius: 6px; background: var(--color-surface-soft); font-size: 0.86em; }
+.saved-feed { padding: 14px 0; border-top: 1px solid var(--color-border-subtle); }
+.saved-feed:first-of-type { border-top: 0; padding-top: 0; }
+.saved-feed-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.saved-feed-head strong { display: block; }
+.saved-feed-head p { margin: 3px 0 0; color: var(--color-text-muted); font-size: 0.84rem; }
+.saved-feed-links { margin: 10px 0 0; }
+.saved-feed-links .btn { margin: 0; font-size: 0.82rem; }
+.saved-feed-copy { appearance: none; cursor: pointer; font: inherit; }
+.saved-feed-manage { display: flex; gap: 14px; margin-top: 8px; }
+.saved-feed-manage form { margin: 0; }
+.saved-feed-manage button {
+  border: 0; padding: 0; background: none; color: var(--color-text-muted);
+  cursor: pointer; font: inherit; font-size: 0.78rem; text-decoration: underline;
+}
+.saved-feed-manage button:hover { color: var(--color-text-primary); }
 .profile-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 0 0 20px; }
 .profile-avatar {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
@@ -386,6 +401,8 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   .account-action { display: flex; justify-content: center; width: 100%; }
   .account-card a.account-action + a.account-action { margin-left: 0; margin-top: 10px; }
   .submit-form .account-action { justify-self: stretch; }
+  .saved-feed-head { align-items: baseline; }
+  .saved-feed-links .btn { width: auto; }
 }
 
 /* ---------- IG 限時動態 ---------- */

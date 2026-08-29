@@ -62,6 +62,7 @@ class AuthServerTests(unittest.TestCase):
             client_secret="client-secret",
             google_client_id="google-client-id",
             google_client_secret="google-client-secret",
+            feed_signing_key="test-feed-signing-key",
             public_base_url="https://chumei.example",
             database_path=self.db_path,
             cookie_secure=False,
@@ -603,6 +604,122 @@ class AuthServerTests(unittest.TestCase):
                               self.client.get("/account/").text).group(1)
         self.assertNotEqual(new_token, token)
         self.assertEqual(self.client.get(f"/auth/calendar/{new_token}.ics").status_code, 200)
+
+    def test_saved_feed_crud_keeps_signed_url_stable_until_rotation(self):
+        self._login()
+        created = self.client.post(
+            "/auth/saved-feeds",
+            json={
+                "name": "光復社團活動",
+                "rule": {
+                    "school": "nycu",
+                    "categories": ["talk", "workshop"],
+                    "campuses": ["nycu-guangfu"],
+                    "organizers": ["club"],
+                    "followed": False,
+                },
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        feed = created.json()["feed"]
+        self.assertIn("/feeds/s/", feed["ics"])
+        self.assertTrue(feed["rss"].endswith(".xml"))
+        self.assertIn("光復社團活動", self.client.get("/account/").text)
+        self.assertIn("我要去行事曆", self.client.get("/account/").text)
+
+        original_url = feed["ics"]
+        updated = self.client.patch(
+            f"/auth/saved-feeds/{feed['id']}",
+            json={"name": "改名後", "rule": {**feed["rule"], "categories": ["expo"]}},
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json()["feed"]["ics"], original_url)
+        self.assertEqual(updated.json()["feed"]["name"], "改名後")
+
+        rotated = self.client.post(
+            f"/auth/saved-feeds/{feed['id']}/rotate",
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(rotated.status_code, 200)
+        self.assertNotEqual(rotated.json()["feed"]["ics"], original_url)
+        self.assertEqual(self.client.get(urlparse(original_url).path).status_code, 404)
+
+        deleted = self.client.delete(f"/auth/saved-feeds/{feed['id']}")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(self.client.get("/auth/saved-feeds").json()["feeds"], [])
+
+    def test_public_and_saved_feeds_apply_and_across_multi_select_filters(self):
+        events_path = Path(self.tempdir.name) / "events.json"
+        events = [
+            {"id": "evt_a11111", "title": "官方演講", "school": "nycu", "category": "演講",
+             "campus": "nycu-guangfu", "organizer_type": "official", "org_id": 1,
+             "start_at": "2099-01-01T10:00:00+08:00", "organizer": "校方"},
+            {"id": "evt_b22222", "title": "社團工作坊", "school": "nycu", "category": "工作坊",
+             "campus": "nycu-guangfu", "organizer_type": "club", "org_id": 2,
+             "start_at": "2099-01-02T10:00:00+08:00", "organizer": "測試社"},
+            {"id": "evt_c33333", "title": "線上演講", "school": "nthu", "category": "演講",
+             "campus": "online", "organizer_type": "club", "org_id": 3,
+             "start_at": "2099-01-03T10:00:00+08:00", "organizer": "另一社"},
+        ]
+        events_path.write_text(json.dumps({"events": events}), encoding="utf-8")
+        with mock.patch.object(auth_server, "EVENTS_DATA_PATH", events_path):
+            auth_server._events_cache.update({"mtime": None, "byid": {}})
+            public = self.client.get(
+                "/feeds/custom.ics",
+                params={
+                    "school": "nycu",
+                    "categories": "talk,workshop",
+                    "campuses": "nycu-guangfu",
+                    "organizers": "club",
+                },
+            )
+            self.assertEqual(public.status_code, 200)
+            self.assertIn("UID:evt_b22222@chumei.observe.tw", public.text)
+            self.assertNotIn("UID:evt_a11111@chumei.observe.tw", public.text)
+            self.assertNotIn("UID:evt_c33333@chumei.observe.tw", public.text)
+            self.assertTrue(self.client.get(
+                "/feeds/custom.xml?school=nycu&categories=workshop"
+            ).headers["content-type"].startswith("application/rss+xml"))
+            self.assertEqual(
+                self.client.get("/feeds/custom.ics?categories=not-real").status_code, 400
+            )
+
+            self._login()
+            self.client.put("/auth/follows/2", json={"name": "測試社"})
+            created = self.client.post(
+                "/auth/saved-feeds",
+                json={
+                    "name": "我追蹤的光復活動",
+                    "rule": {
+                        "school": "nycu", "categories": ["talk", "workshop"],
+                        "campuses": ["nycu-guangfu"], "organizers": ["club"],
+                        "followed": True,
+                    },
+                },
+            ).json()["feed"]
+            signed = self.client.get(urlparse(created["ics"]).path)
+            self.assertEqual(signed.status_code, 200)
+            self.assertIn("UID:evt_b22222@chumei.observe.tw", signed.text)
+            self.client.delete("/auth/follows/2")
+            self.assertNotIn(
+                "UID:evt_b22222@chumei.observe.tw",
+                self.client.get(urlparse(created["ics"]).path).text,
+            )
+        auth_server._events_cache.update({"mtime": None, "byid": {}})
+
+    def test_saved_feeds_require_login_and_preserve_subscribe_return(self):
+        self.assertEqual(self.client.get("/auth/saved-feeds").status_code, 401)
+        page = self.client.get(
+            "/account/", params={"return_to": "/subscribe/?resume=1#custom"}
+        ).text
+        self.assertIn("return_to=/subscribe/%3Fresume%3D1%23custom", page)
+
+        self._login()
+        invalid = self.client.post(
+            "/auth/saved-feeds",
+            json={"name": "無效訂閱", "rule": {"followed": "false"}},
+        )
+        self.assertEqual(invalid.status_code, 400)
 
     def test_unknown_provider_is_rejected(self):
         self.assertEqual(
