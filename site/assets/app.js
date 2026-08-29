@@ -229,10 +229,23 @@
       return r.ok ? r.json() : null;
     }).then(function (data) {
       if (!data || !data.authenticated) return;
-      var profileUrl = data.user && data.user.profileUrl;
+      var user = data.user || {};
+      var profileUrl = user.profileUrl;
+      var handle = String(user.handle || "").replace(/^@/, "");
+      var displayName = String(user.displayName || handle || "竹梅使用者");
+      var initial = Array.from(displayName.trim())[0] || "竹";
       document.querySelectorAll('.site-nav a[href="/account/"], .nav-more-menu a[href="/account/"]').forEach(function (a) {
         var label = a.querySelector(".nav-label") || a.querySelector("span");
-        if (label) label.textContent = "帳號";
+        if (label) label.textContent = handle ? "@" + handle : "帳號";
+        var oldIcon = a.querySelector("svg");
+        if (oldIcon) {
+          var avatar = document.createElement("span");
+          avatar.className = "nav-account-avatar" + (oldIcon.classList.contains("mi") ? " mi" : "");
+          avatar.setAttribute("aria-hidden", "true");
+          avatar.textContent = initial;
+          oldIcon.replaceWith(avatar);
+        }
+        if (handle) a.setAttribute("aria-label", "@" + handle + " 的帳號");
         if (profileUrl) a.href = profileUrl;
       });
       if (profileUrl) {

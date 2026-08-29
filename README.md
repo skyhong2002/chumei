@@ -114,7 +114,7 @@ Session token，以及使用者主動追蹤的單位關聯，存於被 Git 忽�
 登入者在 `/account/` 貼活動連結（`POST /auth/submissions`，每人每日 10 筆、同連結去重），
 `scripts/process_submissions.py` 由 `deploy/tw.observe.chumei.submissions.plist` 每 15 分鐘審核一輪：
 
-1. 帳號主頁比對追蹤名錄（已追蹤→已收錄；未追蹤→寫 `state/submissions/source_suggestions.jsonl` 等人工加入）。
+1. 帳號主頁比對追蹤名錄（已追蹤→已收錄；未追蹤→寫 `state/submissions/source_suggestions.jsonl`）。公開身分可驗證的學校單位／社團帳號直接收錄，不再另行請示；若是換屆或新帳號，可直接替換舊連結。
 2. 單篇內容先比對 inbox／`events.json`，已收錄就直接對回活動頁。
 3. 其餘抓內容（IG 走 instaloader，其他抓 og tags＋正文，文字太少就截圖）交 Codex 依
    `scripts/submission_schema.json` 判讀：新活動→寫 `data/feeds/inbox/user_submission.jsonl` 走既有抽取／建站／去重；

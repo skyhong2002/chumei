@@ -73,6 +73,12 @@ a:hover { text-decoration: underline; }
   transition: background var(--motion-fast, 140ms), color var(--motion-fast, 140ms);
 }
 .nav-item svg { width: 24px; height: 24px; flex: 0 0 auto; }
+.nav-account-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 24px; height: 24px; border-radius: 50%; overflow: hidden;
+  border: 1px solid var(--color-border-subtle); background: var(--chumei-bamboo-surface);
+  color: var(--chumei-bamboo-text); font-size: 0.76rem; font-weight: 750; line-height: 1;
+}
 .nav-item:hover { background: var(--color-surface-soft); color: var(--color-text-primary); text-decoration: none; }
 .nav-item[aria-current="page"] { color: var(--color-text-primary); }
 .nav-more { position: relative; margin-top: auto; }
@@ -92,6 +98,7 @@ a:hover { text-decoration: underline; }
 }
 .nav-more-menu a:hover, .nav-more-menu button:hover { background: var(--color-surface-soft); text-decoration: none; }
 .nav-more-menu .mi { width: 20px; height: 20px; flex: none; margin-right: 12px; color: var(--color-text-secondary); }
+.nav-more-menu .nav-account-avatar.mi { font-size: 0.66rem; color: var(--chumei-bamboo-text); }
 .nav-more-menu > div { display: flex; flex-direction: column; gap: 2px; }
 .nav-more-menu > div[hidden] { display: none; }
 

@@ -108,6 +108,13 @@ class SEOOutputTests(unittest.TestCase):
         self.assertIn('canonicalHref = canonicalHref.split("?", 1)[0].split("#", 1)[0]', source)
         self.assertGreaterEqual(len(re.findall(r"pageSEO\.refresh\(", source)), 5)
 
+    def test_logged_in_navigation_uses_profile_avatar_and_handle(self):
+        app = (SITE / "assets" / "app.js").read_text()
+        css = (SITE / "assets" / "site.css").read_text()
+        self.assertIn('label.textContent = handle ? "@" + handle : "帳號"', app)
+        self.assertIn('avatar.className = "nav-account-avatar"', app)
+        self.assertIn(".nav-account-avatar {", css)
+
 
 if __name__ == "__main__":
     unittest.main()

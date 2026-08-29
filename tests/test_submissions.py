@@ -33,6 +33,12 @@ class UrlTests(unittest.TestCase):
             "https://www.instagram.com/p/AbC123/",
         )
         self.assertEqual(
+            submissions.normalize_url(
+                "instagram.com/nycu_leadership_club/?igsi=MXM0Y3MzaDllOWhzdA%3D%3D"
+            ),
+            "https://www.instagram.com/nycu_leadership_club/",
+        )
+        self.assertEqual(
             submissions.normalize_url("https://m.facebook.com/nthu.tw/posts/123?fbclid=1"),
             "https://www.facebook.com/nthu.tw/posts/123/",
         )

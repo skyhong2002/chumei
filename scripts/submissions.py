@@ -34,7 +34,7 @@ STATUS_LABELS = {
 }
 OPEN_STATUSES = {"pending", "processing", "accepted"}
 
-TRACKING_PARAMS = {"igsh", "igshid", "fbclid", "mibextid", "ref", "rdid", "share_id", "s", "t", "xmt"}
+TRACKING_PARAMS = {"igsh", "igshid", "igsi", "fbclid", "mibextid", "ref", "rdid", "share_id", "s", "t", "xmt"}
 HOST_ALIASES = {
     "instagram.com": "www.instagram.com",
     "m.facebook.com": "www.facebook.com",
