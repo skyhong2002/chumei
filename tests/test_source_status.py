@@ -43,6 +43,42 @@ class SourceStatusTests(unittest.TestCase):
             self.assertEqual(summary["sources24h"], 4)
             self.assertEqual(summary["cost30dUsd"], .25)
 
+    def test_method_summaries_include_frequency_and_status_counts(self):
+        rows = [
+            {"backend": "NTHU RPage", "targetIntervalHours": 3.0, "status": "ok",
+             "lastAttempt": 1000, "nextDue": 11800, "blockedReason": ""},
+            {"backend": "NTHU RPage", "targetIntervalHours": 3.0, "status": "error",
+             "lastAttempt": 2000, "nextDue": 12800, "blockedReason": ""},
+            {"backend": "Apify", "targetIntervalHours": 168.0, "status": "ok",
+             "lastAttempt": 500, "nextDue": 605300, "blockedReason": "額度已用完"},
+        ]
+        methods = {row["backend"]: row for row in source_status.method_summaries(rows)}
+        self.assertEqual(methods["NTHU RPage"]["sources"], 2)
+        self.assertEqual(methods["NTHU RPage"]["targetIntervalHours"], 3.0)
+        self.assertEqual(methods["NTHU RPage"]["errors"], 1)
+        self.assertEqual(methods["NTHU RPage"]["lastAttempt"], 2000)
+        self.assertEqual(methods["Apify"]["blocked"], 1)
+
+    def test_exhausted_apify_sources_are_reported_as_blocked(self):
+        facebook = {
+            "id": "facebook:test", "sourceId": "fb_test", "name": "Test", "username": "test",
+            "platform": "Facebook", "kind": "facebook", "backend": "Apify",
+            "kindLabel": "粉專貼文", "school": "other", "targetIntervalHours": 168.0,
+        }
+        empty_usage = {name: {"requests24h": 0, "requests30d": 0, "sources24h": 0,
+                              "errors24h": 0, "cost30dUsd": 0}
+                       for name in ("RSSHub", "Instaloader", "Apify")}
+        with patch.object(source_status, "source_registry", return_value=[facebook]), \
+             patch.object(source_status, "load_ledger", return_value={}), \
+             patch.object(source_status, "_inbox_last_success", return_value={}), \
+             patch.object(source_status, "_read_json", return_value={}), \
+             patch.object(source_status, "apify_quota", return_value={"exhausted": True}), \
+             patch.object(source_status, "api_usage_summary", return_value=empty_usage):
+            payload = source_status.build_status_payload(now=1000)
+        self.assertEqual(payload["sources"][0]["status"], "blocked")
+        self.assertEqual(payload["counts"]["blocked"], 1)
+        self.assertEqual(payload["counts"]["fresh"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

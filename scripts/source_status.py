@@ -241,6 +241,34 @@ def api_usage_summary(now: float | None = None) -> dict:
     return out
 
 
+def method_summaries(rows: list[dict]) -> list[dict]:
+    """Aggregate independently scheduled sources by their public fetch method."""
+    groups: dict[str, list[dict]] = {}
+    for row in rows:
+        groups.setdefault(str(row.get("backend") or "其他"), []).append(row)
+    result = []
+    for backend, members in groups.items():
+        intervals = sorted({float(row["targetIntervalHours"]) for row in members
+                            if isinstance(row.get("targetIntervalHours"), (int, float))})
+        attempts = [float(row["lastAttempt"]) for row in members
+                    if isinstance(row.get("lastAttempt"), (int, float))]
+        next_runs = [float(row["nextDue"]) for row in members
+                     if isinstance(row.get("nextDue"), (int, float))]
+        result.append({
+            "backend": backend,
+            "sources": len(members),
+            "fresh": sum(row.get("status") == "ok" for row in members),
+            "due": sum(row.get("status") == "due" for row in members),
+            "errors": sum(row.get("status") == "error" for row in members),
+            "blocked": sum(bool(row.get("blockedReason")) for row in members),
+            "targetIntervalHours": intervals[0] if len(intervals) == 1 else None,
+            "targetIntervalsHours": intervals,
+            "lastAttempt": max(attempts) if attempts else None,
+            "nextDue": min(next_runs) if next_runs else None,
+        })
+    return sorted(result, key=lambda row: (-row["sources"], row["backend"]))
+
+
 def apify_quota(refresh: bool = True) -> dict:
     """Return sanitized account limits; never expose token or user identity."""
     cached = _read_json(APIFY_CACHE_PATH)
@@ -316,11 +344,11 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
             next_due = (float(last_attempt) + source["targetIntervalHours"] * 3600) if last_attempt else now
         if next_due is None:
             next_due = (float(last_success) + source["targetIntervalHours"] * 3600) if last_success else now
-        error = str(entry.get("lastError") or "")
-        state = "error" if error else ("due" if next_due <= now else "ok")
         blocked = ""
         if source["kind"] == "facebook" and apify.get("exhausted"):
             blocked = "Apify 本期額度已用完"
+        error = str(entry.get("lastError") or "")
+        state = "error" if error else ("blocked" if blocked else ("due" if next_due <= now else "ok"))
         rows.append({
             **source, "lastAttempt": last_attempt, "lastSuccess": last_success,
             "nextDue": next_due, "averageIntervalHours": _average_interval(entry.get("successHistory", [])),
@@ -331,11 +359,15 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
     counts = {
         "sources": len(rows), "due": sum(r["status"] == "due" for r in rows),
         "errors": sum(r["status"] == "error" for r in rows),
+        "blocked": sum(r["status"] == "blocked" for r in rows),
         "fresh": sum(r["status"] == "ok" for r in rows),
     }
+    usage = api_usage_summary(now)
     return {
         "generatedAt": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
-        "pipeline": {"lastRun": pipeline.get("last_run"), "lastResults": pipeline.get("last_results", {})},
-        "counts": counts, "apiUsage": api_usage_summary(now), "apify": apify,
+        "pipeline": {"lastRun": pipeline.get("last_run"), "lastResults": pipeline.get("last_results", {}),
+                     "intervalHours": 3.0},
+        "counts": counts, "apiUsage": usage, "apify": apify,
+        "methods": method_summaries(rows),
         "sources": rows,
     }
