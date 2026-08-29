@@ -78,6 +78,8 @@ OAUTH_STATE_COOKIE = "chumei_oauth_state"
 SESSION_AGE_SECONDS = 30 * 24 * 60 * 60
 OAUTH_STATE_AGE_SECONDS = 10 * 60
 FETCH_REQUEST_DAILY_LIMIT = 5
+AVATAR_MAX_BYTES = 2 * 1024 * 1024
+AVATAR_CACHE_SECONDS = 5 * 60
 
 
 def _now() -> int:
@@ -100,6 +102,31 @@ def _safe_return_to(value: str | None) -> str:
     if parsed.scheme or parsed.netloc:
         return "/account/"
     return value
+
+
+def _safe_avatar_url(value: str | None) -> str | None:
+    """Only proxy provider-supplied Google avatar URLs."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    parsed = urlparse(value)
+    hostname = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or not (hostname == "googleusercontent.com" or hostname.endswith(".googleusercontent.com"))
+    ):
+        return None
+    return value
+
+
+def _gravatar_url(email: str | None, size: int = 160) -> str | None:
+    """Return a Gravatar URL that 404s when the email has no avatar."""
+    if not isinstance(email, str) or "@" not in email:
+        return None
+    normalized = email.strip().lower()
+    digest = hashlib.md5(normalized.encode("utf-8"), usedforsecurity=False).hexdigest()
+    return f"https://www.gravatar.com/avatar/{digest}?s={size}&d=404"
 
 
 def _normalize_follow_orgs(values) -> list[dict]:
@@ -260,6 +287,7 @@ class AuthStore:
                     subject TEXT NOT NULL,
                     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     email TEXT,
+                    avatar_url TEXT,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
                     PRIMARY KEY (provider, subject)
@@ -330,6 +358,9 @@ class AuthStore:
                 )
             if "profile_public" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN profile_public INTEGER NOT NULL DEFAULT 1")
+            identity_cols = {r[1] for r in conn.execute("PRAGMA table_info(oauth_identities)")}
+            if "avatar_url" not in identity_cols:
+                conn.execute("ALTER TABLE oauth_identities ADD COLUMN avatar_url TEXT")
             fetch_cols = {r[1] for r in conn.execute("PRAGMA table_info(source_fetch_requests)")}
             if "next_attempt_at" not in fetch_cols:
                 conn.execute("ALTER TABLE source_fetch_requests ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0")
@@ -391,9 +422,34 @@ class AuthStore:
             return None
         return row
 
-    def get_or_create_user(self, provider: str, subject: str, email: str | None) -> dict:
+    @staticmethod
+    def _avatar_for_user(
+        conn: sqlite3.Connection, user_id: str, fallback_email: str | None = None
+    ) -> tuple[str | None, str | None]:
+        identities = conn.execute(
+            "SELECT provider, email, avatar_url FROM oauth_identities WHERE user_id = ? "
+            "ORDER BY CASE provider WHEN 'google' THEN 0 ELSE 1 END, created_at",
+            (user_id,),
+        ).fetchall()
+        for identity in identities:
+            if identity["provider"] == "google":
+                avatar_url = _safe_avatar_url(identity["avatar_url"])
+                if avatar_url:
+                    return avatar_url, "google"
+        email = next((i["email"] for i in identities if i["email"]), fallback_email)
+        gravatar = _gravatar_url(email)
+        return (gravatar, "gravatar") if gravatar else (None, None)
+
+    def get_or_create_user(
+        self,
+        provider: str,
+        subject: str,
+        email: str | None,
+        avatar_url: str | None = None,
+    ) -> dict:
         now = _now()
         display_name = (email or subject).split("@", 1)[0][:80] or "竹梅使用者"
+        avatar_url = _safe_avatar_url(avatar_url) if provider == "google" else None
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
@@ -407,9 +463,9 @@ class AuthStore:
             ).fetchone()
             if row:
                 conn.execute(
-                    "UPDATE oauth_identities SET email = ?, updated_at = ? "
+                    "UPDATE oauth_identities SET email = ?, avatar_url = COALESCE(?, avatar_url), updated_at = ? "
                     "WHERE provider = ? AND subject = ?",
-                    (email, now, provider, subject),
+                    (email, avatar_url, now, provider, subject),
                 )
                 conn.execute(
                     "UPDATE users SET email = COALESCE(?, email), updated_at = ? WHERE id = ?",
@@ -424,28 +480,36 @@ class AuthStore:
                 (user_id, display_name, email, self._free_handle(conn, email or subject), now, now),
             )
             conn.execute(
-                "INSERT INTO oauth_identities(provider, subject, user_id, email, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (provider, subject, user_id, email, now, now),
+                "INSERT INTO oauth_identities(provider, subject, user_id, email, avatar_url, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (provider, subject, user_id, email, avatar_url, now, now),
             )
             return {"id": user_id, "display_name": display_name, "email": email}
 
     def identities_for_user(self, user_id: str) -> list[dict]:
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT provider, subject, email FROM oauth_identities "
+                "SELECT provider, subject, email, avatar_url FROM oauth_identities "
                 "WHERE user_id = ? ORDER BY created_at",
                 (user_id,),
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def link_identity(self, user_id: str, provider: str, subject: str, email: str | None) -> str:
+    def link_identity(
+        self,
+        user_id: str,
+        provider: str,
+        subject: str,
+        email: str | None,
+        avatar_url: str | None = None,
+    ) -> str:
         """把 (provider, subject) 綁到 user_id。回傳 ok / merged / already。
 
         若該身分已屬於另一個使用者，把對方的追蹤、參加、回報與 session
         全部搬過來再刪除對方（merged）。
         """
         now = _now()
+        avatar_url = _safe_avatar_url(avatar_url) if provider == "google" else None
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
@@ -454,9 +518,9 @@ class AuthStore:
             ).fetchone()
             if row and row["user_id"] == user_id:
                 conn.execute(
-                    "UPDATE oauth_identities SET email = ?, updated_at = ? "
+                    "UPDATE oauth_identities SET email = ?, avatar_url = COALESCE(?, avatar_url), updated_at = ? "
                     "WHERE provider = ? AND subject = ?",
-                    (email, now, provider, subject),
+                    (email, avatar_url, now, provider, subject),
                 )
                 return "already"
             if row:
@@ -473,9 +537,9 @@ class AuthStore:
                     "UPDATE sessions SET user_id = ? WHERE user_id = ?", (user_id, other_id)
                 )
                 conn.execute(
-                    "UPDATE oauth_identities SET user_id = ?, email = ?, updated_at = ? "
+                    "UPDATE oauth_identities SET user_id = ?, email = ?, avatar_url = COALESCE(?, avatar_url), updated_at = ? "
                     "WHERE user_id = ?",
-                    (user_id, email, now, other_id),
+                    (user_id, email, avatar_url, now, other_id),
                 )
                 has_submissions = conn.execute(
                     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'submissions'"
@@ -492,9 +556,9 @@ class AuthStore:
                 conn.execute("DELETE FROM users WHERE id = ?", (other_id,))
                 return "merged"
             conn.execute(
-                "INSERT INTO oauth_identities(provider, subject, user_id, email, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (provider, subject, user_id, email, now, now),
+                "INSERT INTO oauth_identities(provider, subject, user_id, email, avatar_url, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (provider, subject, user_id, email, avatar_url, now, now),
             )
             conn.execute(
                 "UPDATE users SET email = COALESCE(email, ?), updated_at = ? WHERE id = ?",
@@ -540,11 +604,17 @@ class AuthStore:
             return None
         with self._connection() as conn:
             row = conn.execute(
-                "SELECT id, display_name, handle, profile_public, created_at FROM users "
+                "SELECT id, display_name, email, handle, profile_public, created_at FROM users "
                 "WHERE handle = ?",
                 (handle.lower(),),
             ).fetchone()
-        return dict(row) if row else None
+            if not row:
+                return None
+            user = dict(row)
+            user["avatar_url"], user["avatar_source"] = self._avatar_for_user(
+                conn, user["id"], user.get("email")
+            )
+        return user
 
     def calendar_token(self, user_id: str, rotate: bool = False) -> str:
         """每個帳號一組私密行事曆 token；rotate=True 換新（舊連結立即失效）。"""
@@ -600,7 +670,13 @@ class AuthStore:
                 """,
                 (_hash_token(raw_token), now),
             ).fetchone()
-        return dict(row) if row else None
+            if not row:
+                return None
+            user = dict(row)
+            user["avatar_url"], user["avatar_source"] = self._avatar_for_user(
+                conn, user["id"], user.get("email")
+            )
+        return user
 
     def delete_session(self, raw_token: str | None) -> None:
         if not raw_token:
@@ -819,7 +895,7 @@ class NYCUOAuthClient:
             raise ValueError("NYCU token response did not contain access_token")
         return access_token
 
-    def profile(self, access_token: str) -> tuple[str, str | None]:
+    def profile(self, access_token: str) -> tuple[str, str | None, str | None]:
         response = self.http.get(
             NYCU_PROFILE_URL,
             headers={"Authorization": f"Bearer {access_token}"},
@@ -833,11 +909,11 @@ class NYCUOAuthClient:
             raise ValueError("NYCU profile response did not contain username")
         if not isinstance(email, str) or "@" not in email:
             email = None
-        return subject.strip(), email
+        return subject.strip(), email, None
 
 
 class GoogleOAuthClient:
-    """Google OpenID Connect（Authorization Code + PKCE）；用 userinfo 端點拿 sub 與 email。"""
+    """Google OpenID Connect（Authorization Code + PKCE）；取得 sub、email 與頭貼。"""
 
     def __init__(self, http=requests):
         self.http = http
@@ -862,7 +938,7 @@ class GoogleOAuthClient:
             raise ValueError("Google token response did not contain access_token")
         return access_token
 
-    def profile(self, access_token: str) -> tuple[str, str | None]:
+    def profile(self, access_token: str) -> tuple[str, str | None, str | None]:
         response = self.http.get(
             GOOGLE_USERINFO_URL,
             headers={"Authorization": f"Bearer {access_token}"},
@@ -872,11 +948,12 @@ class GoogleOAuthClient:
         payload = response.json()
         subject = payload.get("sub")
         email = payload.get("email")
+        avatar_url = _safe_avatar_url(payload.get("picture"))
         if not isinstance(subject, str) or not subject.strip():
             raise ValueError("Google userinfo response did not contain sub")
         if not isinstance(email, str) or "@" not in email:
             email = None
-        return subject.strip(), email
+        return subject.strip(), email, avatar_url
 
 
 def _error_page(title: str, message: str, status_code: int = 400) -> HTMLResponse:
@@ -1051,7 +1128,20 @@ def _going_html(going_ids: list[str]) -> str:
 
 def _avatar_html(user: dict, size: str = "") -> str:
     initial = (user.get("display_name") or user.get("handle") or "竹")[:1].upper()
-    return f'<span class="profile-avatar{(" " + size) if size else ""}" aria-hidden="true">{html.escape(initial)}</span>'
+    avatar_url = _safe_avatar_url(user.get("avatar_url")) or (
+        user.get("avatar_url") if user.get("avatar_source") == "gravatar" else None
+    )
+    handle = str(user.get("handle") or "")
+    avatar_src = f"/auth/avatar/{quote(handle, safe='')}" if avatar_url and handle else ""
+    image = (
+        f'<img src="{html.escape(avatar_src, quote=True)}" alt="" '
+        'referrerpolicy="no-referrer" onerror="this.remove()">'
+        if avatar_url else ""
+    )
+    return (
+        f'<span class="profile-avatar{(" " + size) if size else ""}" aria-hidden="true">'
+        f'{html.escape(initial)}{image}</span>'
+    )
 
 
 def _joined(user: dict) -> str:
@@ -1315,6 +1405,7 @@ def create_app(
     oauth_client = oauth_client or NYCUOAuthClient()
     google_oauth_client = google_oauth_client or GoogleOAuthClient()
     submissions = submissions or SubmissionStore(config.database_path)
+    avatar_cache: dict[str, tuple[float, bytes, str]] = {}
 
     providers = {
         "nycu": {
@@ -1332,7 +1423,7 @@ def create_app(
         "google": {
             "client": google_oauth_client,
             "authorize_url": GOOGLE_AUTHORIZE_URL,
-            "scope": "openid email",
+            "scope": "openid email profile",
             "client_id": config.google_client_id,
             "redirect_uri": config.google_redirect_uri,
             "configured": config.google_configured,
@@ -1372,6 +1463,51 @@ def create_app(
             store.follow_snapshot(profile["id"])["following"],
             store.event_snapshot(profile["id"])["going"],
         ))
+
+    async def avatar_image(request: Request):
+        handle = str(request.path_params.get("handle") or "").lower()
+        profile = store.user_by_handle(handle)
+        viewer = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not profile or (
+            not profile.get("profile_public")
+            and not (viewer and viewer["id"] == profile["id"])
+        ):
+            return Response(status_code=404)
+        source_url = profile.get("avatar_url")
+        if not source_url:
+            return Response(status_code=404)
+        cached = avatar_cache.get(source_url)
+        if cached and cached[0] > time.monotonic():
+            return Response(
+                cached[1], media_type=cached[2],
+                headers={"Cache-Control": "private, max-age=300"},
+            )
+
+        def fetch_avatar() -> tuple[bytes, str]:
+            upstream = requests.get(
+                source_url,
+                headers={"User-Agent": "ChumeiAvatar/1.0"},
+                timeout=10,
+            )
+            upstream.raise_for_status()
+            content_type = (upstream.headers.get("content-type") or "").split(";", 1)[0].lower()
+            if content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+                raise ValueError("avatar response is not an image")
+            if len(upstream.content) > AVATAR_MAX_BYTES:
+                raise ValueError("avatar response is too large")
+            return upstream.content, content_type
+
+        try:
+            body, content_type = await run_in_threadpool(fetch_avatar)
+        except (requests.RequestException, ValueError):
+            return Response(status_code=404)
+        avatar_cache[source_url] = (
+            time.monotonic() + AVATAR_CACHE_SECONDS, body, content_type
+        )
+        return Response(
+            body, media_type=content_type,
+            headers={"Cache-Control": "private, max-age=300"},
+        )
 
     async def account(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
@@ -1523,7 +1659,9 @@ def create_app(
             access_token = await run_in_threadpool(
                 spec["client"].exchange_code, config, code, state_row["code_verifier"]
             )
-            subject, email = await run_in_threadpool(spec["client"].profile, access_token)
+            subject, email, avatar_url = await run_in_threadpool(
+                spec["client"].profile, access_token
+            )
         except (requests.RequestException, ValueError, json.JSONDecodeError):
             return _error_page("登入暫時失敗", spec["fail_msg"], 502)
         link_user_id = state_row["link_user_id"]
@@ -1531,11 +1669,13 @@ def create_app(
             current = store.session_user(request.cookies.get(SESSION_COOKIE))
             if not current or current["id"] != link_user_id:
                 return _error_page("綁定失敗", "登入狀態已改變，請重新登入後再綁定一次。", 400)
-            outcome = store.link_identity(current["id"], provider_key, subject, email)
+            outcome = store.link_identity(
+                current["id"], provider_key, subject, email, avatar_url
+            )
             response = RedirectResponse(f"/account/?link={outcome}", 303)
             response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
             return response
-        user = store.get_or_create_user(provider_key, subject, email)
+        user = store.get_or_create_user(provider_key, subject, email, avatar_url)
         raw_session = store.create_session(user["id"])
         response = RedirectResponse(state_row["return_to"], 303)
         response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
@@ -1565,6 +1705,11 @@ def create_app(
                     "handle": user.get("handle"),
                     "profileUrl": f"/@{user['handle']}" if user.get("handle") else None,
                     "profilePublic": bool(user.get("profile_public", 1)),
+                    "avatarUrl": (
+                        f"/auth/avatar/{quote(str(user['handle']), safe='')}"
+                        if user.get("avatar_url") and user.get("handle") else None
+                    ),
+                    "avatarSource": user.get("avatar_source"),
                     "provider": user.get("provider") or "nycu",
                     "providers": [
                         i["provider"] for i in store.identities_for_user(user["id"])
@@ -1765,6 +1910,7 @@ def create_app(
     app = Starlette(
         routes=[
             Route("/@{handle}", profile_page, methods=["GET"]),
+            Route("/auth/avatar/{handle}", avatar_image, methods=["GET"]),
             Route("/account", account, methods=["GET"]),
             Route("/account/", account, methods=["GET"]),
             Route("/submit", submit_page, methods=["GET"]),

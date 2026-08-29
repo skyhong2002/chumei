@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 from starlette.testclient import TestClient
@@ -43,7 +44,11 @@ class FakeHTTP:
     def get(self, url, headers, timeout):
         self.profile_calls.append((url, headers, timeout))
         if "openidconnect" in url:
-            return FakeResponse({"sub": "115566778899", "email": "friend@gmail.com"})
+            return FakeResponse({
+                "sub": "115566778899",
+                "email": "friend@gmail.com",
+                "picture": "https://lh3.googleusercontent.com/a/google-avatar",
+            })
         return FakeResponse({"username": "student123", "email": "student123@nycu.edu.tw"})
 
 
@@ -286,7 +291,7 @@ class AuthServerTests(unittest.TestCase):
         parsed = urlparse(start.headers["location"])
         query = parse_qs(parsed.query)
         self.assertEqual(parsed.geturl().split("?", 1)[0], auth_server.GOOGLE_AUTHORIZE_URL)
-        self.assertEqual(query["scope"], ["openid email"])
+        self.assertEqual(query["scope"], ["openid email profile"])
         self.assertEqual(query["client_id"], ["google-client-id"])
         self.assertEqual(
             query["redirect_uri"], ["https://chumei.example/auth/google/callback"]
@@ -305,6 +310,11 @@ class AuthServerTests(unittest.TestCase):
         self.assertTrue(me["authenticated"])
         self.assertEqual(me["user"]["provider"], "google")
         self.assertEqual(me["user"]["email"], "friend@gmail.com")
+        self.assertEqual(
+            me["user"]["avatarUrl"],
+            "/auth/avatar/friend",
+        )
+        self.assertEqual(me["user"]["avatarSource"], "google")
         with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT provider, subject FROM oauth_identities"
@@ -344,6 +354,55 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("我的回報", settings)
         self.assertIn("登出", settings)
         self.assertIn('href="/@student123"', settings)
+
+    def test_profile_avatar_uses_gravatar_and_google_has_priority(self):
+        self._login()
+        gravatar = auth_server._gravatar_url("student123@nycu.edu.tw")
+        me = self.client.get("/auth/me").json()["user"]
+        self.assertEqual(me["avatarUrl"], "/auth/avatar/student123")
+        self.assertEqual(me["avatarSource"], "gravatar")
+        self.assertEqual(self.store.user_by_handle("student123")["avatar_url"], gravatar)
+        self.assertIn('src="/auth/avatar/student123"', self.client.get("/@student123").text)
+
+        self._link("google")
+        me = self.client.get("/auth/me").json()["user"]
+        self.assertEqual(
+            me["avatarUrl"], "/auth/avatar/student123"
+        )
+        self.assertEqual(me["avatarSource"], "google")
+        self.assertIn('src="/auth/avatar/student123"', self.client.get("/@student123").text)
+
+    def test_avatar_proxy_serves_images_from_the_same_origin(self):
+        self._google_login()
+        upstream = mock.Mock(
+            content=b"avatar-bytes",
+            headers={"content-type": "image/png"},
+        )
+        upstream.raise_for_status.return_value = None
+        with mock.patch.object(auth_server.requests, "get", return_value=upstream) as get:
+            response = self.client.get("/auth/avatar/friend")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"avatar-bytes")
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertEqual(response.headers["cache-control"], "private, max-age=300")
+        self.assertEqual(
+            get.call_args.args[0], "https://lh3.googleusercontent.com/a/google-avatar"
+        )
+
+    def test_unsafe_google_avatar_url_is_not_rendered(self):
+        unsafe_http = type(
+            "UnsafeHTTP",
+            (),
+            {
+                "get": lambda *args, **kwargs: FakeResponse({
+                    "sub": "1",
+                    "email": "friend@gmail.com",
+                    "picture": "https://evil.example/avatar",
+                })
+            },
+        )()
+        subject, email, avatar = auth_server.GoogleOAuthClient(unsafe_http).profile("token")
+        self.assertEqual((subject, email, avatar), ("1", "friend@gmail.com", None))
 
     def test_profile_is_public_unless_disabled(self):
         self._login()

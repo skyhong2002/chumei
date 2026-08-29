@@ -236,6 +236,7 @@
       var handle = String(user.handle || "").replace(/^@/, "");
       var displayName = String(user.displayName || handle || "竹梅使用者");
       var initial = Array.from(displayName.trim())[0] || "竹";
+      var avatarUrl = String(user.avatarUrl || "");
       document.querySelectorAll('.site-nav a[href="/account/"], .nav-more-menu a[href="/account/"]').forEach(function (a) {
         var label = a.querySelector(".nav-label") || a.querySelector("span");
         if (label) label.textContent = handle ? "@" + handle : "帳號";
@@ -245,6 +246,14 @@
           avatar.className = "nav-account-avatar" + (oldIcon.classList.contains("mi") ? " mi" : "");
           avatar.setAttribute("aria-hidden", "true");
           avatar.textContent = initial;
+          if (avatarUrl) {
+            var img = document.createElement("img");
+            img.alt = "";
+            img.referrerPolicy = "no-referrer";
+            img.src = avatarUrl;
+            img.addEventListener("error", function () { img.remove(); }, { once: true });
+            avatar.appendChild(img);
+          }
           oldIcon.replaceWith(avatar);
         }
         if (handle) a.setAttribute("aria-label", "@" + handle + " 的帳號");

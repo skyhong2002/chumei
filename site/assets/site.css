@@ -75,9 +75,14 @@ a:hover { text-decoration: underline; }
 .nav-item svg { width: 24px; height: 24px; flex: 0 0 auto; }
 .nav-account-avatar {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  position: relative;
   width: 24px; height: 24px; border-radius: 50%; overflow: hidden;
   border: 1px solid var(--color-border-subtle); background: var(--chumei-bamboo-surface);
   color: var(--chumei-bamboo-text); font-size: 0.76rem; font-weight: 750; line-height: 1;
+}
+.nav-account-avatar img,
+.profile-avatar img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
 }
 .nav-item:hover { background: var(--color-surface-soft); color: var(--color-text-primary); text-decoration: none; }
 .nav-item[aria-current="page"] { color: var(--color-text-primary); }
@@ -306,6 +311,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .profile-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 0 0 20px; }
 .profile-avatar {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
+  position: relative; overflow: hidden;
   width: 44px; height: 44px; border-radius: 50%; font-weight: 700; font-size: 1.1rem;
   color: #fff; background: linear-gradient(135deg, var(--chumei-bamboo, #2f8f5b), var(--chumei-plum, #7a3fb8));
 }
