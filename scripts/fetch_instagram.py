@@ -21,6 +21,7 @@ from chumei_lib import (SeenState, TZ_TAIPEI, append_inbox, load_env, now_iso,
 from ig_schedule import (clear_global_rate_limit, is_rate_limited, load_schedule,
                          mark_failure, mark_success, save_schedule, select_due,
                          set_global_rate_limit)
+from source_status import record_api_call, record_fetch
 
 RAW_SOURCE = "rsshub"
 ERROR_LOG = ROOT / "state" / "seen" / "instagram_errors.jsonl"
@@ -154,18 +155,29 @@ class AutoBackend:
     def __init__(self, base):
         self.base = base
         self.rsshub_open = False
+        self.last_attempts = []
 
     def fetch(self, username, limit):
+        self.last_attempts = []
         if not self.rsshub_open:
             try:
-                return fetch_rsshub(self.base, username, limit)
+                result = fetch_rsshub(self.base, username, limit)
+                self.last_attempts.append(("RSSHub", True))
+                return result
             except Exception as e:
+                self.last_attempts.append(("RSSHub", False))
                 # A failed shared route is unlikely to recover for the next
                 # account seconds later. Probe again on the next launchd run.
                 self.rsshub_open = True
                 print(f"    rsshub unavailable ({str(e)[:60]}); circuit open for this batch",
                       file=sys.stderr)
-        return fetch_instaloader(username, limit)
+        try:
+            result = fetch_instaloader(username, limit)
+        except Exception:
+            self.last_attempts.append(("Instaloader", False))
+            raise
+        self.last_attempts.append(("Instaloader", True))
+        return result
 
 
 def log_error(username, err):
@@ -215,7 +227,7 @@ def main():
     schedule = load_schedule(SCHEDULE_STATE)
     now_ts = time.time()
     cooldown = schedule.get("global_cooldown_until", 0)
-    if cooldown > now_ts and not (args.force or args.accounts):
+    if cooldown > now_ts and not args.force:
         print(f"instagram: cooling down until {datetime.fromtimestamp(cooldown, TZ_TAIPEI).isoformat(timespec='minutes')}")
         return 0
     maximum = args.max_accounts or args.batch_size * args.batches
@@ -246,11 +258,15 @@ def main():
             time.sleep(wait)
         username = row["username"].strip().lstrip("@")
         source_id = f"ig_{username}"
+        source_key = f"instagram:{username}"
+        attempt_backend = backend
         try:
             if auto_backend:
                 avatar_url, posts = auto_backend.fetch(username, args.limit)
+                attempt_backend = auto_backend.last_attempts[-1][0] if auto_backend.last_attempts else "auto"
             else:
                 avatar_url, posts = fetch_account(backend, base, username, args.limit)
+                attempt_backend = "RSSHub" if backend == "rsshub" else "Instaloader"
             if args.dry_run:
                 print(f"[{i+1}/{len(rows)}] @{username}: {len(posts)} posts"
                       + f"{' (avatar ok)' if avatar_url else ''}")
@@ -283,9 +299,21 @@ def main():
                          jitter_hours=3)
             clear_global_rate_limit(schedule)
             save_schedule(SCHEDULE_STATE, schedule)
+            attempts = auto_backend.last_attempts if auto_backend else [(attempt_backend, True)]
+            for service, ok in attempts:
+                record_api_call(service, operation="instagram profile", ok=ok)
+            record_fetch(source_key, backend=attempt_backend, ok=True, items=len(posts))
             print(f"[{i+1}/{len(rows)}] @{username}: +{n}")
         except Exception as e:
             failed += 1
+            if auto_backend:
+                for service, ok in auto_backend.last_attempts:
+                    record_api_call(service, operation="instagram profile", ok=ok)
+                attempt_backend = auto_backend.last_attempts[-1][0] if auto_backend.last_attempts else "auto"
+            else:
+                attempt_backend = "RSSHub" if backend == "rsshub" else "Instaloader"
+                record_api_call(attempt_backend, operation="instagram profile", ok=False)
+            record_fetch(source_key, backend=attempt_backend, ok=False, error=e)
             log_error(username, e)
             if not args.dry_run:
                 mark_failure(schedule, username)

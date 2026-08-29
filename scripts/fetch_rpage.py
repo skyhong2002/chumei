@@ -533,6 +533,7 @@ def parse_args() -> argparse.Namespace:
         default=2,
         help="maximum list pages per source (default: 2)",
     )
+    parser.add_argument("--sources", help="comma-separated source_id values")
     parser.add_argument(
         "--limit",
         type=int,
@@ -549,6 +550,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     rows = read_rpage_sources()
+    if args.sources:
+        wanted = {value.strip() for value in args.sources.split(",") if value.strip()}
+        rows = [row for row in rows if row.get("source_id", "").strip() in wanted]
+    from source_status import record_fetch
     seen = load_seen()
     for key in load_existing_inbox_keys():
         seen.setdefault(key, "recovered-from-inbox")
@@ -565,6 +570,8 @@ def main() -> int:
         source_id = row.get("source_id", "").strip()
         source_name = row.get("name", "").strip()
         source_url = row.get("url", "").strip()
+        source_start = len(collected)
+        source_failed = False
         if not source_id or not source_name or not source_url:
             warning(source_id or "unknown-source", None, "missing source_id, name, or url")
             continue
@@ -585,6 +592,8 @@ def main() -> int:
                 list_pages_fetched += 1
             except (requests.RequestException, ValueError) as exc:
                 warning(source_id, None, f"list page {page_offset + 1} failed: {exc}")
+                source_failed = True
+                record_fetch(f"bulletin:{source_id}", backend="NTHU RPage", ok=False, error=exc)
                 break
             if not entries:
                 warning(source_id, None, f"list page {page_offset + 1} contained no detail links")
@@ -629,6 +638,9 @@ def main() -> int:
                 break
         if stop:
             break
+        if not source_failed:
+            record_fetch(f"bulletin:{source_id}", backend="NTHU RPage", ok=True,
+                         items=len(collected) - source_start)
 
     written = append_items(collected)
     save_seen(seen)

@@ -10,6 +10,7 @@ import sys
 import requests
 
 from chumei_lib import SeenState, append_inbox, now_iso, ROOT
+from source_status import record_fetch
 
 API = "https://events.life.nycu.edu.tw/api/activities"
 RAW_SOURCE = "nycu-life-api"
@@ -19,9 +20,13 @@ CAMPUS_MAP = {"光復": "nycu-guangfu", "博愛": "nycu-boai", "陽明": "nycu-y
 
 
 def main():
-    resp = requests.get(API, timeout=30)
-    resp.raise_for_status()
-    data = resp.json().get("data", [])
+    try:
+        resp = requests.get(API, timeout=30)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+    except Exception as exc:
+        record_fetch("bulletin:nycu_life_api", backend="JSON API", ok=False, error=exc)
+        raise
 
     seen = SeenState(RAW_SOURCE)
     fresh = []
@@ -78,6 +83,7 @@ def main():
     seen.save()
     STRUCTURED.parent.mkdir(parents=True, exist_ok=True)
     STRUCTURED.write_text(json.dumps(structured, ensure_ascii=False, indent=1))
+    record_fetch("bulletin:nycu_life_api", backend="JSON API", ok=True, items=len(data))
     print(f"nycu-life: {len(data)} activities, {len(fresh)} new in inbox")
 
 

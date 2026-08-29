@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import requests
 
 from chumei_lib import SeenState, append_inbox, load_env, now_iso, read_sources_csv
+from source_status import record_api_call, record_fetch
 
 
 ACTOR_ID = "apify/facebook-posts-scraper"
@@ -162,11 +163,14 @@ def apify_request(method: str, path: str, token: str, *, params=None, body=None,
             timeout=timeout,
         )
     except requests.RequestException as exc:
+        record_api_call("Apify", operation=f"{method} {path.split('?')[0]}", source_count=0, ok=False)
         raise RuntimeError(f"Apify request failed ({type(exc).__name__})") from exc
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
+        record_api_call("Apify", operation=f"{method} {path.split('?')[0]}", source_count=0, ok=False)
         raise RuntimeError(f"Apify HTTP {response.status_code}: {response.text[:1000]}") from exc
+    record_api_call("Apify", operation=f"{method} {path.split('?')[0]}", source_count=0, ok=True)
     return response.json() if response.content else {}
 
 
@@ -236,6 +240,8 @@ def main() -> int:
     try:
         run, raw_items = run_actor(token, sources, args.limit)
     except RuntimeError as exc:
+        for source in sources:
+            record_fetch(f"facebook:{page_slug(source['page'])}", backend="Apify", ok=False, error=exc)
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     seen = SeenState(RAW_SOURCE)
@@ -263,6 +269,16 @@ def main() -> int:
     written = append_inbox(RAW_SOURCE, fresh)
     seen.save()
     cost = usage_usd(run)
+    record_api_call("Apify", operation="facebook actor batch", source_count=len(sources), request_count=0, ok=True, cost_usd=cost)
+    items_by_source = {}
+    for item in raw_items:
+        source = source_for(item, sources)
+        if source:
+            key = f"facebook:{page_slug(source['page'])}"
+            items_by_source[key] = items_by_source.get(key, 0) + 1
+    for source in sources:
+        key = f"facebook:{page_slug(source['page'])}"
+        record_fetch(key, backend="Apify", ok=True, items=items_by_source.get(key, 0))
     cost_text = f"${cost:.6f}" if cost is not None else "not reported"
     print(
         f"done: {written} new items from {len(sources)} pages; "

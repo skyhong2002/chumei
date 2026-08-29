@@ -744,6 +744,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
         <a href="/notify/">App 通知</a>
         <a href="/subscribe/">訂閱管道</a>
         <a href="/source/">資料來源</a>
+        <a href="/status/">系統狀態</a>
         <a href="/submit/">回報活動</a>
         <a href="/account/">登入／帳號</a>
         <a href="/about/">關於竹梅</a>
@@ -757,7 +758,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 </main>
 <footer class="site-footer">
   <p>竹梅活動觀測站彙整清大、陽明交大公開活動資訊；內容以主辦單位公告為準。</p>
-  <p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/about/">關於與回報</a></p>
+  <p><a href="/notify/">App 通知</a> ・ <a href="/subscribe/">RSS / 行事曆訂閱</a> ・ <a href="/source/">資料來源</a> ・ <a href="/status/">系統狀態</a> ・ <a href="/about/">關於與回報</a></p>
 </footer>
 <a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
 <script src="/assets/app.js"></script>
@@ -2243,7 +2244,7 @@ def main():
     prerender_stories()
     version_static_assets()
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/submit/", f"{BASE_URL}/source/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
+    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/submit/", f"{BASE_URL}/source/", f"{BASE_URL}/status/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
            [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
            [f"{BASE_URL}/org/{i}/" for i in (org_ids or [])]
     (SITE / "sitemap.xml").write_text(

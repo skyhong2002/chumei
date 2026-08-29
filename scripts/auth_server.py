@@ -60,6 +60,7 @@ from submissions import (
     classify_url,
     normalize_url,
 )
+from source_status import source_registry
 
 
 PORT = 8324
@@ -76,6 +77,7 @@ RESERVED_HANDLES = {"admin", "chumei", "account", "submit", "auth", "about", "ev
 OAUTH_STATE_COOKIE = "chumei_oauth_state"
 SESSION_AGE_SECONDS = 30 * 24 * 60 * 60
 OAUTH_STATE_AGE_SECONDS = 10 * 60
+FETCH_REQUEST_DAILY_LIMIT = 5
 
 
 def _now() -> int:
@@ -296,6 +298,22 @@ class AuthStore:
                     return_to TEXT NOT NULL,
                     created_at INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS source_fetch_requests (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    source_id TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    next_attempt_at INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS source_fetch_requests_queue
+                    ON source_fetch_requests(status, created_at);
+                CREATE INDEX IF NOT EXISTS source_fetch_requests_user
+                    ON source_fetch_requests(user_id, created_at DESC);
                 """
             )
             columns = {r[1] for r in conn.execute("PRAGMA table_info(oauth_states)")}
@@ -312,6 +330,9 @@ class AuthStore:
                 )
             if "profile_public" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN profile_public INTEGER NOT NULL DEFAULT 1")
+            fetch_cols = {r[1] for r in conn.execute("PRAGMA table_info(source_fetch_requests)")}
+            if "next_attempt_at" not in fetch_cols:
+                conn.execute("ALTER TABLE source_fetch_requests ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0")
             # 舊帳號補代號：每個帳號都要有公開個人頁的網址
             for row in conn.execute(
                 "SELECT id, display_name, email FROM users WHERE handle IS NULL OR handle = ''"
@@ -588,6 +609,51 @@ class AuthStore:
             conn.execute(
                 "DELETE FROM sessions WHERE token_hash = ?", (_hash_token(raw_token),)
             )
+
+    @staticmethod
+    def _fetch_request_payload(row: sqlite3.Row | dict) -> dict:
+        item = dict(row)
+        return {
+            "id": item["id"], "sourceId": item["source_id"],
+            "sourceName": item["source_name"], "sourceKind": item["source_kind"],
+            "status": item["status"], "reason": item.get("reason") or "",
+            "createdAt": item["created_at"], "updatedAt": item["updated_at"],
+        }
+
+    def fetch_requests_for_user(self, user_id: str, limit: int = 20) -> list[dict]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM source_fetch_requests WHERE user_id = ? "
+                "ORDER BY created_at DESC LIMIT ?", (user_id, max(1, min(limit, 100))),
+            ).fetchall()
+        return [self._fetch_request_payload(row) for row in rows]
+
+    def create_fetch_request(self, user_id: str, source: dict) -> tuple[str, dict | None]:
+        now = _now()
+        day_start = now - (now % 86400)
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT * FROM source_fetch_requests WHERE source_id = ? "
+                "AND status IN ('pending','processing','deferred') ORDER BY created_at LIMIT 1",
+                (source["id"],),
+            ).fetchone()
+            if existing:
+                return "duplicate", self._fetch_request_payload(existing)
+            used = conn.execute(
+                "SELECT count(*) FROM source_fetch_requests WHERE user_id = ? AND created_at >= ?",
+                (user_id, day_start),
+            ).fetchone()[0]
+            if used >= FETCH_REQUEST_DAILY_LIMIT:
+                return "limit", None
+            request_id = "fetch_" + uuid.uuid4().hex[:16]
+            conn.execute(
+                "INSERT INTO source_fetch_requests(id,user_id,source_id,source_name,source_kind,status,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,'pending',?,?)",
+                (request_id, user_id, source["id"], source["name"], source["kind"], now, now),
+            )
+            row = conn.execute("SELECT * FROM source_fetch_requests WHERE id = ?", (request_id,)).fetchone()
+        return "ok", self._fetch_request_payload(row)
 
     def merge_user_follows(self, user_id: str, orgs: list[dict]) -> None:
         """Union browser-local follows into a user's durable follow list."""
@@ -1507,6 +1573,39 @@ def create_app(
             }
         )
 
+    async def fetch_requests(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "authentication required"}, status_code=401
+            )
+        if request.method == "GET":
+            return JSONResponse({
+                "ok": True,
+                "dailyLimit": FETCH_REQUEST_DAILY_LIMIT,
+                "requests": store.fetch_requests_for_user(user["id"]),
+            })
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            body = {}
+        source_id = str(body.get("sourceId") or "") if isinstance(body, dict) else ""
+        if len(source_id) > 180:
+            source_id = ""
+        source = next((item for item in source_registry() if item["id"] == source_id), None)
+        if not source:
+            return JSONResponse({"ok": False, "error": "unknown source"}, status_code=400)
+        code, item = store.create_fetch_request(user["id"], source)
+        if code == "limit":
+            return JSONResponse(
+                {"ok": False, "error": "daily request limit reached", "dailyLimit": FETCH_REQUEST_DAILY_LIMIT},
+                status_code=429,
+            )
+        return JSONResponse(
+            {"ok": True, "code": code, "request": item, "dailyLimit": FETCH_REQUEST_DAILY_LIMIT},
+            status_code=201 if code == "ok" else 200,
+        )
+
     def follow_payload(user: dict | None) -> dict:
         snapshot = store.follow_snapshot(user["id"] if user else None)
         return {
@@ -1673,6 +1772,7 @@ def create_app(
             Route("/auth/{provider}/start", oauth_start, methods=["GET"]),
             Route("/auth/{provider}/callback", oauth_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
+            Route("/auth/fetch-requests", fetch_requests, methods=["GET", "POST"]),
             Route("/auth/follows", follows, methods=["GET"]),
             Route("/auth/events", events_going, methods=["GET"]),
             Route("/auth/events/{event_id}", event_going_set, methods=["PUT", "DELETE"]),

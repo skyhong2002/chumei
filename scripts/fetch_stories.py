@@ -21,6 +21,7 @@ from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
 from ig_schedule import (clear_global_rate_limit, is_rate_limited, load_schedule,
                          mark_failure, mark_success, save_schedule, select_due,
                          set_global_rate_limit)
+from source_status import record_api_call, record_fetch
 
 USERID_CACHE = ROOT / "state" / "ig_userids.json"
 STORIES_STATE = ROOT / "state" / "stories.json"
@@ -137,6 +138,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--resolve-limit", type=int, default=15, help="這一輪最多解析幾個新 userid")
     ap.add_argument("--batch-size", type=int, default=48, help="每輪最多查幾個帳號（IG 單次最多 50）")
+    ap.add_argument("--accounts", help="逗號分隔，只查這些 username")
     ap.add_argument("--account-interval-hours", type=float, default=18,
                     help="同一帳號至少間隔幾小時再查")
     ap.add_argument("--force", action="store_true", help="忽略帳號排程與全域冷卻，僅供人工診斷")
@@ -176,8 +178,12 @@ def main():
         return 0
 
     rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() not in ("false", "link")]
+    if args.accounts:
+        wanted = {value.strip().lstrip("@") for value in args.accounts.split(",") if value.strip()}
+        rows = [r for r in rows if r["username"].strip().lstrip("@") in wanted]
     meta = {r["username"].strip().lstrip("@"): r for r in rows}
-    selected = select_due(list(meta), schedule, args.batch_size, now=now_ts, force=args.force)
+    selected = (list(meta)[:args.batch_size] if args.accounts else
+                select_due(list(meta), schedule, args.batch_size, now=now_ts, force=args.force))
     if not selected:
         live_count, expired_count, _ = refresh_story_output()
         print("stories: no accounts due")
@@ -190,6 +196,7 @@ def main():
     unresolved = [u for u in selected if not cache.get(u)]
     for username in unresolved:
         mark_failure(schedule, username, base_hours=24, cap_hours=168, jitter_hours=6)
+        record_fetch(f"story:{username}", backend="Instaloader", ok=False, error="Instagram userid unresolved")
     if not userids:
         print("no userids resolved yet")
         save_schedule(SCHEDULE_STATE, schedule)
@@ -230,6 +237,9 @@ def main():
                 }
                 n_new += 1
     except Exception as e:
+        record_api_call("Instaloader", operation="instagram stories", source_count=len(userids), ok=False)
+        for username in selected:
+            record_fetch(f"story:{username}", backend="Instaloader", ok=False, error=e)
         until = set_global_rate_limit(schedule)
         save_schedule(SCHEDULE_STATE, schedule)
         reason = "rate-limited" if is_rate_limited(e) else "batch failed"
@@ -242,6 +252,8 @@ def main():
         if not cache.get(username):
             continue
         mark_success(schedule, username, interval_hours=args.account_interval_hours, jitter_hours=3)
+        record_fetch(f"story:{username}", backend="Instaloader", ok=True)
+    record_api_call("Instaloader", operation="instagram stories", source_count=len(userids), ok=True)
     clear_global_rate_limit(schedule)
     save_schedule(SCHEDULE_STATE, schedule)
 

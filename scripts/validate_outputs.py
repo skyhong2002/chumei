@@ -61,6 +61,25 @@ def main():
     if len(api.get("events", [])) != len(events):
         errors += fail("api/events.json count mismatch")
 
+    try:
+        status = json.loads((SITE / "api" / "status.json").read_text())
+        sources = status.get("sources", [])
+        if not sources:
+            errors += fail("api/status.json has zero sources")
+        if status.get("counts", {}).get("sources") != len(sources):
+            errors += fail("api/status.json source count mismatch")
+        required = {"id", "name", "backend", "lastAttempt", "lastSuccess", "nextDue", "targetIntervalHours"}
+        for source in sources:
+            if required - set(source):
+                errors += fail(f"status source missing fields: {source.get('id')}")
+                break
+        if "token" in json.dumps(status).lower():
+            errors += fail("api/status.json may expose a token field")
+        if not (SITE / "status" / "index.html").exists():
+            errors += fail("status page missing")
+    except Exception as e:
+        errors += fail(f"api/status.json unparseable: {e}")
+
     for name in ("data/map/campuses.geojson", "data/map/buildings.geojson"):
         try:
             geo = json.loads((SITE / name).read_text())

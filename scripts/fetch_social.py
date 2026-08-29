@@ -15,6 +15,7 @@ import requests
 
 from chumei_lib import SeenState, append_inbox, load_env, now_iso, read_sources_csv, ROOT
 from fetch_instagram import strip_html, parse_feed as _ig_parse  # 共用 HTML 清理
+from source_status import record_api_call, record_fetch
 
 RAW_SOURCE = "rsshub-social"
 ERROR_LOG = ROOT / "state" / "seen" / "social_errors.jsonl"
@@ -94,13 +95,14 @@ def main():
             resp.raise_for_status()
             if b"<rss" not in resp.content[:200]:
                 raise RuntimeError(f"non-RSS response ({resp.status_code})")
+            posts = list(parse_feed(resp.text, platform))[: args.limit]
             import html as _html
             m_av = re.search(r"<image><url>([^<]+)</url>", resp.text)
             if m_av:
                 from chumei_lib import save_avatar
                 save_avatar(f"{platform}_{username}", _html.unescape(m_av.group(1)))
             fresh = []
-            for p in list(parse_feed(resp.text, platform))[: args.limit]:
+            for p in posts:
                 if seen.has(source_id, p["post_id"]):
                     continue
                 fresh.append({
@@ -117,9 +119,13 @@ def main():
             n = append_inbox(RAW_SOURCE, fresh)
             seen.save()
             total_new += n
+            record_api_call("RSSHub", operation=platform, ok=True)
+            record_fetch(f"{platform}:{username}", backend="RSSHub", ok=True, items=len(posts))
             print(f"[{i+1}/{len(rows)}] {platform}/@{username}: +{n}")
         except Exception as e:
             failed += 1
+            record_api_call("RSSHub", operation=platform, ok=False)
+            record_fetch(f"{platform}:{username}", backend="RSSHub", ok=False, error=e)
             log_error(platform, username, e)
             print(f"[{i+1}/{len(rows)}] {platform}/@{username}: ERROR {str(e)[:100]}", file=sys.stderr)
         if i < len(rows) - 1:

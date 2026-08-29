@@ -20,6 +20,7 @@ from chumei_lib import (
     now_iso,
     read_sources_csv,
 )
+from source_status import record_fetch
 
 try:
     import requests
@@ -279,6 +280,7 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch NYCU InfoNews announcements")
     parser.add_argument("--max-pages", type=int, default=2, help="maximum list pages per source (default: 2)")
     parser.add_argument("--limit", type=int, default=None, help="maximum new items per source (default: unlimited)")
+    parser.add_argument("--sources", help="comma-separated source_id values")
     args = parser.parse_args()
     if args.max_pages < 1:
         parser.error("--max-pages must be at least 1")
@@ -286,6 +288,9 @@ def main():
         parser.error("--limit cannot be negative")
 
     rows = [row for row in read_sources_csv("bulletin_sources.csv") if row.get("type", "").strip() == "infonews_category"]
+    if args.sources:
+        wanted = {value.strip() for value in args.sources.split(",") if value.strip()}
+        rows = [row for row in rows if row.get("source_id", "").strip() in wanted]
     seen = SeenState(RAW_SOURCE)
     client = HttpClient(delay=1.0)
     total_new = 0
@@ -338,9 +343,11 @@ def main():
                 seen.add(source_id, item["post_id"])
             seen.save()
             total_new += written
+            record_fetch(f"bulletin:{source_id}", backend="NYCU InfoNews", ok=True, items=len(fresh))
             print(f"[{index}/{len(rows)}] {source_id}: +{written}")
         except NETWORK_ERRORS + (ValueError,) as exc:
             failures += 1
+            record_fetch(f"bulletin:{source_id}", backend="NYCU InfoNews", ok=False, error=exc)
             print(f"[{index}/{len(rows)}] {source_id}: ERROR {exc}", file=sys.stderr)
 
     print(f"done: {total_new} new items, {failures} failures / {len(rows)} sources")

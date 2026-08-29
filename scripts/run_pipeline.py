@@ -42,6 +42,10 @@ def main():
     results = {}
 
     if not args.skip_fetch:
+        # 登入者的優先要求先消化少量；仍由 processor 套用 IG 冷卻與 Apify 額度保護。
+        results["priority_fetch"] = run_step(
+            "priority fetch queue", ["process_fetch_requests.py", "--max-requests", "2", "--buffer-seconds", "20"]
+        )
         results["nycu_life"] = run_step("NYCU LIFE", ["fetch_nycu_life.py"])
         results["infonews"] = run_step("infonews", ["fetch_infonews.py", "--max-pages", "2"])
         results["rpage"] = run_step("rpage", ["fetch_rpage.py", "--max-pages", "2"])
@@ -77,6 +81,7 @@ def main():
     results["extract"] = run_step("extract", ["extract_events.py"])
     results["map"] = run_step("map", ["build_map_data.py"])
     results["build"] = (results["map"] and run_step("build", ["build_site.py"])
+                        and run_step("status", ["build_status_page.py"])
                         and run_step("validate", ["validate_outputs.py"]))
     # Telegram 改由獨立 launchd job（tw.observe.chumei.telegram，每 30 分鐘、
     # 每次最多 2 則）滴灌發送，與抓取節奏解耦，避免一輪攢一堆一次炸出。

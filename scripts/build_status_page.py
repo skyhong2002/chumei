@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Generate the public crawler status page and machine-readable status API."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from build_site import page_shell
+from chumei_lib import ROOT
+from source_status import build_status_payload
+
+
+OUT_API = ROOT / "site" / "api" / "status.json"
+OUT_PAGE = ROOT / "site" / "status" / "index.html"
+
+
+STYLE = r"""
+<style>
+.status-page{max-width:1180px;margin:0 auto;padding:28px 20px 70px}.status-hero{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:end;margin-bottom:24px}.status-hero h1{font-size:clamp(2rem,5vw,3.5rem);margin:.15em 0}.status-lede{max-width:760px;color:var(--muted);line-height:1.7}.snapshot{font-size:.84rem;color:var(--muted);text-align:right}.status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0}.metric,.backend-card{border:1px solid var(--border);border-radius:18px;background:var(--surface);padding:16px}.metric b{display:block;font-size:1.8rem;margin-top:5px}.metric span,.backend-card small{color:var(--muted)}.backend-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:22px 0}.backend-card h2{font-size:1.08rem;margin:0 0 10px}.backend-card dl{display:grid;grid-template-columns:1fr auto;gap:7px 14px;margin:0;font-size:.9rem}.backend-card dt{color:var(--muted)}.backend-card dd{margin:0;font-variant-numeric:tabular-nums}.quota-bar{height:7px;border-radius:9px;background:var(--border);overflow:hidden;margin:12px 0}.quota-bar i{display:block;height:100%;background:#d96b45}.status-note{border:1px solid var(--border);border-radius:14px;padding:13px 16px;color:var(--muted);line-height:1.55}.source-tools{display:grid;grid-template-columns:minmax(180px,1fr) repeat(2,minmax(130px,220px));gap:10px;margin:24px 0 12px}.source-tools input,.source-tools select{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:inherit}.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:18px;background:var(--surface)}.source-table{width:100%;border-collapse:collapse;min-width:980px;font-size:.88rem}.source-table th,.source-table td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:middle}.source-table th{position:sticky;top:0;background:var(--surface);z-index:1;color:var(--muted);font-weight:600}.source-table tr:last-child td{border-bottom:0}.source-name{font-weight:650}.source-sub{font-size:.78rem;color:var(--muted);margin-top:3px}.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 8px;font-size:.76rem;background:var(--soft)}.pill:before{content:"";width:7px;height:7px;border-radius:50%;background:#6a9f75}.pill.due:before{background:#d1993f}.pill.error:before{background:#c94d4d}.fetch-button{border:1px solid var(--border);background:transparent;color:inherit;border-radius:9px;padding:7px 9px;cursor:pointer;white-space:nowrap}.fetch-button:hover{background:var(--soft)}.fetch-button:disabled{opacity:.48;cursor:not-allowed}.status-message{min-height:1.4em;margin:10px 2px;color:var(--muted);font-size:.9rem}.error-text{color:#b54848;max-width:240px}.mono{font-variant-numeric:tabular-nums}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:800px){.status-hero{grid-template-columns:1fr}.snapshot{text-align:left}.status-grid{grid-template-columns:repeat(2,1fr)}.backend-grid{grid-template-columns:1fr}.source-tools{grid-template-columns:1fr}.status-page{padding-inline:14px}}
+</style>
+"""
+
+
+SCRIPT = r"""
+<script>
+(() => {
+  const state={data:null,auth:false,filter:'',platform:'',status:''};
+  const fmtTime=value=>{if(!value)return '尚無紀錄';const d=typeof value==='number'?new Date(value*1000):new Date(value);return isNaN(d)?'尚無紀錄':new Intl.DateTimeFormat('zh-TW',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Taipei'}).format(d)};
+  const fmtInterval=h=>{if(h==null)return '累積中';if(h<48)return `${h.toFixed(h<10?1:0)} 小時`;return `${(h/24).toFixed(h<96?1:0)} 天`};
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function renderCards(){const d=state.data,c=d.counts;document.querySelector('#metrics').innerHTML=[['監測來源',c.sources],['等待排程',c.due],['目前錯誤',c.errors],['正常／未到期',c.fresh]].map(x=>`<div class="metric"><span>${x[0]}</span><b>${x[1].toLocaleString()}</b></div>`).join('');
+    const a=d.apify||{}, percent=a.limitUsd?Math.min(100,a.usedUsd/a.limitUsd*100):0;
+    const pacing={RSSHub:'貼文約 24 小時／帳號',Instaloader:'限動約 18 小時／帳號'};const cards=['RSSHub','Instaloader'].map(name=>{const u=d.apiUsage[name];return `<article class="backend-card"><h2>${name}</h2><dl><dt>目標頻率</dt><dd>${pacing[name]}</dd><dt>近 24 小時 API 請求</dt><dd>${u.requests24h}</dd><dt>近 24 小時帳號次數</dt><dd>${u.sources24h}</dd><dt>近 30 天 API 請求</dt><dd>${u.requests30d}</dd><dt>近 24 小時錯誤</dt><dd>${u.errors24h}</dd></dl></article>`});
+    cards.push(`<article class="backend-card"><h2>Apify</h2><dl><dt>目標頻率</dt><dd>約 7 天／粉專</dd><dt>本期已用</dt><dd>US$${Number(a.usedUsd||0).toFixed(3)} / ${Number(a.limitUsd||0).toFixed(2)}</dd><dt>剩餘額度</dt><dd>US$${Number(a.remainingUsd||0).toFixed(3)}</dd><dt>API 請求（24h / 30d）</dt><dd>${d.apiUsage.Apify.requests24h} / ${d.apiUsage.Apify.requests30d}</dd><dt>執行中的 Actor</dt><dd>${a.activeActorJobs||0}</dd></dl><div class="quota-bar" aria-label="Apify 額度使用 ${percent.toFixed(0)}%"><i style="width:${percent}%"></i></div><small>${a.exhausted?'本期額度已用完，Facebook 優先抓取會延後。':`額度週期至 ${fmtTime(a.cycleEnd)}`}</small></article>`);document.querySelector('#backends').innerHTML=cards.join('');}
+  function renderRows(){const q=state.filter.toLowerCase();const rows=state.data.sources.filter(s=>(!q||`${s.name} ${s.username} ${s.backend}`.toLowerCase().includes(q))&&(!state.platform||s.platform===state.platform)&&(!state.status||s.status===state.status));document.querySelector('#source-count').textContent=`顯示 ${rows.length.toLocaleString()} / ${state.data.sources.length.toLocaleString()} 筆`;
+    document.querySelector('#source-rows').innerHTML=rows.map(s=>`<tr><td><div class="source-name">${esc(s.name)}</div><div class="source-sub">${esc(s.platform)} · ${esc(s.username)}</div></td><td>${esc(s.backend)}</td><td><span class="pill ${s.status}">${s.status==='ok'?'正常':s.status==='due'?'等待排程':'錯誤'}</span>${s.lastError?`<div class="error-text">${esc(s.lastError)}</div>`:''}</td><td class="mono">${fmtTime(s.lastAttempt)}</td><td class="mono">${fmtTime(s.lastSuccess)}</td><td class="mono">${fmtTime(s.nextDue)}</td><td>${fmtInterval(s.targetIntervalHours)}<div class="source-sub">實際平均：${fmtInterval(s.averageIntervalHours)}</div></td><td><button class="fetch-button" data-id="${esc(s.id)}" ${!state.auth||s.blockedReason?'disabled':''} title="${esc(!state.auth?'登入後可要求優先抓取':s.blockedReason||'加入優先抓取佇列')}">${s.blockedReason?'額度受限':'優先抓取'}</button></td></tr>`).join('')||'<tr><td colspan="8">沒有符合的來源。</td></tr>';}
+  async function requestFetch(id,button){button.disabled=true;const msg=document.querySelector('#status-message');msg.textContent='正在加入佇列…';try{const r=await fetch('/auth/fetch-requests',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceId:id})});const p=await r.json();if(!r.ok)throw new Error(p.error||'要求失敗');msg.textContent=p.code==='duplicate'?'這個來源已在優先佇列中。':'已加入優先佇列，仍會遵守冷卻與 API 額度。';button.textContent='已排隊';}catch(e){msg.textContent=e.message;button.disabled=false;}}
+  document.addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b)requestFetch(b.dataset.id,b)});document.querySelector('#source-search').addEventListener('input',e=>{state.filter=e.target.value;renderRows()});document.querySelector('#platform-filter').addEventListener('change',e=>{state.platform=e.target.value;renderRows()});document.querySelector('#status-filter').addEventListener('change',e=>{state.status=e.target.value;renderRows()});
+  Promise.all([fetch('/api/status.json',{cache:'no-store'}).then(r=>r.json()),fetch('/auth/me',{cache:'no-store'}).then(r=>r.ok?r.json():{authenticated:false}).catch(()=>({authenticated:false}))]).then(([data,me])=>{state.data=data;state.auth=!!me.authenticated;document.querySelector('#snapshot').textContent=`資料快照：${fmtTime(data.generatedAt)} · ${state.auth?'已登入，可要求優先抓取':'登入後可要求優先抓取'}`;renderCards();renderRows()}).catch(e=>{document.querySelector('#status-message').textContent=`狀態資料讀取失敗：${e.message}`});
+})();
+</script>
+"""
+
+
+def build() -> dict:
+    payload = build_status_payload()
+    OUT_API.parent.mkdir(parents=True, exist_ok=True)
+    OUT_PAGE.parent.mkdir(parents=True, exist_ok=True)
+    OUT_API.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    content = f"""
+<section class="status-page">
+  <div class="status-hero"><div><p class="eyebrow">CRAWLER STATUS</p><h1>資料來源狀態</h1><p class="status-lede">查看每個公開帳號與公告來源最後一次嘗試、最後成功與下一次預定抓取時間。排程採批次與緩衝設計；「優先抓取」只會把登入者指定的來源提前排隊，不會繞過 Instagram 全域冷卻或 Apify 成本上限。</p></div><p class="snapshot" id="snapshot">資料快照：載入中…</p></div>
+  <div class="status-grid" id="metrics" aria-label="狀態摘要"></div>
+  <div class="backend-grid" id="backends" aria-label="API 使用量"></div>
+  <p class="status-note">目標頻率是排程設定；「實際平均」由成功抓取的歷史紀錄計算，至少有兩次成功後才會出現。沒有新貼文仍算成功抓取；目前錯誤不會因下一個批次成功而被藏起來。</p>
+  <div class="source-tools"><label><span class="sr-only">搜尋來源</span><input id="source-search" type="search" placeholder="搜尋名稱、帳號或後端"></label><label><span class="sr-only">平台</span><select id="platform-filter"><option value="">全部平台</option><option>Instagram</option><option>Facebook</option><option>Threads</option><option>X</option><option>校園公告</option></select></label><label><span class="sr-only">狀態</span><select id="status-filter"><option value="">全部狀態</option><option value="ok">正常</option><option value="due">等待排程</option><option value="error">錯誤</option></select></label></div>
+  <p id="source-count" class="source-sub"></p><p id="status-message" class="status-message" role="status"></p>
+  <div class="table-wrap"><table class="source-table"><thead><tr><th>來源</th><th>爬取方式</th><th>狀態</th><th>最後嘗試</th><th>最後成功</th><th>下次預定</th><th>頻率</th><th>操作</th></tr></thead><tbody id="source-rows"><tr><td colspan="8">載入中…</td></tr></tbody></table></div>
+</section>{STYLE}{SCRIPT}
+"""
+    OUT_PAGE.write_text(page_shell("資料來源狀態｜竹梅活動觀測站", "竹梅各公開來源最後與下次爬取時間、實際頻率和 API 使用量。", content, canonical="https://chumei.observe.tw/status/"), encoding="utf-8")
+    return payload
+
+
+if __name__ == "__main__":
+    result = build()
+    print(f"status: {result['counts']['sources']} sources, {result['counts']['errors']} errors")

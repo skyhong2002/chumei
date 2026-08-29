@@ -107,6 +107,36 @@ class AuthServerTests(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 1)
             self.assertEqual(conn.execute("SELECT count(*) FROM oauth_identities").fetchone()[0], 1)
 
+    def test_priority_fetch_requests_require_login_and_use_known_sources(self):
+        denied = self.client.post(
+            "/auth/fetch-requests", json={"sourceId": "instagram:nthu_official"}
+        )
+        self.assertEqual(denied.status_code, 401)
+
+        self._login()
+        unknown = self.client.post(
+            "/auth/fetch-requests", json={"sourceId": "shell:../../anything"}
+        )
+        self.assertEqual(unknown.status_code, 400)
+
+        created = self.client.post(
+            "/auth/fetch-requests", json={"sourceId": "instagram:nthu_official"}
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()["request"]["sourceId"], "instagram:nthu_official")
+        self.assertEqual(created.json()["request"]["status"], "pending")
+
+        duplicate = self.client.post(
+            "/auth/fetch-requests", json={"sourceId": "instagram:nthu_official"}
+        )
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertEqual(duplicate.json()["code"], "duplicate")
+
+        listing = self.client.get("/auth/fetch-requests")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()["dailyLimit"], auth_server.FETCH_REQUEST_DAILY_LIMIT)
+        self.assertEqual(len(listing.json()["requests"]), 1)
+
     def test_repeat_login_reuses_identity(self):
         self._login()
         self._login()

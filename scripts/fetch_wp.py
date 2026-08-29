@@ -12,6 +12,7 @@ import time
 import requests
 
 from chumei_lib import SeenState, append_inbox, now_iso, read_sources_csv
+from source_status import record_fetch
 
 RAW_SOURCE = "wp"
 
@@ -26,14 +27,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-page", type=int, default=20)
     ap.add_argument("--pages", type=int, default=1)
+    ap.add_argument("--sources", help="comma-separated source_id values")
     args = ap.parse_args()
 
     rows = [r for r in read_sources_csv("bulletin_sources.csv") if r.get("type") == "wp_api"]
+    if args.sources:
+        wanted = {value.strip() for value in args.sources.split(",") if value.strip()}
+        rows = [row for row in rows if row.get("source_id", "").strip() in wanted]
     seen = SeenState(RAW_SOURCE)
     total = 0
     for row in rows:
         base = row["url"].rstrip("/")
         fresh = []
+        failed = False
         for page in range(1, args.pages + 1):
             try:
                 resp = requests.get(f"{base}/wp-json/wp/v2/posts",
@@ -43,6 +49,8 @@ def main():
                 posts = resp.json()
             except Exception as e:
                 print(f"{row['source_id']}: page {page} ERROR {str(e)[:100]}", file=sys.stderr)
+                failed = True
+                record_fetch(f"bulletin:{row['source_id']}", backend="WordPress API", ok=False, error=e)
                 break
             if not posts:
                 break
@@ -74,6 +82,8 @@ def main():
         n = append_inbox(RAW_SOURCE, fresh)
         seen.save()
         total += n
+        if not failed:
+            record_fetch(f"bulletin:{row['source_id']}", backend="WordPress API", ok=True, items=len(fresh))
         print(f"{row['source_id']}: +{n}")
     print(f"wp: {total} new items from {len(rows)} site(s)")
     return 0
