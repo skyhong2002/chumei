@@ -734,7 +734,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   transition: transform var(--motion-normal, 220ms) var(--motion-ease), box-shadow var(--motion-normal, 220ms);
 }
 .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-raised); }
-.card a.card-link { color: inherit; display: flex; flex-direction: column; height: 100%; }
+.card a.card-link { color: inherit; display: flex; flex: 1; flex-direction: column; }
 .card a.card-link:hover { text-decoration: none; }
 .card-media { position: relative; aspect-ratio: 1 / 1; background: var(--color-surface-soft); overflow: hidden; }
 .card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -782,6 +782,11 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 .card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .card-title { font-size: 1.02rem; font-weight: 600; line-height: 1.45; margin: 0; }
 .card-meta { font-size: 0.83rem; color: var(--color-text-muted); margin: 0; }
+.card-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 60px; padding: 8px 10px;
+  border-top: 1px solid var(--color-border-subtle);
+}
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0; }
 .chip {
   font-size: 0.75rem; font-weight: 600; border-radius: var(--radius-pill);
@@ -1025,19 +1030,19 @@ main.main-wide { max-width: min(1680px, 100%); }
 .src-row {
   display: grid;
   /* 連結欄不設上限時會吃掉標籤欄（長 handle 讓標籤被壓成直排）——給它上限並讓它換行 */
-  grid-template-columns: 46px minmax(170px, 1.2fr) minmax(130px, 1.4fr) minmax(0, 150px) 78px 52px 52px;
+  grid-template-columns: 46px minmax(170px, 1.2fr) minmax(130px, 1.4fr) minmax(0, 150px) 78px 52px 118px;
   gap: 10px; align-items: center;
   padding: 10px 6px; border-bottom: 1px solid var(--color-border-subtle);
 }
 .src-row > * { min-width: 0; }
 .src-c-follow {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; padding: 0; border-radius: 50%; cursor: pointer;
+  width: auto; min-width: 108px; height: 44px; padding: 0 12px; border-radius: var(--radius-pill); cursor: pointer;
   border: 1px solid var(--color-border-strong); background: none;
   color: var(--color-text-primary); font-family: inherit; justify-self: end;
 }
 .src-c-follow:hover { background: var(--color-surface-soft); }
-.src-c-follow svg { width: 15px; height: 15px; margin: 0; }
+.src-c-follow svg { width: 17px; height: 17px; margin: 0 6px 0 0; }
 .src-c-follow[aria-pressed="true"] {
   border-color: var(--color-bell-on); background: var(--color-bell-on-surface); color: var(--color-bell-on);
 }
@@ -1078,6 +1083,10 @@ main.main-wide { max-width: min(1680px, 100%); }
   /* 中等寬度：拿掉標籤欄與 ID，其餘維持表格排版 */
   .src-row, .src-head { grid-template-columns: 40px minmax(150px, 1.2fr) minmax(120px, 1.3fr) 70px 48px 48px; }
   .src-c-chips, .src-head .src-th-plain:not(.src-th-links) { display: none; }
+  .src-c-follow { width: 44px; min-width: 44px; padding: 0; border-radius: 50%; }
+  .src-c-follow.heart-btn-label .hb-follow,
+  .src-c-follow.heart-btn-label .hb-following { display: none; }
+  .src-c-follow.heart-btn-label svg { margin-right: 0; }
 }
 @media (max-width: 700px) {
   /* 手機 compact 兩行：上行＝頭貼＋名稱＋迷你校別章＋場數，下行＝連結＋更新 */
@@ -1384,8 +1393,9 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   border: 1px solid var(--color-border-subtle);
 }
 .feed-evs { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.feed-ev-row { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
 .feed-ev {
-  display: flex; gap: 10px; align-items: baseline; min-width: 0;
+  display: flex; flex: 1; gap: 10px; align-items: baseline; min-width: 0;
   padding: 10px 14px; border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md); color: var(--color-text-primary);
   font-size: 0.88rem; font-weight: 600;
@@ -1393,6 +1403,15 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .feed-ev-date { flex-shrink: 0; color: var(--color-text-secondary); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .feed-ev-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed-ev:hover { background: var(--color-surface-soft); text-decoration: none; }
+.feed-ev-going {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  width: 44px; min-width: 44px; min-height: 44px; padding: 0 7px;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+}
+.feed-ev-going:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.feed-ev-going svg { width: 18px; height: 18px; }
+.feed-ev-going[aria-pressed="true"] { background: var(--color-success-surface); border-color: var(--color-success-text); }
 .feed-actions { display: flex; gap: 4px; margin: 4px 0 0 -10px; }
 .feed-action {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
@@ -1575,7 +1594,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 /* 名錄表頭（點擊排序） */
 .src-head {
   display: grid;
-  grid-template-columns: 46px minmax(170px, 1.2fr) minmax(130px, 1.4fr) minmax(0, 150px) 78px 52px 52px;
+  grid-template-columns: 46px minmax(170px, 1.2fr) minmax(130px, 1.4fr) minmax(0, 150px) 78px 52px 118px;
   gap: 10px; align-items: center;
   padding: 6px 6px; border-bottom: 2px solid var(--color-border-strong);
   position: sticky; top: 0; z-index: 5;
@@ -1669,6 +1688,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   background: var(--color-surface-soft); color: var(--color-text-secondary);
   font-size: 0.7rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
 }
+.heart-count[hidden], .going-count[hidden] { display: none; }
 .src-c-follow .heart-count,
 .card-heart .heart-count,
 .ev-row-heart .heart-count {
@@ -1686,11 +1706,9 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   background: var(--color-bell-on-surface); border-color: var(--color-bell-on); color: var(--color-bell-on);
 }
 .card-heart {
-  position: absolute; top: 10px; right: 10px; z-index: 2;
-  width: 38px; height: 38px; border: 0; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: rgb(0 0 0 / 45%); color: #fff;
-  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  min-width: 44px; height: 44px; padding: 0 12px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--color-surface); color: var(--color-text-secondary);
 }
 .card-heart svg { width: 20px; height: 20px; }
 .card-heart[aria-pressed="true"] { color: var(--color-bell-on); }
@@ -1698,10 +1716,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .heart-btn-label .hb-following { display: none; }
 .heart-btn-label[aria-pressed="true"] .hb-follow { display: none; }
 .heart-btn-label[aria-pressed="true"] .hb-following { display: inline; }
-/* 名錄列的追蹤鈴鐺固定為純 icon；文字狀態仍由 aria-label / title 提供。 */
-.src-c-follow.heart-btn-label .hb-follow,
-.src-c-follow.heart-btn-label .hb-following { display: none; }
-.src-c-follow.heart-btn-label svg { width: 18px; height: 18px; margin-right: 0; }
+.src-c-follow.heart-btn-label svg { width: 17px; height: 17px; }
 .chumei-toast {
   position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 80;
   transform: translate(-50%, 12px);
@@ -1718,7 +1733,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .ev-row-wrap .ev-row { flex: 1; min-width: 0; padding-right: 44px; }
 .ev-row-heart {
   position: absolute; top: 50%; right: 2px; transform: translateY(-50%); z-index: 2;
-  width: 36px; height: 36px; border: 0; border-radius: 50%; background: none;
+  width: 44px; height: 44px; border: 0; border-radius: 50%; background: none;
   display: flex; align-items: center; justify-content: center; color: var(--color-text-muted);
 }
 .ev-row-heart:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
@@ -1867,7 +1882,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .notify-community-stats strong { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
 .notify-community-stats small { color: var(--color-text-muted); font-size: 0.78rem; }
 
-/* ---------- 「我要去」計數 ---------- */
+/* ---------- 「我會去」計數 ---------- */
 .going-btn { cursor: pointer; font-family: inherit; background: none; }
 .going-btn .going-count {
   font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.82rem;
@@ -1875,26 +1890,24 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .going-btn[aria-pressed="true"] { color: var(--color-success-text); }
 .going-btn[aria-pressed="true"] svg { stroke-width: 2.6; }
 .going-btn:disabled { opacity: 0.6; pointer-events: none; }
-/* 活動卡：封面右下 */
+/* 活動卡：和追蹤主辦並列於卡片操作區 */
 .card-going {
-  position: absolute; right: 10px; bottom: 10px; z-index: 2;
-  display: inline-flex; align-items: center; gap: 5px; min-width: 38px; height: 32px;
-  padding: 0 10px; border: 0; border-radius: 999px;
-  background: rgb(0 0 0 / 45%); color: #fff;
-  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: inline-flex; align-items: center; gap: 5px; min-width: 44px; height: 44px;
+  padding: 0 12px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill);
+  background: var(--color-surface); color: var(--color-text-secondary);
 }
 .card-media { position: relative; }
 .card-going svg { width: 17px; height: 17px; }
-.card-going[aria-pressed="true"] { background: var(--color-success-surface); color: var(--color-success-text); }
+.card-going[aria-pressed="true"] { background: var(--color-success-surface); border-color: var(--color-success-text); color: var(--color-success-text); }
 /* 活動列：與追蹤鈴鐺並排 */
 .ev-row-going {
-  position: absolute; top: 50%; right: 40px; transform: translateY(-50%); z-index: 2;
-  display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px;
+  position: absolute; top: 50%; right: 46px; transform: translateY(-50%); z-index: 2;
+  display: inline-flex; align-items: center; gap: 4px; min-width: 44px; height: 44px; padding: 0 8px;
   border: 0; border-radius: 999px; color: var(--color-text-muted);
 }
 .ev-row-going:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
 .ev-row-going svg { width: 17px; height: 17px; }
-.ev-row-wrap .ev-row { padding-right: 92px; }
+.ev-row-wrap .ev-row { padding-right: 98px; }
 /* 詳情頁：文字按鈕 */
 .going-btn-label svg { width: 18px; height: 18px; margin-right: 7px; }
 .going-btn-label .gb-going { display: none; }
@@ -1906,6 +1919,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 .btn.going-btn .going-count { margin-left: 7px; }
 .going-badge { font-size: 0.8rem; color: var(--color-success-text); font-weight: 600; }
+.inline-bell { width: 17px; height: 17px; margin-right: 6px; vertical-align: -3px; }
 
 /* 側欄搜尋入口（桌機/平板；手機用頂欄右上的 🔍） */
 .nav-search {
@@ -1955,4 +1969,10 @@ button.btn:hover { background: var(--color-surface-soft); }
 /* 名錄表頭：中等寬度要跟列用同一套 6 欄格線（放在 .src-head 基本規則之後才蓋得過） */
 @media (min-width: 701px) and (max-width: 1180px) {
   .src-head { grid-template-columns: 40px minmax(150px, 1.2fr) minmax(120px, 1.3fr) 70px 48px 48px; }
+  .src-c-follow.heart-btn-label .hb-follow,
+  .src-c-follow.heart-btn-label .hb-following { display: none; }
+}
+@media (max-width: 700px) {
+  .src-c-follow.heart-btn-label .hb-follow,
+  .src-c-follow.heart-btn-label .hb-following { display: none; }
 }

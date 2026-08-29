@@ -241,7 +241,7 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(response.json()["following"], [{"id": 5, "name": "交大電機系學會"}])
 
     def test_event_going_counter(self):
-        """我要去：需登入、一人一場只算一次、可取消、計數公開。"""
+        """我會去：需登入、一人一場只算一次、可移除、計數公開。"""
         anon = self.client.get("/auth/events")
         self.assertEqual(anon.status_code, 200)
         self.assertFalse(anon.json()["authenticated"])
@@ -349,7 +349,7 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("追蹤的單位", page)
         self.assertIn("測試熱舞社", page)
         self.assertIn('href="/org/42/"', page)
-        self.assertIn("要去的活動", page)
+        self.assertIn("我會去的活動", page)
         self.assertIn("編輯個人檔案", page)
         settings = self.client.get("/account/").text
         self.assertIn("我的回報", settings)
@@ -583,8 +583,8 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(feed.status_code, 200)
         self.assertTrue(feed.headers["content-type"].startswith("text/calendar"))
         self.assertIn("BEGIN:VCALENDAR", feed.text)
-        self.assertIn("X-WR-CALNAME:竹梅 student123 已追蹤", feed.text)
-        self.assertIn("NAME:竹梅 student123 已追蹤", feed.text)
+        self.assertIn("X-WR-CALNAME:竹梅｜student123 會去的活動", feed.text)
+        self.assertIn("NAME:竹梅｜student123 會去的活動", feed.text)
         self.assertIn("BEGIN:VTIMEZONE", feed.text)
         self.assertIn("X-WR-CALDESC:", feed.text)
         self.assertIn("X-APPLE-CALENDAR-COLOR:", feed.text)
@@ -594,7 +594,7 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("私密訂閱連結", account)
         self.assertIn('data-copy="https://chumei.observe.tw/auth/calendar/', account)
         self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "sky_cal"})
-        self.assertIn("X-WR-CALNAME:竹梅 sky_cal 已追蹤",
+        self.assertIn("X-WR-CALNAME:竹梅｜sky_cal 會去的活動",
                       self.client.get(f"/auth/calendar/{token}.ics").text)
         if auth_server.EVENTS_DATA_PATH.exists():
             events = json.loads(auth_server.EVENTS_DATA_PATH.read_text())["events"]
@@ -630,7 +630,7 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("/feeds/s/", feed["ics"])
         self.assertTrue(feed["rss"].endswith(".xml"))
         self.assertIn("光復社團活動", self.client.get("/account/").text)
-        self.assertIn("我要去行事曆", self.client.get("/account/").text)
+        self.assertIn("我會去的活動行事曆", self.client.get("/account/").text)
 
         original_url = feed["ics"]
         updated = self.client.patch(

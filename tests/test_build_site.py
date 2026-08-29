@@ -171,6 +171,21 @@ class SourceTableTests(unittest.TestCase):
         self.assertNotIn('data-sort="events">收錄 ↓</button>', rendered)
 
 
+class FeedActionTests(unittest.TestCase):
+    def test_event_chip_has_a_separate_accessible_going_action(self):
+        rendered = build_site._feed_ev_chip({
+            "id": "evt_test",
+            "title": "測試活動",
+            "start_at": "2026-09-01T19:00:00+08:00",
+            "all_day": False,
+        })
+
+        self.assertIn('<div class="feed-ev-row">', rendered)
+        self.assertIn('data-event-id="evt_test"', rendered)
+        self.assertIn('aria-label="我會去：測試活動"', rendered)
+        self.assertNotIn('<a class="feed-ev" data-id="evt_test" href="/event/evt_test/"><button', rendered)
+
+
 class RelatedEventsTests(unittest.TestCase):
     @staticmethod
     def event(event_id, title, start_at, campus="nycu-guangfu", venue=None, category="市集", org_id=None):
@@ -227,6 +242,8 @@ class RelatedEventsTests(unittest.TestCase):
         self.assertIn("實際關係以主辦單位公告為準", rendered)
         self.assertIn("美術社社博攤位", rendered)
         self.assertIn("同場社博", rendered)
+        self.assertIn('data-event-title="社團博覽會"', rendered)
+        self.assertIn('<span class="gb-go">我會去</span><span class="gb-going">已加入</span>', rendered)
 
 
 if __name__ == "__main__":

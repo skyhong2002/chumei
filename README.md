@@ -31,9 +31,9 @@
 
 - **活動與貼文河道**：首頁貼文河道，以及地圖、列表、日曆三種活動檢視；活動地點可對應校園建築座標。
 - **470+ 單位名錄**：[/source/](https://chumei.observe.tw/source/) 收錄校方、系所、社團與校外主辦，每個單位有自己的活動、貼文與例行時段頁面。
-- **帳號系統**：支援陽明交大 OAuth 與 Google 登入，可互相綁定；提供公開個人頁、追蹤單位、「我要去」、回報紀錄與跨裝置同步。
+- **帳號系統**：支援陽明交大 OAuth 與 Google 登入，可互相綁定；提供公開個人頁、追蹤單位、「我會去」、回報紀錄與跨裝置同步。
 - **自訂行事曆與 RSS**：依學校、類型、校區、主辦自由組合。登入後可儲存最多 10 組具名訂閱，加入「只看我追蹤的單位」，並管理、換發私密網址。
-- **Web Push／PWA**：網站可安裝成 App，依學校、類型、追蹤單位與關鍵字推送；「我要去」活動可在前一天提醒。
+- **Web Push／PWA**：網站可安裝成 App，依學校、類型、追蹤單位與關鍵字推送；「我會去」活動可在前一天提醒。
 - **Telegram 與查詢 Bot**：[Telegram 頻道](https://t.me/chumei_events) 發布新活動；私訊 [@chumei_events_bot](https://t.me/chumei_events_bot) 可用「這週末 清大」「熱舞社」等自然語句搜尋。
 - **AI／開發者介面**：提供 JSON API 與 Streamable HTTP MCP server（`https://chumei.observe.tw/mcp`），讓支援 MCP 的 AI 助理搜尋活動、查名錄與建立訂閱網址。
 - **限時動態牆**：輪播兩校公開 Instagram 限時動態，保留足夠時間讓使用者補看校園消息。
@@ -73,9 +73,9 @@ flowchart LR
 | `scripts/fetch_*.py` | 公告、Instagram、Facebook、Threads、X、WordPress 與限動抓取器 |
 | `scripts/extract_events.py` | LLM 活動判別、文字／海報欄位抽取與快取 |
 | `scripts/build_site.py` | 合併、去重、單位歸戶、場地定位，產生網站、feeds 與 API |
-| `scripts/auth_server.py` | OAuth、Session、個人頁、「我要去」、回報與帳號型自訂訂閱 |
+| `scripts/auth_server.py` | OAuth、Session、個人頁、「我會去」、回報與帳號型自訂訂閱 |
 | `scripts/push_server.py` | Web Push 訂閱 API 與帳號綁定 |
-| `scripts/publish_push.py` | 依偏好滴灌新活動與「我要去」提醒 |
+| `scripts/publish_push.py` | 依偏好滴灌新活動與「我會去」提醒 |
 | `scripts/publish_telegram.py` | 以原始貼文為單位發布 Telegram 訊息 |
 | `scripts/bot_core.py` | Telegram／LINE 共用的自然語句活動查詢核心 |
 | `scripts/mcp_server.py` | 唯讀 MCP server，資料源為 `site/` 建站產物 |
@@ -151,7 +151,7 @@ CHUMEI_FEED_SIGNING_KEY=
 
 - `/account/`：帳號設定、登入方式、行事曆、回報與自訂訂閱管理。
 - `/@handle`：可由使用者關閉的公開個人頁。
-- `/auth/calendar/{token}.ics`：「我要去」活動的私密行事曆，可由帳號頁換發。
+- `/auth/calendar/{token}.ics`：「我會去」活動的私密行事曆，可由帳號頁換發。
 - `/feeds/custom.ics`、`/feeds/custom.xml`：不需登入的多維條件組合。
 - `/feeds/s/{signed-token}.ics`、`.xml`：帳號儲存的私密訂閱；修改條件不更換網址，除非使用者主動換發。
 
@@ -165,7 +165,7 @@ CHUMEI_FEED_SIGNING_KEY=
 - Instagram 支援 `rsshub` 與 `instaloader` 兩個後端；`auto` 會先嘗試 RSSHub，失敗時在該輪切換到 instaloader。
 - Instagram 帳號採持久化分批排程與 jitter，遇到 401／429 會停止該批並指數退避；狀態保存在被 Git 忽略的 `state/`。
 - 首次正常執行會把現有近期活動設為 baseline，避免洗版；後續每輪 pipeline 最多推送 10 則，22:00–07:59 靜音。
-- Web Push 偏好與帳號追蹤跨裝置同步；發布器每 30 分鐘檢查新活動與隔日「我要去」提醒。
+- Web Push 偏好與帳號追蹤跨裝置同步；發布器每 30 分鐘檢查新活動與隔日「我會去」提醒。
 
 ## 登入回報活動
 

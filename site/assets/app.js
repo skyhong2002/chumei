@@ -24,14 +24,14 @@
     canonical.setAttribute("href", canonicalHref);
 
     var KEY_LABEL = {
-      q: "搜尋", kind: "內容", follow: "單位", school: "學校", campus: "校區",
+      q: "搜尋", kind: "內容", follow: "單位", going: "我的活動", school: "學校", campus: "校區",
       platform: "平台", cat: "類型", tag: "標籤", org: "主辦", status: "收錄狀態",
       time: "時間", sort: "排序", dir: "方向", reg: "報名", fee: "費用"
     };
     var VALUE_LABEL = {
       "kind:events": "僅活動貼文", "kind:club": "社團", "kind:gov": "自治組織",
       "kind:dept": "系所", "kind:unit": "校方單位", "kind:bulletin": "公告系統",
-      "kind:ext": "校外單位", "follow:on": "已追蹤單位", "school:nthu": "清大",
+      "kind:ext": "校外單位", "follow:on": "已追蹤單位", "going:on": "我會去的活動", "school:nthu": "清大",
       "school:nycu": "陽明交大", "school:nycu-guangfu": "交大校區",
       "school:nycu-yangming": "陽明校區", "school:both": "兩校聯合",
       "campus:nthu-main": "清大校本部", "campus:nthu-nanda": "清大南大校區",
@@ -676,15 +676,19 @@
         cal: SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
         send: SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
         ext: SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
-        heart: SVG_OPEN + '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>'
+        heart: SVG_OPEN + '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>',
+        ticket: SVG_OPEN + '<path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg>'
       };
 
       function evChip(e) {
         var d = new Date(e.start_at);
         var when = (d.getMonth() + 1) + "/" + d.getDate() +
           (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
-        return '<a class="feed-ev" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
-          '<span class="feed-ev-date">' + esc(when) + '</span><span class="feed-ev-title">' + esc(e.title) + "</span></a>";
+        return '<div class="feed-ev-row"><a class="feed-ev" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
+          '<span class="feed-ev-date">' + esc(when) + '</span><span class="feed-ev-title">' + esc(e.title) + "</span></a>" +
+          '<button class="going-btn feed-ev-going" data-event-id="' + esc(e.id) + '" data-event-title="' + esc(e.title) +
+          '" aria-pressed="false" aria-label="我會去：' + esc(e.title) + '" title="我會去：' + esc(e.title) + '">' + I.ticket +
+          '<span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button></div>';
       }
 
       function row(p) {
@@ -719,8 +723,6 @@
         var shareTitle = ev0 ? ev0.title : (p.source_name || "竹梅活動觀測站");
         var actions = '<div class="feed-actions">' +
           (p.org_id ? '<button class="feed-action heart-btn" data-org-id="' + p.org_id + '" data-org-name="' + esc(p.source_name || "") + '" aria-pressed="false" title="追蹤 ' + esc(p.source_name || "") + '">' + I.heart + "</button>" : "") +
-          (ev0 ? '<a class="feed-action" href="/event/' + ev0.id + '/" title="活動詳情">' + I.cal +
-            (p.events.length > 1 ? "<span>" + p.events.length + "</span>" : "") + "</a>" : "") +
           '<button class="feed-action btn-share" data-url="' + esc(shareUrl) + '" data-title="' + esc(shareTitle) + '" title="分享">' + I.send + "</button>" +
           (p.url ? '<a class="feed-action" href="' + esc(p.url) + '" target="_blank" rel="noopener" title="開啟原文">' + I.ext + "</a>" : "") +
           "</div>";
@@ -1982,18 +1984,18 @@
   // ---- 活動河道 ----
   function initList(bundle) {
     var labels = bundle.labels;
-    var state = { sort: "time", time: "7d", follow: "all", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
+    var state = { sort: "time", time: "7d", going: "all", follow: "all", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
     function followedOrg(id) { return !!(id && window.chumeiFollow && window.chumeiFollow.isFollowed(id)); }
 
     var params = new URLSearchParams(location.search);
-    ["time", "follow", "school", "campus", "cat", "org", "reg", "fee", "q"].forEach(function (k) {
+    ["time", "going", "follow", "school", "campus", "cat", "org", "reg", "fee", "q"].forEach(function (k) {
       if (params.get(k)) state[k] = params.get(k);
     });
     if (state.time === "week") state.time = "7d";
 
     var moreFilters = document.getElementById("more-filters");
     function moreActive() {
-      return state.follow === "on" || state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
+      return state.going === "on" || state.follow === "on" || state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
         state.org !== "all" || state.reg !== "all" || state.fee !== "all";
     }
     // 手機帶著篩選條件進來時直接展開；桌機 popover 用亮點提示
@@ -2010,6 +2012,7 @@
       ["24h", "24 小時"], ["3d", "3 天"], ["7d", "7 天"], ["30d", "1 個月"],
       ["upcoming", "未來全部"], ["all", "全部"]
     ], "time");
+    buildChips("f-going", [["all", "全部活動"], ["on", "我會去"]], "going");
     buildChips("f-follow", [["all", "所有單位"], ["on", "已追蹤單位"]], "follow");
     buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
@@ -2066,6 +2069,7 @@
           if (starts > rangeEnd) return false;
         }
       }
+      if (value("going") === "on" && !(window.chumeiGoing && window.chumeiGoing.isGoing(e.id))) return false;
       if (value("follow") === "on" && !followedOrg(e.org_id)) return false;
       if (value("school") !== "all" && e.school !== value("school") && !(value("school") !== "both" && e.school === "both")) return false;
       if (value("campus") !== "all" && e.campus !== value("campus")) return false;
@@ -2130,11 +2134,12 @@
         : '<span class="evr-thumb evr-thumb-txt np-' + esc(e.school === "nthu" ? "nthu" : e.school === "nycu" ? "nycu" : "other") + '">' +
           (e.school === "nthu" ? "梅" : e.school === "nycu" ? "竹" : "梅竹") + "</span>";
       var rowHeart = e.org_id
-        ? '<button class="heart-btn ev-row-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" title="追蹤 ' + esc(e.org_name || e.organizer || "") + '">' +
+        ? '<button class="heart-btn ev-row-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" aria-label="追蹤主辦：' + esc(e.org_name || e.organizer || "") + '" title="追蹤主辦：' + esc(e.org_name || e.organizer || "") + '">' +
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></button>'
         : "";
-      var rowGoing = '<button class="going-btn ev-row-going" data-event-id="' + esc(e.id) + '" aria-pressed="false" title="標記我要去">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="going-count" hidden></span></button>';
+      var rowGoing = '<button class="going-btn ev-row-going" data-event-id="' + esc(e.id) + '" data-event-title="' + esc(e.title) +
+        '" aria-pressed="false" aria-label="我會去：' + esc(e.title) + '" title="我會去：' + esc(e.title) + '">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button>';
       return '<div class="ev-row-wrap">' + rowGoing + rowHeart + '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
         '<span class="evr-main"><span class="evr-when">' + esc(when) +
         (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">自由入場</span>' : "") +
@@ -2165,14 +2170,15 @@
       var badge = '<div class="date-badge"><span class="m">' + (ongoing ? "至" : "") + (bd.getMonth() + 1) + '月</span><span class="d">' + bd.getDate() + "</span></div>";
       var where = [e.campus ? bundle.labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
       var heart = e.org_id
-        ? '<button class="heart-btn card-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" title="追蹤 ' + esc(e.org_name || e.organizer || "") + '">' +
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg></button>'
+        ? '<button class="heart-btn heart-btn-label card-heart" data-org-id="' + e.org_id + '" data-org-name="' + esc(e.org_name || e.organizer || "") + '" aria-pressed="false" aria-label="追蹤主辦：' + esc(e.org_name || e.organizer || "") + '" title="追蹤主辦：' + esc(e.org_name || e.organizer || "") + '">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg><span class="hb-follow">追蹤主辦</span><span class="hb-following">追蹤中</span></button>'
         : "";
-      return '<div class="card">' + heart + '<a class="card-link" href="/event/' + e.id + '/">' +
+      var going = '<button class="going-btn going-btn-label card-going" data-event-id="' + esc(e.id) + '" data-event-title="' + esc(e.title) +
+        '" aria-pressed="false" aria-label="我會去：' + esc(e.title) + '" title="我會去：' + esc(e.title) + '">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="gb-go">我會去</span><span class="gb-going">已加入</span><span class="going-count" hidden></span></button>';
+      return '<div class="card"><a class="card-link" href="/event/' + e.id + '/">' +
         '<div class="card-media">' + media +
         badge +
-        '<button class="going-btn card-going" data-event-id="' + esc(e.id) + '" aria-pressed="false" title="標記我要去">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="going-count" hidden></span></button>' +
         "</div>" +
         '<div class="card-body">' +
         '<p class="chips"><span class="chip chip-' + esc(e.school) + '">' + esc(labels.school[e.school] || e.school) + "</span>" +
@@ -2184,7 +2190,7 @@
         '<h2 class="card-title">' + esc(e.title) + "</h2>" +
         '<p class="card-meta">' + esc(when) + (where ? "｜" + esc(where) : "") + "</p>" +
         '<p class="card-meta">' + esc(e.organizer || "") + "</p>" +
-        "</div></a></div>";
+        "</div></a><div class=\"card-actions\">" + going + heart + "</div></div>";
     }
 
     // ---- 地圖（預設顯示，卡片接在下方） ----
@@ -2361,12 +2367,12 @@
     }
 
     window.addEventListener("chumei-going-change", function () {
-      if (state.sort === "going") render();
+      if (state.sort === "going" || state.going === "on") render();
     });
     function render() {
       var list = bundle.events.filter(matches);
       if (state.sort === "going") {
-        // 熱門＝竹梅使用者標記「我要去」的人數；同分照時間近的優先
+        // 熱門＝竹梅使用者標記「我會去」的人數；同分照時間近的優先
         var go = window.chumeiGoing;
         list = list.slice().sort(function (a, b) {
           var ca = go ? go.count(a.id) : 0, cb = go ? go.count(b.id) : 0;
@@ -2406,7 +2412,7 @@
   // ---- 日曆 ----
   function initCalendar(bundle) {
     var labels = bundle.labels;
-    var state = { follow: "all", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
+    var state = { going: "all", follow: "all", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
     function followedOrg(id) { return !!(id && window.chumeiFollow && window.chumeiFollow.isFollowed(id)); }
     var params = new URLSearchParams(location.search);
     Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
@@ -2436,6 +2442,7 @@
         host.appendChild(b);
       });
     }
+    buildChips("f-going", [["all", "全部活動"], ["on", "我會去"]], "going");
     buildChips("f-follow", [["all", "所有單位"], ["on", "已追蹤單位"]], "follow");
     buildChips("f-school", [["all", "全部"], ["nthu", "清大"], ["nycu", "陽明交大"], ["both", "兩校聯合"]], "school");
     buildChips("f-campus", [["all", "全部校區"]].concat(Object.keys(labels.campus).map(function (k) { return [k, labels.campus[k]]; })), "campus");
@@ -2444,6 +2451,7 @@
     buildChips("f-reg", [["all", "全部"], ["required", "需報名"], ["free", "自由入場"]], "reg");
     buildChips("f-fee", [["all", "全部"], ["free", "免費"], ["paid", "付費"]], "fee");
     window.addEventListener("chumei-follow-change", function () { redraw(); });
+    window.addEventListener("chumei-going-change", function () { if (state.going === "on") redraw(); });
 
     var search = document.getElementById("search");
     if (search) {
@@ -2453,13 +2461,14 @@
 
     var moreFilters = document.getElementById("more-filters");
     function moreActive() {
-      return state.follow === "on" || state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
+      return state.going === "on" || state.follow === "on" || state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
         state.org !== "all" || state.reg !== "all" || state.fee !== "all";
     }
     if (moreFilters && window.innerWidth <= 700 && moreActive()) moreFilters.open = true;
 
     function matches(e, overrideKey, overrideValue) {
       function value(k) { return overrideKey === k ? overrideValue : state[k]; }
+      if (value("going") === "on" && !(window.chumeiGoing && window.chumeiGoing.isGoing(e.id))) return false;
       if (value("follow") === "on" && !followedOrg(e.org_id)) return false;
       if (value("school") !== "all" && e.school !== value("school") && !(value("school") !== "both" && e.school === "both")) return false;
       if (value("campus") !== "all" && e.campus !== value("campus")) return false;
@@ -2799,11 +2808,11 @@
     document.querySelectorAll(".heart-btn").forEach(function (b) {
       var followed = isFollowed(b.dataset.orgId);
       var name = b.dataset.orgName || "這個單位";
-      var action = followed ? "取消追蹤 " : "追蹤 ";
+      var action = followed ? "取消追蹤主辦：" : "追蹤主辦：";
       var count = numberOrZero(counts[String(b.dataset.orgId)]);
       b.setAttribute("aria-pressed", String(followed));
-      b.setAttribute("aria-label", action + name + (countsReady ? "，" + count + " 人追蹤" : ""));
-      b.setAttribute("title", action + name + (countsReady ? "（" + count + " 人追蹤）" : ""));
+      b.setAttribute("aria-label", action + name + (countsReady && count ? "，" + count + " 人追蹤" : ""));
+      b.setAttribute("title", action + name + (countsReady && count ? "（" + count + " 人追蹤）" : ""));
       if (countsReady) {
         var countEl = b.querySelector(".heart-count");
         if (!countEl) {
@@ -2812,7 +2821,8 @@
           countEl.setAttribute("aria-hidden", "true");
           b.appendChild(countEl);
         }
-        if (countEl.textContent !== String(count)) countEl.textContent = String(count);
+        if (countEl.textContent !== (count ? String(count) : "")) countEl.textContent = count ? String(count) : "";
+        countEl.hidden = !count;
       }
     });
   }
@@ -2842,7 +2852,7 @@
   new MutationObserver(refresh).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState !== "loading") refresh();
   else document.addEventListener("DOMContentLoaded", refresh);
-  window.chumeiToast = toast;   // 共用提示條（「我要去」模組也用）
+  window.chumeiToast = toast;   // 共用提示條（「我會去」模組也用）
   window.chumeiFollow = {
     isFollowed: isFollowed,
     toggle: toggle,
@@ -2862,7 +2872,7 @@
 })();
 
 
-/* 「我要去」計數：綁帳號（一人一場只算一次），未登入可看數字、按下引導登入。 */
+/* 「我會去」計數：綁帳號（一人一場只算一次），未登入可看數字、按下引導登入。 */
 (function () {
   "use strict";
   var counts = {}, mine = {}, authed = false, ready = false;
@@ -2885,8 +2895,14 @@
   }
   function refresh() {
     document.querySelectorAll(".going-btn[data-event-id]").forEach(function (b) {
-      var id = b.dataset.eventId, v = n(counts[id]);
-      b.setAttribute("aria-pressed", String(!!mine[id]));
+      var id = b.dataset.eventId, v = n(counts[id]), active = !!mine[id];
+      var title = b.dataset.eventTitle || "這場活動";
+      var action = active ? "從我會去的活動移除：" : "我會去：";
+      b.setAttribute("aria-pressed", String(active));
+      b.setAttribute("aria-label", action + title + (v ? "，" + v + " 人會去" : ""));
+      b.setAttribute("title", action + title + (v ? "（" + v + " 人會去）" : ""));
+      var stateLabel = b.querySelector(".going-state-label");
+      setText(stateLabel, active ? "已加入" : "我會去");
       var c = b.querySelector(".going-count");
       if (c) {
         setText(c, v ? String(v) : "");
@@ -2895,7 +2911,7 @@
     });
     document.querySelectorAll(".going-badge[data-event-id]").forEach(function (el) {
       var v = n(counts[el.dataset.eventId]);
-      setText(el, v ? v + " 人要去" : "");
+      setText(el, v ? v + " 人會去" : "");
       el.hidden = !v;
     });
   }
@@ -2903,7 +2919,7 @@
     if (!authed) {
       var rt = encodeURIComponent(location.pathname + location.search);
       if (window.chumeiToast) {
-        window.chumeiToast('要先登入才能標記參加：<a href="/auth/nycu/start?return_to=' + rt +
+        window.chumeiToast('要先登入才能加入「我會去」：<a href="/auth/nycu/start?return_to=' + rt +
           '">學校帳號</a>／<a href="/auth/google/start?return_to=' + rt + '">Google</a>');
       } else {
         location.href = "/account/";
@@ -2915,11 +2931,11 @@
     if (window.chumeiToast) {
       var scope = btn && btn.closest(".ev-row-wrap, .card, .event-page, main");
       var titleEl = scope && scope.querySelector(".evr-title, .card-title, h1");
-      var title = titleEl ? titleEl.textContent.trim() : "";
+      var title = (btn && btn.dataset.eventTitle) || (titleEl ? titleEl.textContent.trim() : "");
       var esc = function (t) { return t.replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
       window.chumeiToast(going
-        ? "🎟 要去了" + (title ? "：" + esc(title) : "") + '——已加進<a href="/account/">行事曆訂閱</a>，前一天會提醒'
-        : "已取消要去" + (title ? "：" + esc(title) : ""));
+        ? "🎟 已加入我會去" + (title ? "：" + esc(title) : "") + '。<a href="/notify/">開啟推播</a>後，活動前一天會提醒你'
+        : "已從我會去的活動移除" + (title ? "：" + esc(title) : ""));
     }
     // 樂觀更新，失敗再由回應校正
     mine[id] = going;
@@ -2928,7 +2944,11 @@
     if (btn) btn.disabled = true;
     fetch("/auth/events/" + encodeURIComponent(id), {
       method: going ? "PUT" : "DELETE", credentials: "same-origin"
-    }).then(function (r) { return r.json(); }).then(apply).catch(function () {
+    }).then(function (r) {
+      if (!r.ok) throw new Error("going update failed");
+      return r.json();
+    }).then(apply).catch(function () {
+      if (window.chumeiToast) window.chumeiToast("無法更新「我會去」，請稍後再試。");
       load();
     }).then(function () { if (btn) btn.disabled = false; });
   }

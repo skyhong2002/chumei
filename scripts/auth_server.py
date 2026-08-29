@@ -880,7 +880,7 @@ class AuthStore:
         }
 
     def set_user_event(self, user_id: str, event_id: str, going: bool) -> None:
-        """標記／取消「我要去」。"""
+        """加入／移除「我會去」。"""
         with self._connection() as conn:
             if going:
                 conn.execute(
@@ -1121,7 +1121,7 @@ _events_cache: dict = {"mtime": None, "byid": {}}
 
 
 def _events_by_id() -> dict:
-    """帳號頁把「我要去」的 event_id 對回標題／日期；以 mtime 快取整份 events.json。"""
+    """帳號頁把「我會去」的 event_id 對回標題／日期；以 mtime 快取整份 events.json。"""
     try:
         mtime = EVENTS_DATA_PATH.stat().st_mtime
     except OSError:
@@ -1385,9 +1385,9 @@ def _submit_page_html(items: list[dict], notice: str | None, user: dict | None, 
 
 
 def _calendar_ics(going_ids: list[str], owner: str = "") -> str:
-    """「我要去」私密行事曆：所有標記過的活動（含已結束，行事曆自己會留歷史）。"""
-    name = f"竹梅 {owner} 已追蹤" if owner else "竹梅 已追蹤"
-    desc = ("在竹梅活動觀測站按過「我要去」的活動。標記或取消後，行事曆下次同步就會更新。"
+    """「我會去」私密行事曆：所有加入過的活動（含已結束，行事曆自己會留歷史）。"""
+    name = f"竹梅｜{owner} 會去的活動" if owner else "竹梅｜我會去的活動"
+    desc = ("在竹梅活動觀測站加入「我會去」的活動。加入或移除後，行事曆下次同步就會更新。"
             + (f"（帳號：{owner}）" if owner else ""))
     by_id = _events_by_id()
     events = [by_id[i] for i in going_ids if i in by_id]
@@ -1413,7 +1413,7 @@ def _saved_feed_payload(item: dict, config: AuthConfig) -> dict:
 
 def _saved_feeds_html(feeds: list[dict], configured: bool) -> str:
     if not configured:
-        return '<p class="account-empty">自訂訂閱服務正在設定中，既有「我要去」行事曆仍可正常使用。</p>'
+        return '<p class="account-empty">自訂訂閱服務正在設定中，既有「我會去」行事曆仍可正常使用。</p>'
     rows = []
     for feed in feeds:
         feed_id = html.escape(feed["id"])
@@ -1467,7 +1467,7 @@ def _going_html(going_ids: list[str]) -> str:
     if upcoming:
         parts.append('<ul class="account-events">' + "".join(row(*p) for p in upcoming) + "</ul>")
     else:
-        parts.append('<p class="account-empty">還沒有標記要去的活動。到<a href="/events/">活動總覽</a>按 ✓，它們就會出現在這裡。</p>')
+        parts.append('<p class="account-empty">還沒有加入「我會去」的活動。到<a href="/events/">活動總覽</a>按「我會去」，它們就會出現在這裡。</p>')
     if past:
         parts.append(f'<details class="account-past"><summary>已結束（{len(past)} 場）</summary>'
                      '<ul class="account-events">' + "".join(row(*p) for p in past) + "</ul></details>")
@@ -1519,7 +1519,7 @@ def _profile_html(
     following: list[dict],
     going_ids: list[str],
 ) -> str:
-    """公開個人頁 /@handle：名稱、代號、追蹤的單位、要去的活動。"""
+    """公開個人頁 /@handle：名稱、代號、追蹤的單位、我會去的活動。"""
     owner = bool(viewer and viewer["id"] == profile["id"])
     name = html.escape(profile.get("display_name") or "竹梅使用者")
     handle = html.escape(profile.get("handle") or "")
@@ -1547,7 +1547,7 @@ def _profile_html(
     <div class="profile-id">
       <h1>{name}</h1>
       <p class="profile-handle">@{handle}{f'<span class="profile-joined">・{joined} 加入</span>' if joined else ''}</p>
-      <p class="profile-stats"><span><strong>{len(following)}</strong> 追蹤的單位</span><span><strong>{upcoming_n}</strong> 場要去</span></p>
+      <p class="profile-stats"><span><strong>{len(following)}</strong> 追蹤的單位</span><span><strong>{upcoming_n}</strong> 場會去</span></p>
     </div>
     {actions}
   </header>
@@ -1557,14 +1557,14 @@ def _profile_html(
     {_follow_chips_html(following, owner)}
   </section>
   <section class="account-card account-section">
-    <h2>{'要去的活動' if owner else '要去的活動'}</h2>
+    <h2>我會去的活動</h2>
     {going_block}
   </section>
 </section>
 """
     return page_shell(
         f"{name}（@{handle}）｜竹梅活動觀測站",
-        f"{name} 在竹梅追蹤的單位與要去的活動。",
+        f"{name} 在竹梅追蹤的單位與會去的活動。",
         content,
         canonical=f"https://chumei.observe.tw/@{handle}",
     )
@@ -1687,15 +1687,15 @@ def _account_html(
         {_saved_feeds_html(feeds, saved_feeds_configured)}
         </section>""")
 
-        # ---- 我要去行事曆
+        # ---- 我會去行事曆
         if calendar_token:
             cal_owner = user.get("handle") or user.get("display_name") or ""
-            cal_name = f"竹梅 {cal_owner} 已追蹤" if cal_owner else "竹梅 已追蹤"
+            cal_name = f"竹梅｜{cal_owner} 會去的活動" if cal_owner else "竹梅｜我會去的活動"
             cal_url = f"https://chumei.observe.tw/auth/calendar/{html.escape(calendar_token)}.ics"
             webcal = cal_url.replace("https://", "webcal://", 1)
             sections.append(f"""<section class="account-card account-section">
-        <h2>我要去行事曆</h2>
-        <p class="account-hint">把這個私密連結加到 Google／Apple 行事曆，按過「我要去」的活動會自動出現、取消也會消失（行事曆每幾小時同步一次）。</p>
+        <h2>我會去的活動行事曆</h2>
+        <p class="account-hint">把這個私密連結加到 Google／Apple 行事曆，加入「我會去」的活動會自動出現、移除也會消失（行事曆每幾小時同步一次）。</p>
         <div class="account-calendar-actions" aria-label="加入行事曆">
           <a class="btn btn-primary account-action" href="{webcal}">訂閱到 Apple 行事曆</a>
           <a class="btn account-action" href="https://calendar.google.com/calendar/render?cid={quote(webcal, safe='')}" target="_blank" rel="noopener">訂閱到 Google 日曆</a>
@@ -1741,7 +1741,7 @@ def _account_html(
     elif user:
         lede = "<p>個人檔案、登入方式、行事曆訂閱與回報進度。</p>"
     else:
-        lede = "<p>登入後可以追蹤單位、標記要去的活動、回報連結，並擁有自己的個人頁。</p>"
+        lede = "<p>登入後可以追蹤單位、加入「我會去」的活動、回報連結，並擁有自己的個人頁。</p>"
     page_title = title if user or title != "帳號設定" else "登入"
     content = f"""
 <section class="account-page">
@@ -2293,7 +2293,7 @@ def create_app(
         return JSONResponse(event_payload(user))
 
     async def event_going_set(request: Request):
-        """PUT＝我要去、DELETE＝取消；計數綁帳號，一人一場只算一次。"""
+        """PUT＝加入我會去、DELETE＝移除；計數綁帳號，一人一場只算一次。"""
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         if not user:
             return JSONResponse(

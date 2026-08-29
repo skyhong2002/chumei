@@ -20,7 +20,7 @@ orgs 與 rules 都空＝所有新活動都通知。舊版平鋪格式會自動�
 state/auth.sqlite3）。綁定後：
   - 發送時 orgs 以帳號目前的追蹤清單為準（任一裝置按鈴鐺，所有裝置都生效）
   - mode／rules 儲存時同步到同帳號的其他裝置
-  - 「我要去」的活動前一天會收到提醒（publish_push）
+  - 「我會去」的活動前一天會收到提醒（publish_push）
 """
 
 import fcntl
@@ -82,7 +82,7 @@ def account_follows():
 
 
 def account_going():
-    """{user_id: [event_id, ...]} — 「我要去」標記。"""
+    """{user_id: [event_id, ...]} — 「我會去」標記。"""
     out = {}
     for row in _auth_query("SELECT user_id, event_id FROM user_event_going ORDER BY created_at"):
         out.setdefault(row["user_id"], []).append(row["event_id"])

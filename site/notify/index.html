@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App 推播通知設定｜竹梅活動觀測站</title><meta name="description" content="設定竹梅 App 推播範圍，依學校、活動類型、追蹤單位與關鍵字，只接收真正想看的清交校園活動通知。"><link rel="canonical" href="https://chumei.observe.tw/notify/"><meta property="og:title" content="App 推播通知設定｜竹梅活動觀測站"><meta property="og:description" content="設定竹梅 App 推播範圍，依學校、活動類型、追蹤單位與關鍵字，只接收真正想看的清交校園活動通知。"><meta property="og:image" content="https://chumei.observe.tw/assets/og-default.png"><meta property="og:url" content="https://chumei.observe.tw/notify/"><meta property="og:type" content="website"><meta property="og:site_name" content="竹梅活動觀測站"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="App 推播通知設定｜竹梅活動觀測站"><meta name="twitter:description" content="設定竹梅 App 推播範圍，依學校、活動類型、追蹤單位與關鍵字，只接收真正想看的清交校園活動通知。"><meta name="twitter:image" content="https://chumei.observe.tw/assets/og-default.png"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=87698e9ccada"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
+<!doctype html><html lang="zh-Hant-TW" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App 推播通知設定｜竹梅活動觀測站</title><meta name="description" content="設定竹梅 App 推播範圍，依學校、活動類型、追蹤單位與關鍵字，只接收真正想看的清交校園活動通知。"><link rel="canonical" href="https://chumei.observe.tw/notify/"><meta property="og:title" content="App 推播通知設定｜竹梅活動觀測站"><meta property="og:description" content="設定竹梅 App 推播範圍，依學校、活動類型、追蹤單位與關鍵字，只接收真正想看的清交校園活動通知。"><meta property="og:image" content="https://chumei.observe.tw/assets/og-default.png"><meta property="og:url" content="https://chumei.observe.tw/notify/"><meta property="og:type" content="website"><meta property="og:site_name" content="竹梅活動觀測站"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="App 推播通知設定｜竹梅活動觀測站"><meta name="twitter:description" content="設定竹梅 App 推播範圍，依學校、活動類型、追蹤單位與關鍵字，只接收真正想看的清交校園活動通知。"><meta name="twitter:image" content="https://chumei.observe.tw/assets/og-default.png"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-title" content="竹梅"><link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169"><link rel="stylesheet" href="/assets/site.css?v=4c4574721887"><script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script><style>
 .sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
 .sub-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--color-border-subtle);border-radius:16px;background:var(--color-surface-raised);text-decoration:none;color:var(--color-text-primary)}
@@ -116,14 +116,14 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     <span class="push-saved" id="pp-saved" hidden>設定已儲存 ✓</span>
   </header>
   <fieldset class="notify-mode-list" aria-label="通知範圍">
-    <label class="notify-mode"><input type="radio" name="notify-mode" value="following"><span><strong>只看追蹤單位 <span class="notify-recommended">推薦</span></strong><small>只通知你按過小鈴鐺的單位</small></span></label>
+    <label class="notify-mode"><input type="radio" name="notify-mode" value="following"><span><strong>只看追蹤單位 <span class="notify-recommended">推薦</span></strong><small>只通知你已追蹤的主辦單位</small></span></label>
     <label class="notify-mode"><input type="radio" name="notify-mode" value="all"><span><strong>所有新活動</strong><small>每筆新收錄活動都通知</small></span></label>
     <label class="notify-mode"><input type="radio" name="notify-mode" value="custom"><span><strong>追蹤＋自訂條件</strong><small>追蹤單位之外，再加入主題條件</small></span></label>
   </fieldset>
   <section class="notify-follow-block" aria-labelledby="notify-follow-title">
     <header class="notify-follow-head"><h3 id="notify-follow-title">追蹤的單位 <span id="notify-follow-count"></span></h3><a href="/source/">＋ 新增追蹤單位</a></header>
     <div class="filters np-follow-row">
-      <div class="filter-row"><span class="fgroup" id="np-orgs-row"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位。到資料來源按小鈴鐺即可加入。</span></span></div>
+      <div class="filter-row"><span class="fgroup" id="np-orgs-row"><span id="pp-orgs" style="display:contents"></span><span class="pp-org-empty" id="pp-org-empty">還沒追蹤任何單位。到資料來源或活動頁按「追蹤主辦」即可加入。</span></span></div>
     </div>
   </section>
   <details class="notify-advanced" id="notify-advanced">
@@ -201,9 +201,9 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     var el=$("push-linked"); if(!el)return;
     el.hidden=false;
     el.innerHTML=linked
-      ?(notYet?"已登入竹梅：開啟推播後這台裝置會自動綁定帳號──追蹤跨裝置同步、「我要去」的活動前一天提醒。"
-              :"已綁定竹梅帳號：追蹤的單位在你的每台裝置同步，按過「我要去」的活動前一天會提醒。")
-      :"<a href=\"/account/\">登入竹梅</a>後這台裝置會自動綁定帳號──追蹤跨裝置同步、「我要去」的活動前一天提醒。";
+      ?(notYet?"已登入竹梅：開啟推播後這台裝置會自動綁定帳號──追蹤跨裝置同步；我會去的活動會在前一天提醒。"
+              :"已綁定竹梅帳號：追蹤的單位在你的每台裝置同步；我會去的活動會在前一天提醒。")
+      :"<a href=\"/account/\">登入竹梅</a>並開啟推播後──追蹤跨裝置同步；我會去的活動會在前一天提醒。";
   }
   function getSub(){
     return navigator.serviceWorker.register("/sw.js").then(function(reg){return reg.pushManager.getSubscription();});
@@ -627,7 +627,11 @@ button.btn.btn-primary{background:var(--color-action-primary)}
     <section><h2>帳號</h2><a href="/account/" data-account-link><span data-account-label>登入／帳號</span></a></section>
   </nav>
 </footer>
-<script src="/assets/app.js?v=4dec3f2e0b97"></script>
+<script src="/assets/app.js?v=5545e686bdd7"></script>
+
+
+
+
 
 <a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>
 </body></html>

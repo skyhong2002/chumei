@@ -239,7 +239,7 @@ if __name__ == "__main__":
 
 
 class AccountBindingTest(unittest.TestCase):
-    """訂閱綁帳號：偏好跨裝置同步、追蹤以帳號為準、session 解析、「我要去」提醒。"""
+    """訂閱綁帳號：偏好跨裝置同步、追蹤以帳號為準、session 解析、「我會去」提醒。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

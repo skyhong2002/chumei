@@ -5,7 +5,7 @@ start_at 在今天以後、貼文逾 14 天不推（防回填洪水）、01:00�
 （事件保留到早上再發）。每個訂閱者只收到符合其偏好的活動；單輪命中
 超過 3 場則收合成一則摘要通知。
 
-綁帳號的訂閱：追蹤單位以帳號現況為準；帳號按過「我要去」的活動，在活動
+綁帳號的訂閱：追蹤單位以帳號現況為準；帳號加入「我會去」的活動，在活動
 前一天（或當天才標記時當天）推一則提醒到該帳號的所有裝置，每場只提醒一次。
 
 launchd: tw.observe.chumei.push-drip（每 30 分鐘）。
@@ -119,7 +119,7 @@ def reminder_payload(event, when):
 def reminders_for(subs, events, going, state, today=None):
     """[(user_id, event_id, [(key, record), ...], payload), ...]
 
-    帳號標記「我要去」且活動明天開始（或今天開始但還沒提醒過）→ 推到該帳號所有裝置。
+    帳號加入「我會去」且活動明天開始（或今天開始但還沒提醒過）→ 推到該帳號所有裝置。
     """
     today = today or date.today()
     tomorrow = today + timedelta(days=1)

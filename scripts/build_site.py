@@ -1053,16 +1053,17 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=()):
         (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">在地圖上看</a>'
          if e.get("geo") else None),
         # 原始貼文統一列在資訊列（含帳號／平台／日期），不另設按鈕
-        (f'<button class="btn going-btn going-btn-label" data-event-id="{e["id"]}" aria-pressed="false" '
-         f'title="標記我要去">'
+        (f'<button class="btn going-btn going-btn-label" data-event-id="{e["id"]}" '
+         f'data-event-title="{esc(e["title"])}" aria-pressed="false" '
+         f'aria-label="我會去：{esc(e["title"])}" title="我會去：{esc(e["title"])}">'
          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
          'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
          '<path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg>'
-         '<span class="gb-go">我要去</span><span class="gb-going">要去了</span>'
+         '<span class="gb-go">我會去</span><span class="gb-going">已加入</span>'
          '<span class="going-count" hidden></span></button>'),
         f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
         (f'<button class="btn heart-btn heart-btn-label" data-org-id="{org[0]}" data-org-name="{esc(org[1])}" '
-         f'aria-pressed="false" title="追蹤 {esc(org[1])}">{FEED_ICON["heart"]}'
+         f'aria-pressed="false" aria-label="追蹤主辦：{esc(org[1])}" title="追蹤主辦：{esc(org[1])}">{FEED_ICON["heart"]}'
          f'<span class="hb-follow">追蹤主辦</span><span class="hb-following">追蹤中</span></button>') if org else None,
     ]))
     jsonld = json.dumps({
@@ -1523,8 +1524,8 @@ def org_pages(entries, events):
                        + esc((ent["name"] or "？")[len(ent["name"]) > 2 and ent["name"][:2] in ("清大", "交大", "陽明") and 2 or 0]) + "</span>")
         follow_btn = (f'<button class="btn heart-btn heart-btn-label" data-org-id="{ent["id"]}" '
                       f'data-org-name="{esc(ent["name"])}" aria-pressed="false" '
-                      f'title="追蹤 {esc(ent["name"])}">{FEED_ICON["heart"]}'
-                      f'<span class="hb-follow">追蹤</span>'
+                      f'aria-label="追蹤主辦：{esc(ent["name"])}" title="追蹤主辦：{esc(ent["name"])}">{FEED_ICON["heart"]}'
+                      f'<span class="hb-follow">追蹤主辦</span>'
                       f'<span class="hb-following">追蹤中</span></button>')
         links = follow_btn + "".join(
             f'<a class="btn" href="{esc(l["url"])}" rel="noopener">{PLAT.get(l["platform"], l["platform"])}</a>'
@@ -1818,6 +1819,7 @@ FEED_ICON = {
     "send": FEED_SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
     "ext": FEED_SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
     "heart": FEED_SVG_OPEN + '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>',
+    "ticket": FEED_SVG_OPEN + '<path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg>',
 }
 
 
@@ -1825,7 +1827,8 @@ def heart_btn(org_id, org_name, extra_class=""):
     """追蹤愛心：狀態由 app.js 依 push-prefs 的 orgs 同步。"""
     return (f'<button class="heart-btn{" " + extra_class if extra_class else ""}" '
             f'data-org-id="{org_id}" data-org-name="{esc(org_name)}" '
-            f'aria-pressed="false" title="追蹤 {esc(org_name)}">{FEED_ICON["heart"]}</button>')
+            f'aria-pressed="false" aria-label="追蹤主辦：{esc(org_name)}" '
+            f'title="追蹤主辦：{esc(org_name)}">{FEED_ICON["heart"]}</button>')
 FEED_PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "api": "官方"}
 
 
@@ -1860,8 +1863,12 @@ def _feed_ev_chip(e):
     esc = html.escape
     d = _iso_dt(e["start_at"]).astimezone(TZ_TAIPEI)
     when = f"{d.month}/{d.day}" + ("" if e.get("all_day") else f" {d.hour:02d}:{d.minute:02d}")
-    return (f'<a class="feed-ev" data-id="{esc(e["id"])}" href="/event/{e["id"]}/">'
-            f'<span class="feed-ev-date">{esc(when)}</span><span class="feed-ev-title">{esc(e["title"])}</span></a>')
+    return (f'<div class="feed-ev-row"><a class="feed-ev" data-id="{esc(e["id"])}" href="/event/{e["id"]}/">'
+            f'<span class="feed-ev-date">{esc(when)}</span><span class="feed-ev-title">{esc(e["title"])}</span></a>'
+            f'<button class="going-btn feed-ev-going" data-event-id="{esc(e["id"])}" '
+            f'data-event-title="{esc(e["title"])}" aria-pressed="false" '
+            f'aria-label="我會去：{esc(e["title"])}" title="我會去：{esc(e["title"])}">{FEED_ICON["ticket"]}'
+            '<span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button></div>')
 
 
 def _feed_school_label(post):
@@ -1905,8 +1912,6 @@ def _feed_row(p, now):
     share_title = ev0["title"] if ev0 else (p.get("source_name") or "竹梅活動觀測站")
     actions = ('<div class="feed-actions">' +
                (heart_btn(p["org_id"], p.get("source_name") or "", "feed-action") if p.get("org_id") else "") +
-               (f'<a class="feed-action" href="/event/{ev0["id"]}/" title="活動詳情">{FEED_ICON["cal"]}' +
-                (f'<span>{len(p["events"])}</span>' if len(p["events"]) > 1 else "") + "</a>" if ev0 else "") +
                f'<button class="feed-action btn-share" data-url="{esc(share_url)}" data-title="{esc(share_title)}" title="分享">{FEED_ICON["send"]}</button>' +
                (f'<a class="feed-action" href="{esc(p["url"])}" target="_blank" rel="noopener" title="開啟原文">{FEED_ICON["ext"]}</a>' if p.get("url") else "") +
                "</div>")
@@ -2125,9 +2130,9 @@ def source_table_html(entries):
                 f'<div class="src-upd" title="{esc(e.get("updated") or "")}">{fmt_updated(e.get("updated"))}</div>'
                 f'<div class="src-ev">{str(e["events"]) + " 場" if e["events"] else "—"}</div>'
                 + (f'<button class="heart-btn heart-btn-label src-c-follow" data-org-id="{e["id"]}" '
-                   f'data-org-name="{esc(e["name"])}" aria-pressed="false" aria-label="追蹤 {esc(e["name"])}" '
-                   f'title="追蹤 {esc(e["name"])}">'
-                   f'{FEED_ICON["heart"]}<span class="hb-follow">追蹤</span>'
+                   f'data-org-name="{esc(e["name"])}" aria-pressed="false" aria-label="追蹤主辦：{esc(e["name"])}" '
+                   f'title="追蹤主辦：{esc(e["name"])}">'
+                   f'{FEED_ICON["heart"]}<span class="hb-follow">追蹤主辦</span>'
                    f'<span class="hb-following">追蹤中</span></button>') + "</div>")
 
     def th(key, label, extra_cls="", on=False, arrow=" ↕"):
