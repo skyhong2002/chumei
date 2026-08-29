@@ -181,11 +181,11 @@ def main():
     ap.add_argument("--sleep", type=float, help="相容舊參數：固定帳號間隔秒數")
     ap.add_argument("--sleep-min", type=float, default=25, help="帳號間最短等待秒數")
     ap.add_argument("--sleep-max", type=float, default=45, help="帳號間最長等待秒數")
-    ap.add_argument("--batch-size", type=int, default=8, help="每小批帳號數")
-    ap.add_argument("--batches", type=int, default=2, help="每輪最多跑幾個小批")
+    ap.add_argument("--batch-size", type=int, default=10, help="每小批帳號數")
+    ap.add_argument("--batches", type=int, default=4, help="每輪最多跑幾個小批")
     ap.add_argument("--batch-buffer-min", type=float, default=300, help="小批間最短緩衝秒數")
     ap.add_argument("--batch-buffer-max", type=float, default=480, help="小批間最長緩衝秒數")
-    ap.add_argument("--account-interval-hours", type=float, default=48,
+    ap.add_argument("--account-interval-hours", type=float, default=24,
                     help="同一帳號成功後至少間隔幾小時再抓")
     ap.add_argument("--max-accounts", type=int, default=0,
                     help="覆寫這一輪帳號上限（0=使用 batch-size × batches）")
@@ -279,7 +279,8 @@ def main():
             n = append_inbox(RAW_SOURCE, fresh)
             seen.save()
             total_new += n
-            mark_success(schedule, username, interval_hours=args.account_interval_hours)
+            mark_success(schedule, username, interval_hours=args.account_interval_hours,
+                         jitter_hours=3)
             clear_global_rate_limit(schedule)
             save_schedule(SCHEDULE_STATE, schedule)
             print(f"[{i+1}/{len(rows)}] @{username}: +{n}")

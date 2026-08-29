@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -8,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from ig_schedule import (clear_global_rate_limit, is_rate_limited, load_schedule,
                          mark_failure, mark_success, save_schedule, select_due,
                          set_global_rate_limit)
+from fetch_stories import story_lifecycle
 
 
 class InstagramScheduleTests(unittest.TestCase):
@@ -55,6 +57,15 @@ class InstagramScheduleTests(unittest.TestCase):
             mark_success(state, "club", now=100, rng=lambda low, high: 0)
             save_schedule(path, state)
             self.assertEqual(load_schedule(path)["accounts"]["club"]["last_success"], 100)
+
+    def test_story_stays_visible_for_48_hours_then_has_media_grace(self):
+        now = datetime(2026, 8, 29, 12, tzinfo=timezone.utc)
+        live_at = (now - timedelta(hours=47)).isoformat(timespec="seconds")
+        archived_at = (now - timedelta(hours=49)).isoformat(timespec="seconds")
+        expired_at = (now - timedelta(hours=73)).isoformat(timespec="seconds")
+        self.assertEqual(story_lifecycle(live_at, now)[0], "live")
+        self.assertEqual(story_lifecycle(archived_at, now)[0], "archived")
+        self.assertEqual(story_lifecycle(expired_at, now)[0], "expired")
 
 
 if __name__ == "__main__":

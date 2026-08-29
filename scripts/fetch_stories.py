@@ -27,6 +27,8 @@ STORIES_STATE = ROOT / "state" / "stories.json"
 MEDIA_DIR = ROOT / "site" / "assets" / "stories"
 OUT = ROOT / "site" / "data" / "stories.json"
 SCHEDULE_STATE = ROOT / "state" / "instagram_stories_schedule.json"
+STORY_DISPLAY_HOURS = 48
+STORY_MEDIA_GRACE_HOURS = 24
 
 
 def load_session():
@@ -85,6 +87,52 @@ def save_media(item):
         return None
 
 
+def story_lifecycle(taken_at, now):
+    """Return (live|archived|expired, display expiry) for a saved story."""
+    taken = datetime.fromisoformat(taken_at)
+    expires = taken + timedelta(hours=STORY_DISPLAY_HOURS)
+    if expires > now:
+        return "live", expires
+    if expires < now - timedelta(hours=STORY_MEDIA_GRACE_HOURS):
+        return "expired", expires
+    return "archived", expires
+
+
+def refresh_story_output(state=None, now=None):
+    """Migrate expiry, prune media, and regenerate the public story payload."""
+    state = (json.loads(STORIES_STATE.read_text()) if STORIES_STATE.exists() else {}) if state is None else state
+    now = datetime.now(timezone.utc) if now is None else now
+    live, expired = {}, []
+    for key, story in state.items():
+        lifecycle, expires = story_lifecycle(story["taken_at"], now)
+        # This also migrates items saved with the former 24-hour display time.
+        story["expires_at"] = expires.isoformat(timespec="seconds")
+        if lifecycle == "live":
+            live[key] = story
+        elif lifecycle == "expired":
+            expired.append(key)
+    for key in expired:
+        media = state[key].get("media")
+        if media:
+            (ROOT / "site" / media.lstrip("/")).unlink(missing_ok=True)
+        state.pop(key)
+
+    STORIES_STATE.parent.mkdir(parents=True, exist_ok=True)
+    STORIES_STATE.write_text(json.dumps(state, ensure_ascii=False, indent=0))
+    from chumei_lib import AVATAR_DIR
+    for story in live.values():
+        if not story.get("avatar"):
+            candidate = AVATAR_DIR / f"ig_{story['username']}.jpg"
+            if candidate.exists():
+                story["avatar"] = f"/assets/avatars/ig_{story['username']}.jpg"
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps({
+        "generated_at": now_iso(),
+        "stories": sorted(live.values(), key=lambda story: story["taken_at"], reverse=True),
+    }, ensure_ascii=False))
+    return len(live), len(expired), state
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--resolve-limit", type=int, default=15, help="這一輪最多解析幾個新 userid")
@@ -102,7 +150,9 @@ def main():
     now_ts = time.time()
     cooldown = schedule.get("global_cooldown_until", 0)
     if cooldown > now_ts and not (args.force or args.check):
+        live_count, expired_count, _ = refresh_story_output()
         print(f"stories: cooling down until {datetime.fromtimestamp(cooldown, TZ_TAIPEI).isoformat(timespec='minutes')}")
+        print(f"stories output: {live_count} visible, pruned {expired_count}")
         return 0
 
     L = load_session()
@@ -117,6 +167,7 @@ def main():
             return 1
         until = set_global_rate_limit(schedule)
         save_schedule(SCHEDULE_STATE, schedule)
+        refresh_story_output()
         print(f"stories: global cooldown until {datetime.fromtimestamp(until, TZ_TAIPEI).isoformat(timespec='minutes')}",
               file=sys.stderr)
         return 1
@@ -128,7 +179,9 @@ def main():
     meta = {r["username"].strip().lstrip("@"): r for r in rows}
     selected = select_due(list(meta), schedule, args.batch_size, now=now_ts, force=args.force)
     if not selected:
+        live_count, expired_count, _ = refresh_story_output()
         print("stories: no accounts due")
+        print(f"stories output: {live_count} visible, pruned {expired_count}")
         return 0
     selected_rows = [meta[u] for u in selected]
     print(f"stories batch: {len(selected)}/{len(rows)} accounts")
@@ -170,7 +223,7 @@ def main():
                     "name": row.get("name") or username,
                     "school": row.get("school") or "other",
                     "taken_at": taken.isoformat(timespec="seconds"),
-                    "expires_at": (taken + timedelta(hours=24)).isoformat(timespec="seconds"),
+                    "expires_at": (taken + timedelta(hours=STORY_DISPLAY_HOURS)).isoformat(timespec="seconds"),
                     "is_video": item.is_video,
                     "media": media,
                     "ig_url": f"https://www.instagram.com/stories/{username}/{item.mediaid}/",
@@ -182,6 +235,7 @@ def main():
         reason = "rate-limited" if is_rate_limited(e) else "batch failed"
         print(f"stories {reason}; stopped batch, cooldown until "
               f"{datetime.fromtimestamp(until, TZ_TAIPEI).isoformat(timespec='minutes')}", file=sys.stderr)
+        refresh_story_output(state)
         raise
 
     for username in selected:
@@ -191,35 +245,8 @@ def main():
     clear_global_rate_limit(schedule)
     save_schedule(SCHEDULE_STATE, schedule)
 
-    # 過期清理：顯示期 24h，媒體多留一天後刪檔
-    active, expired = {}, []
-    for key, s in state.items():
-        exp = datetime.fromisoformat(s["expires_at"])
-        if exp > now:
-            active[key] = s
-        elif exp < now - timedelta(hours=24):
-            expired.append(key)
-        else:
-            active[key] = {**s, "archived": True}
-    for key in expired:
-        p = ROOT / "site" / state[key]["media"].lstrip("/")
-        p.unlink(missing_ok=True)
-        state.pop(key)
-
-    STORIES_STATE.write_text(json.dumps(state, ensure_ascii=False, indent=0))
-    from chumei_lib import AVATAR_DIR as _AD
-    for v in active.values():
-        if not v.get("avatar"):
-            cand = _AD / f"ig_{v['username']}.jpg"
-            if cand.exists():
-                v["avatar"] = f"/assets/avatars/ig_{v['username']}.jpg"
-    live = {k: v for k, v in active.items() if not v.get("archived")}
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps({
-        "generated_at": now_iso(),
-        "stories": sorted(live.values(), key=lambda s: s["taken_at"], reverse=True),
-    }, ensure_ascii=False))
-    print(f"stories: +{n_new} new, {len(live)} active, pruned {len(expired)}")
+    live_count, expired_count, _ = refresh_story_output(state, now)
+    print(f"stories: +{n_new} new, {live_count} visible, pruned {expired_count}")
     return 0
 
 
