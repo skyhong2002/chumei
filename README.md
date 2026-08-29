@@ -1,142 +1,201 @@
-# 竹梅 chumei
+<p align="center">
+  <a href="https://chumei.observe.tw/">
+    <img src="site/assets/brand/logo-square-512.png" width="240" alt="竹梅活動觀測站">
+  </a>
+</p>
 
-**[chumei.observe.tw](https://chumei.observe.tw/)** — 清大 × 陽明交大校園活動觀測站。
+<h1 align="center">竹梅活動觀測站</h1>
+
+<p align="center">
+  清大 × 陽明交大校園活動自動彙整<br>
+  從公開公告與社群貼文整理活動，提供網站、推播、行事曆、RSS、Bot 與 AI 查詢介面。
+</p>
+
+<p align="center">
+  <a href="https://chumei.observe.tw/"><img alt="正式網站" src="https://img.shields.io/website?url=https%3A%2F%2Fchumei.observe.tw%2F&label=chumei.observe.tw"></a>
+  <a href="https://chumei.observe.tw/status/"><img alt="系統狀態" src="https://img.shields.io/badge/status-%E7%B3%BB%E7%B5%B1%E7%8B%80%E6%85%8B-5668e8"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-2f8f5b"></a>
+</p>
+
+<p align="center">
+  <a href="https://chumei.observe.tw/events/">瀏覽活動</a> ·
+  <a href="https://chumei.observe.tw/subscribe/">自訂訂閱</a> ·
+  <a href="https://chumei.observe.tw/notify/">App 通知</a> ·
+  <a href="https://chumei.observe.tw/source/">資料來源</a> ·
+  <a href="https://t.me/chumei_events">Telegram</a>
+</p>
 
 「竹梅」取自梅竹賽的梅（清華，梅貽琦）與竹（交大，凌竹銘），倒過來唸——都有梅竹了，怎麼能沒有竹梅呢？
 
-自動彙整兩校的公開活動資訊：
+## 功能
 
-- 校園公告系統：陽明交大公告（演講課程、藝文體育…）、清大各單位 RPage、WordPress 站（如交大藝文中心）、[NYCU LIFE](https://events.life.nycu.edu.tw/) 官方活動 API
-- 學生社團與校方單位的公開社群貼文：Instagram、Facebook、Threads、X（帳號名冊見 `data/sources/`，以兩校 114 學年度官方社團名冊為底）
-- Instagram 限時動態（24 小時輪播牆）
+- **活動與貼文河道**：首頁貼文河道，以及地圖、列表、日曆三種活動檢視；活動地點可對應校園建築座標。
+- **470+ 單位名錄**：[/source/](https://chumei.observe.tw/source/) 收錄校方、系所、社團與校外主辦，每個單位有自己的活動、貼文與例行時段頁面。
+- **帳號系統**：支援陽明交大 OAuth 與 Google 登入，可互相綁定；提供公開個人頁、追蹤單位、「我要去」、回報紀錄與跨裝置同步。
+- **自訂行事曆與 RSS**：依學校、類型、校區、主辦自由組合。登入後可儲存最多 10 組具名訂閱，加入「只看我追蹤的單位」，並管理、換發私密網址。
+- **Web Push／PWA**：網站可安裝成 App，依學校、類型、追蹤單位與關鍵字推送；「我要去」活動可在前一天提醒。
+- **Telegram 與查詢 Bot**：[Telegram 頻道](https://t.me/chumei_events) 發布新活動；私訊 [@chumei_events_bot](https://t.me/chumei_events_bot) 可用「這週末 清大」「熱舞社」等自然語句搜尋。
+- **AI／開發者介面**：提供 JSON API 與 Streamable HTTP MCP server（`https://chumei.observe.tw/mcp`），讓支援 MCP 的 AI 助理搜尋活動、查名錄與建立訂閱網址。
+- **限時動態牆**：輪播兩校公開 Instagram 限時動態，保留足夠時間讓使用者補看校園消息。
 
-活動欄位（時間、地點、報名資訊、例行社課時段）由 LLM 從貼文文字與海報圖擷取，經程式後驗與跨來源去重，低信心結果標示「待確認」。
+## 資料來源與處理原則
 
-產出：
+竹梅只彙整公開資訊，主要來源包括：
 
-- **貼文河道**（首頁）＋**活動總覽**（地圖／列表／日曆檢視，地圖含校園建築定位）
-- **機構名錄** [/source/](https://chumei.observe.tw/source/)：470+ 單位，每單位有專頁（活動、收錄貼文、例行時段）
-- **Web Push 推播**（PWA）：網站可安裝成 App（manifest + service worker），[/notify/](https://chumei.observe.tw/notify/) 可挑學校 × 類型 × 追蹤單位 × 關鍵字，新活動命中才通知；iOS 16.4+ 需先加入主畫面
-- **追蹤（🔔）**：貼文、活動卡／列、活動詳情頁按鈴鐺即追蹤該單位，該單位的新活動一律通知（未開推播也會先記著）
-- **我要去（✓）**：登入後可標記要參加哪些活動，人數公開顯示在活動卡／列／詳情頁；[/events/](https://chumei.observe.tw/events/) 可切「熱門」排序，看大家都往哪裡去
-- [Telegram 頻道](https://t.me/chumei_events)、RSS、ICS 行事曆訂閱（學校 × 類型／校區／主辦的組合訂閱）、JSON API
-- **查詢 bot**：私訊 [@chumei_events_bot](https://t.me/chumei_events_bot) 一句話查活動（「這週末 清大」「熱舞社」…）；LINE 版共用同一核心（`bot_core.py`），待官方帳號金鑰後啟用
-- **MCP server**（`https://chumei.observe.tw/mcp`，Streamable HTTP）：讓 Claude／ChatGPT 等 AI 助理直接搜活動、查名錄、組訂閱網址（接入方式見[訂閱頁](https://chumei.observe.tw/subscribe/)）
+- 陽明交大公告、清大各單位 RPage、WordPress 網站與 [NYCU LIFE](https://events.life.nycu.edu.tw/) 官方活動 API。
+- 學生社團與校方單位的 Instagram、Facebook、Threads、X 公開貼文；名冊位於 `data/sources/`，以兩校官方社團名冊為底。
+- Instagram 公開限時動態。
 
-## 架構
+活動時間、地點、報名方式與例行社課時段由 LLM 從貼文文字及海報擷取，再經程式後驗、來源歸戶與跨來源去重。資訊不足或信心偏低的結果會標示「待確認」；實際資訊仍以主辦單位原始公告為準。
 
-```
-data/sources/*.csv          人工維護的來源名冊（社團名冊、IG/FB/社群帳號、公告站、場地座標）
-scripts/fetch_*.py          來源 adapters → 正規化 inbox JSONL（見 docs/SCHEMA.md）
-                            bulletins / instagram / facebook / social(Threads·X) / stories / wp
-scripts/extract_events.py   LLM 活動判別＋欄位抽取（vision，含快取；例行社課須明寫時間地點才收）
-scripts/build_site.py       合併、跨來源去重、名錄歸戶、venue→座標 → 靜態站 + feeds + API
-scripts/publish_telegram.py 新活動以「貼文」為單位推送（同貼文多活動合一則訊息）
-scripts/push_server.py      Web Push 訂閱 API（Caddy 反代 /push/*；launchd 常駐）
-scripts/auth_server.py      OAuth 帳號／Session API（NYCU＋Google；Caddy 反代 /auth/*、/account*）
-scripts/publish_push.py     Web Push 滴灌發布（偏好過濾；launchd 每 30 分鐘）
-scripts/push_common.py      Web Push 共用層（訂閱儲存、偏好比對、VAPID、發送）
-scripts/bot_core.py         查詢 bot 共用核心（一句話 → 解析時間/學校/類型/關鍵字 → 搜尋與排版）
-scripts/bot_telegram.py     Telegram 私訊查詢（長輪詢，與頻道推播共用 bot token；launchd 常駐）
-scripts/bot_line.py         LINE 官方帳號 webhook（只用免費 Reply API；Caddy 反代 /line/webhook）
-scripts/mcp_server.py      MCP server（唯讀，資料源為 site/ 產物；launchd 常駐，Caddy 反代 /mcp）
-scripts/run_pipeline.py     orchestrator（launchd 每 3 小時執行）
-site/                       靜態輸出（Caddy file_server）
+## 系統流程
+
+```mermaid
+flowchart LR
+    A[公開公告與社群來源] --> B[抓取與正規化]
+    B --> C[(Inbox JSONL)]
+    C --> D[LLM 文字與海報抽取]
+    D --> E[後驗、去重、單位歸戶]
+    E --> F[靜態網站與 PWA]
+    E --> G[RSS、ICS、JSON API]
+    E --> H[Telegram、Push、Bot、MCP]
+    I[OAuth 帳號與使用者偏好] --> F
+    I --> G
+    I --> H
 ```
 
-## 開發
+## Repository 結構
+
+| 路徑 | 用途 |
+| --- | --- |
+| `data/sources/*.csv` | 人工維護的社團、單位、社群帳號、公告站與場地座標名冊 |
+| `data/feeds/inbox/` | 各來源 adapter 正規化後的 JSONL |
+| `scripts/fetch_*.py` | 公告、Instagram、Facebook、Threads、X、WordPress 與限動抓取器 |
+| `scripts/extract_events.py` | LLM 活動判別、文字／海報欄位抽取與快取 |
+| `scripts/build_site.py` | 合併、去重、單位歸戶、場地定位，產生網站、feeds 與 API |
+| `scripts/auth_server.py` | OAuth、Session、個人頁、「我要去」、回報與帳號型自訂訂閱 |
+| `scripts/push_server.py` | Web Push 訂閱 API 與帳號綁定 |
+| `scripts/publish_push.py` | 依偏好滴灌新活動與「我要去」提醒 |
+| `scripts/publish_telegram.py` | 以原始貼文為單位發布 Telegram 訊息 |
+| `scripts/bot_core.py` | Telegram／LINE 共用的自然語句活動查詢核心 |
+| `scripts/mcp_server.py` | 唯讀 MCP server，資料源為 `site/` 建站產物 |
+| `scripts/run_pipeline.py` | 定期抓取、抽取、建站與發布的 orchestrator |
+| `site/` | Caddy 直接提供的靜態網站產物與品牌資產 |
+| `deploy/` | macOS launchd 服務定義 |
+| `docs/SCHEMA.md` | Inbox 與抽取資料格式 |
+
+## 本機開發
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env        # 填 CHUMEI_LLM_API_KEY 等
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
+```
+
+在 `.env` 填入開發需要的金鑰後，可執行完整 pipeline，或只重新建站：
+
+```sh
 .venv/bin/python scripts/run_pipeline.py
+.venv/bin/python scripts/build_site.py
 python3 -m http.server -d site 8899
 ```
 
-Telegram publisher 由 `CHUMEI_TELEGRAM_ENABLED=true` 啟用。Token 與頻道 ID 只放在被 Git 忽略的 `.env`；可先執行：
+執行完整測試：
 
 ```sh
-.venv/bin/python scripts/publish_telegram.py --check
-.venv/bin/python scripts/publish_telegram.py --dry-run
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Instagram 抓取有兩個後端（`CHUMEI_IG_BACKEND` 或 `fetch_instagram.py --backend`）：`rsshub`（本機 RSSHub 網頁端點）與 `instaloader`（同一組 IG cookie 走 app 端點 `feed/user/<id>`，user id 快取在 `state/ig_userids.json`）；預設 `auto` 先走 RSSHub、共享 route 失敗時該輪開啟 circuit breaker，改走 instaloader。
+正式環境的密鑰只存在被 Git 忽略的 `.env` 或 macOS Keychain；請勿把 OAuth secret、Telegram token、社群 cookie 或 `state/` 內的使用者資料提交到 repository。
 
-IG 採持久化分批排程：launchd 每 3 小時觸發時，一般貼文最多跑 4 批、每批 10 個帳號，帳號間隨機等待 25–45 秒、批次間緩衝 5–8 分鐘；約 24 小時輪完名冊，同帳號成功後至少 24 小時才再排入。限時動態每輪只查 48 個帳號，約 21 小時輪完名冊；抓到後在網站顯示 48 小時，讓已消失的 IG 限動多保留一天。遇到 401／429 會立即停止該批並以 12–72 小時指數退避，狀態分別保存在 `state/instagram_profile_schedule.json` 與 `state/instagram_stories_schedule.json`。`--dry-run` 只印貼文，不寫入 inbox、seen-state 或排程狀態。
+## 帳號與自訂訂閱
 
-首次正常執行會把現有近期活動記為 baseline，不會洗版。此後每輪 pipeline 最多推送 10 則貼文；22:00–07:59 自動靜音。
+### OAuth
 
-## OAuth 帳號（NYCU＋Google）
+NYCU OAuth Authorization Code 應用程式的 callback：
 
-在 NYCU OAuth 管理介面註冊 Authorization Code 應用程式，Callback URL 設為
-`https://chumei.observe.tw/auth/nycu/callback`。正式機的 Client ID／Secret 存在 macOS
-Keychain（service：`tw.observe.chumei.nycu-oauth-client-id` 與
-`tw.observe.chumei.nycu-oauth-secret`）；開發環境也可改用 `.env`：
+```text
+https://chumei.observe.tw/auth/nycu/callback
+```
+
+Google OAuth 2.0 Web application 的 callback：
+
+```text
+https://chumei.observe.tw/auth/google/callback
+```
+
+開發環境可在 `.env` 設定：
 
 ```sh
 CHUMEI_NYCU_OAUTH_CLIENT_ID=
 CHUMEI_NYCU_OAUTH_CLIENT_SECRET=
+CHUMEI_GOOGLE_OAUTH_CLIENT_ID=
+CHUMEI_GOOGLE_OAUTH_CLIENT_SECRET=
 CHUMEI_AUTH_PUBLIC_BASE_URL=https://chumei.observe.tw
 CHUMEI_FEED_SIGNING_KEY=
 ```
 
-Google 登入開放任何 Google 帳號（給清大朋友與校友用）：在 GCP Console 建 OAuth 2.0
-Client（Web application），Callback URL 設為
-`https://chumei.observe.tw/auth/google/callback`。正式機的 Client ID／Secret 存在
-Keychain（service：`tw.observe.chumei.google-oauth-client-id` 與
-`tw.observe.chumei.google-oauth-secret`）；開發環境也可用 `.env` 的
-`CHUMEI_GOOGLE_OAUTH_CLIENT_ID` 與 `CHUMEI_GOOGLE_OAUTH_CLIENT_SECRET`。
+正式機使用以下 Keychain services：
 
-兩種登入可在帳號頁互相綁定（`/auth/{provider}/start?link=1` → callback 走綁定分
-支）。若要綁定的身分已有自己的帳號，會把對方的追蹤、參加標記、回報與 session 全部
-併入目前帳號再刪除對方；`POST /auth/unlink` 可解除綁定，但至少要留一種登入方式。
+| 用途 | Keychain service |
+| --- | --- |
+| NYCU Client ID | `tw.observe.chumei.nycu-oauth-client-id` |
+| NYCU Client Secret | `tw.observe.chumei.nycu-oauth-secret` |
+| Google Client ID | `tw.observe.chumei.google-oauth-client-id` |
+| Google Client Secret | `tw.observe.chumei.google-oauth-secret` |
+| 自訂訂閱簽章金鑰 | `tw.observe.chumei.feed-signing-key` |
 
-帳號分成兩頁：**公開個人頁 `/@handle`**（名稱、代號、追蹤的單位、要去的活動；可在設定關閉公開）與
-**帳號設定 `/account/`**（個人檔案、登入方式綁定、行事曆訂閱、我的回報、登出）。未登入時 `/account/` 是登入頁。
-Caddy 的 auth matcher 包含 `/@*`。
+兩種登入可在帳號頁互相綁定。若該身分已有帳號，系統會把追蹤、參加標記、回報、已儲存訂閱與 Session 合併到目前帳號；解除綁定時至少保留一種登入方式。
 
-帳號還提供：
-- **名稱與代號**：`POST /auth/profile`（display_name、handle、public）；handle 小寫英數底線 3–20 字、全站唯一，
-  首次登入從 Email 自動產生（撞名加數字），舊帳號在服務啟動時補齊。
-- **頭貼**：公開個人頁、帳號頁與登入後導覽列會共用同一張頭貼，依序嘗試 Google OAuth 頭貼、
-  Google Email 的 Gravatar、NYCU Portal Email 的 Gravatar，皆無法取得才顯示名稱首字。外部圖片由
-  `/auth/avatar/{handle}` 同源代理。
-- **私密行事曆**：`GET /auth/calendar/{token}.ics` 輸出該帳號「我要去」的活動（token 在帳號頁，
-  `POST /auth/calendar/rotate` 換新）。
-- **可儲存的自訂訂閱**：登入後可把學校、類型、校區、主辦與「只看追蹤單位」組成最多 10 組
-  具名訂閱；每組同時提供 `/feeds/s/{signed-token}.ics` 與 `.xml`。修改條件不換網址，使用者也可
-  主動換發或刪除。匿名多維組合由 `/feeds/custom.{ics,xml}` 的 query parameters 即時產生，既有
-  `/feeds/` 與 `/feeds/c/` 靜態網址維持相容。正式機的簽章金鑰放在 Keychain service
-  `tw.observe.chumei.feed-signing-key`，開發環境可用 `CHUMEI_FEED_SIGNING_KEY`；未另外設定時，
-  服務會從既有 NYCU OAuth client secret 做用途隔離後衍生，避免把可用 token 存進資料庫。
-- **推播綁帳號**：`push_server` 用 session cookie 解析 `state/auth.sqlite3`，把訂閱記上 `user_id`。
-  綁定後發送時追蹤單位以帳號現況為準（跨裝置同步）、mode／rules 儲存時同步到同帳號其他裝置，
-  `publish_push` 會在「我要去」的活動前一天推提醒（每帳號每場一次，記在 `state/push/publish.json` 的 `reminders`）。
-- **只看追蹤**：首頁河道欄、活動列表、日曆與限動牆都有「追蹤」篩選；登入且有追蹤的人第一次進首頁會自動多一欄「追蹤」河道。
+### 頁面與 Feed
 
-服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將
-`/auth/*`、`/account*`、`/feeds/custom.*` 與 `/feeds/s/*` 反代到該埠。帳號資料只包含 OAuth identity 與雜湊後的
-Session token，以及使用者主動追蹤的單位關聯，存於被 Git 忽略的
-`state/auth.sqlite3`；不保存學校密碼，也不公開個別帳號的追蹤名單。
+- `/account/`：帳號設定、登入方式、行事曆、回報與自訂訂閱管理。
+- `/@handle`：可由使用者關閉的公開個人頁。
+- `/auth/calendar/{token}.ics`：「我要去」活動的私密行事曆，可由帳號頁換發。
+- `/feeds/custom.ics`、`/feeds/custom.xml`：不需登入的多維條件組合。
+- `/feeds/s/{signed-token}.ics`、`.xml`：帳號儲存的私密訂閱；修改條件不更換網址，除非使用者主動換發。
 
-## 連結回報（登入投稿）
+`CHUMEI_FEED_SIGNING_KEY` 未另外設定時，服務會從 NYCU OAuth client secret 做用途隔離後衍生簽章金鑰；資料庫只保存 public ID，不保存可直接使用的完整 signed token。
 
-登入者在 `/account/` 貼活動連結（`POST /auth/submissions`，每人每日 10 筆、同連結去重），
-`scripts/process_submissions.py` 由 `deploy/tw.observe.chumei.submissions.plist` 每 15 分鐘審核一輪：
+帳號服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將 `/auth/*`、`/account*`、`/@*`、`/feeds/custom.*` 與 `/feeds/s/*` 反代到該服務。
 
-1. 帳號主頁比對追蹤名錄（已追蹤→已收錄；未追蹤→寫 `state/submissions/source_suggestions.jsonl`）。公開身分可驗證的學校單位／社團帳號直接收錄，不再另行請示；若是換屆或新帳號，可直接替換舊連結。
-2. 單篇內容先比對 inbox／`events.json`，已收錄就直接對回活動頁。
-3. 其餘抓內容（IG 走 instaloader，其他抓 og tags＋正文，文字太少就截圖）交 Codex 依
-   `scripts/submission_schema.json` 判讀：新活動→寫 `data/feeds/inbox/user_submission.jsonl` 走既有抽取／建站／去重；
-   對上既有活動→回連結；不相關→不收錄；信心不足→`state/submissions/manual_review.jsonl` 人工確認。
+## 推播、Telegram 與抓取排程
 
-狀態會回寫到 `submissions` 表（與帳號同一個 sqlite），使用者在帳號頁看得到進度。
+- Telegram publisher 以 `CHUMEI_TELEGRAM_ENABLED=true` 啟用；正式發送前可執行 `scripts/publish_telegram.py --check` 與 `--dry-run`。
+- Instagram 支援 `rsshub` 與 `instaloader` 兩個後端；`auto` 會先嘗試 RSSHub，失敗時在該輪切換到 instaloader。
+- Instagram 帳號採持久化分批排程與 jitter，遇到 401／429 會停止該批並指數退避；狀態保存在被 Git 忽略的 `state/`。
+- 首次正常執行會把現有近期活動設為 baseline，避免洗版；後續每輪 pipeline 最多推送 10 則，22:00–07:59 靜音。
+- Web Push 偏好與帳號追蹤跨裝置同步；發布器每 30 分鐘檢查新活動與隔日「我要去」提醒。
 
-## 資料回報與下架
+## 登入回報活動
 
-活動想上架、資訊有誤、主辦單位希望調整或下架：登入後在帳號頁回報連結（見上節），或來信 chumei@observe.tw。
-GitHub [issue](../../issues) 只處理程式問題。轉載之海報與貼文皆附原始連結，主辦單位要求即下架。
+登入者可從 [/submit/](https://chumei.observe.tw/submit/) 或帳號頁提交活動／帳號連結。`scripts/process_submissions.py` 會定期：
 
-## License
+1. 比對既有來源名冊、Inbox 與活動資料。
+2. 對未收錄內容擷取 Open Graph、正文或截圖。
+3. 交由既有抽取流程判斷新活動、既有活動、不相關內容或人工確認。
+4. 把狀態寫回帳號資料庫，讓回報者查看處理結果。
 
-程式碼 [MIT](LICENSE)；活動內容版權屬各主辦單位。
+每人每日最多 10 筆，相同連結會去重。可公開驗證的學校單位或社團帳號會進入來源審核流程。
+
+## 品牌資產
+
+<table>
+  <tr>
+    <td align="center"><img src="site/assets/brand/logo-square-256.png" width="128" alt="竹梅主 Logo"><br><code>logo-square-*.png</code></td>
+    <td align="center"><img src="site/assets/brand/logo-mark-256.png" width="128" alt="竹梅文字標誌"><br><code>logo-mark-*.png</code></td>
+    <td align="center"><img src="site/assets/brand/logo-bot-512.png" width="128" alt="竹梅 Bot Logo"><br><code>logo-bot-*.png</code></td>
+    <td align="center"><img src="site/assets/brand/logo-chat-512.png" width="128" alt="竹梅 Chat Logo"><br><code>logo-chat-*.png</code></td>
+  </tr>
+</table>
+
+- 完整 Open Graph 預覽圖：`site/assets/og-default.png`（1200 × 630）
+- PWA／Apple Touch Icon：`site/assets/brand/logo-square-*.png`
+- Favicon：`site/assets/favicon.svg` 與 `site/assets/brand/logo-mark-*.png`
+- 品牌字型：`site/assets/fonts/chumei-brand*.woff2`
+
+## 資料回報、下架與 License
+
+活動資訊有誤、主辦單位希望調整或下架，可從網站登入後回報，或寄信至 [chumei@observe.tw](mailto:chumei@observe.tw)。GitHub [Issues](../../issues) 僅處理程式問題；轉載的海報與貼文均附原始來源，主辦單位要求即下架。
+
+程式碼採用 [MIT License](LICENSE)；活動內容版權屬各主辦單位。
