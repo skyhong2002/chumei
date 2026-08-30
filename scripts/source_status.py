@@ -89,7 +89,7 @@ def source_registry(*, facebook_interval_hours: float = 168.0) -> list[dict]:
             "platform": "Threads" if platform == "threads" else "X",
             "kind": platform, "backend": "RSSHub",
             "kindLabel": "公開貼文",
-            "school": row.get("school") or "other", "targetIntervalHours": 24.0,
+            "school": row.get("school") or "other", "targetIntervalHours": 20.0,
         })
     for row in read_sources_csv("bulletin_sources.csv"):
         source_id = row.get("source_id", "").strip()
@@ -303,7 +303,7 @@ def detect_incidents(*, now: float, profile_schedule: dict, story_schedule: dict
             "id": "fb-slow-pacing", "severity": "minor", "until": None,
             "title": "Facebook 更新頻率降低",
             "detail": f"為了讓剩餘 Apify 額度（US${remaining:.2f}）撐到重置日，"
-                      f"Facebook 粉專改為約每 {facebook_interval_hours / 24:.1f} 天抓取一輪。"})
+                      f"每個粉專約每 {facebook_interval_hours / 24:.1f} 天輪抓一次（每輪滾動抓少量頁面）。"})
     return incidents
 
 
@@ -319,6 +319,8 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
     pipeline = _read_json(ROOT / "state" / "pipeline.json")
     profile_schedule = _read_json(ROOT / "state" / "instagram_profile_schedule.json")
     story_schedule = _read_json(ROOT / "state" / "instagram_stories_schedule.json")
+    facebook_schedule = _read_json(ROOT / "state" / "facebook_schedule.json")
+    social_schedule = _read_json(ROOT / "state" / "social_schedule.json")
     apify = apify_quota(refresh=refresh_apify)
     facebook_count = sum(
         row.get("active", "true").strip().lower() not in {"false", "link"}
@@ -347,11 +349,15 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
             if cooldown > (next_due or 0):
                 next_due = cooldown
         elif source["kind"] == "facebook":
-            last_attempt = last_attempt or pipeline.get("last_fb_run")
-            next_due = (float(last_attempt) + facebook_interval * 3600) if last_attempt else now
+            account = (facebook_schedule.get("accounts") or {}).get(source["username"], {})
+            last_attempt = account.get("last_attempt") or last_attempt or pipeline.get("last_fb_run")
+            next_due = account.get("next_eligible") or (
+                (float(last_attempt) + facebook_interval * 3600) if last_attempt else now)
         elif source["kind"] in {"threads", "x"}:
-            last_attempt = last_attempt or pipeline.get("last_social_run")
-            next_due = (float(last_attempt) + 20 * 3600) if last_attempt else now
+            account = (social_schedule.get("accounts") or {}).get(f"{source['kind']}:{source['username']}", {})
+            last_attempt = account.get("last_attempt") or last_attempt or pipeline.get("last_social_run")
+            next_due = account.get("next_eligible") or (
+                (float(last_attempt) + 20 * 3600) if last_attempt else now)
         else:
             try:
                 pipeline_last = datetime.fromisoformat(str(pipeline.get("last_run", "")).replace("Z", "+00:00")).timestamp()

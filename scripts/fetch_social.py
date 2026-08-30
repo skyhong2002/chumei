@@ -1,7 +1,8 @@
 """Threads / X fetcher：透過本機 RSSHub 抓公開貼文。
 
 讀 data/sources/social_accounts.csv（platform = threads | x）。
-與 fetch_instagram 同節制原則：每帳號 limit 5、帳號間 sleep、一天一輪。
+與 fetch_instagram 同節制原則：每帳號 limit 5、帳號間 sleep；
+帳號級滾動排程（--max-accounts 每輪一小批），單帳號間隔 ~20h。
 """
 
 import argparse
@@ -15,10 +16,12 @@ import requests
 
 from chumei_lib import SeenState, append_inbox, load_env, now_iso, read_sources_csv, ROOT
 from fetch_instagram import rsshub_error, strip_html
+from ig_schedule import load_schedule, mark_failure, mark_success, save_schedule, select_due
 from source_status import record_api_call, record_fetch
 
 RAW_SOURCE = "rsshub-social"
 ERROR_LOG = ROOT / "state" / "seen" / "social_errors.jsonl"
+SCHEDULE_STATE = ROOT / "state" / "social_schedule.json"
 
 ROUTES = {
     "threads": "/threads/{u}",
@@ -72,6 +75,10 @@ def main():
     ap.add_argument("--platform", choices=["threads", "x"], help="只抓這個平台")
     ap.add_argument("--limit", type=int, default=5)
     ap.add_argument("--sleep", type=float, default=8.0)
+    ap.add_argument("--max-accounts", type=int, default=0,
+                    help="這一輪最多抓幾個帳號（0=全部；配 launchd 每 3h 滾動）")
+    ap.add_argument("--account-interval-hours", type=float, default=20,
+                    help="同一帳號至少間隔幾小時再抓")
     args = ap.parse_args()
 
     env = load_env()
@@ -84,11 +91,22 @@ def main():
         wanted = set(args.accounts.split(","))
         rows = [r for r in rows if r["username"] in wanted]
 
+    schedule = load_schedule(SCHEDULE_STATE)
+    if not args.accounts:
+        by_key = {f"{r['platform']}:{r['username'].strip().lstrip('@')}": r for r in rows}
+        due = select_due(list(by_key), schedule, args.max_accounts or len(by_key), now=time.time())
+        rows = [by_key[key] for key in due]
+        if not rows:
+            print("social: no accounts due")
+            return 0
+        print(f"social schedule: {len(rows)}/{len(by_key)} accounts")
+
     seen = SeenState(RAW_SOURCE)
     total_new, failed = 0, 0
     for i, row in enumerate(rows):
         platform, username = row["platform"], row["username"].strip().lstrip("@")
         source_id = f"{platform}_{username}"
+        schedule_key = f"{platform}:{username}"
         try:
             url = base + ROUTES[platform].format(u=username)
             resp = requests.get(url, params={"limit": args.limit}, timeout=90)
@@ -124,12 +142,16 @@ def main():
             total_new += n
             record_api_call("RSSHub", operation=platform, ok=True)
             record_fetch(f"{platform}:{username}", backend="RSSHub", ok=True, items=len(posts))
+            mark_success(schedule, schedule_key, interval_hours=args.account_interval_hours, jitter_hours=3)
+            save_schedule(SCHEDULE_STATE, schedule)
             print(f"[{i+1}/{len(rows)}] {platform}/@{username}: +{n}")
         except Exception as e:
             failed += 1
             record_api_call("RSSHub", operation=platform, ok=False)
             record_fetch(f"{platform}:{username}", backend="RSSHub", ok=False, error=e)
             log_error(platform, username, e)
+            mark_failure(schedule, schedule_key)
+            save_schedule(SCHEDULE_STATE, schedule)
             print(f"[{i+1}/{len(rows)}] {platform}/@{username}: ERROR {str(e)[:100]}", file=sys.stderr)
         if i < len(rows) - 1:
             time.sleep(args.sleep + random.uniform(0, 3))

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Fetch recent public Facebook page posts through one batched Apify actor run."""
+"""Fetch recent public Facebook page posts through one batched Apify actor run.
+
+頁面級滾動排程：每輪只抓 --max-pages-per-run 頁（select_due 挑最久沒抓的），
+單頁重抓間隔 --account-interval-hours 由 pipeline 依 Apify 額度配速傳入；
+總花費與整批一次相同（actor 按結果數計費），但更新時間刻意分散。"""
 
 from __future__ import annotations
 
@@ -16,13 +20,15 @@ from urllib.parse import parse_qs, unquote, urlparse
 import requests
 
 from apify_pool import choose_token, record_run
-from chumei_lib import SeenState, append_inbox, now_iso, read_sources_csv
+from chumei_lib import ROOT, SeenState, append_inbox, now_iso, read_sources_csv
+from ig_schedule import load_schedule, mark_failure, mark_success, save_schedule, select_due
 from source_status import record_api_call, record_fetch
 
 
 ACTOR_ID = "apify/facebook-posts-scraper"
 APIFY_BASE = "https://api.apify.com/v2"
 RAW_SOURCE = "apify"
+SCHEDULE_STATE = ROOT / "state" / "facebook_schedule.json"
 TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"}
 FALLBACK_TEXT = "（純圖片貼文，內容見海報）"
 
@@ -219,16 +225,25 @@ def main() -> int:
     parser.add_argument("--pages", help="comma-separated page usernames or Facebook URLs")
     parser.add_argument("--limit", type=int, default=5, help="latest posts per page (default: 5)")
     parser.add_argument("--max-pages-per-run", type=int, default=0, help="maximum pages in this batch (0 = all)")
+    parser.add_argument("--account-interval-hours", type=float, default=168.0,
+                        help="同一頁至少間隔幾小時再抓（pipeline 依 Apify 額度配速傳入）")
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("--limit must be at least 1")
 
     sources = [row for row in read_sources_csv("fb_pages.csv") if row.get("active", "true").strip().lower() not in ("false", "link")]  # link=僅展示連結
+    schedule = load_schedule(SCHEDULE_STATE)
     if args.pages:
         wanted = {page_slug(value) for value in args.pages.split(",") if value.strip()}
         sources = [row for row in sources if page_slug(row.get("page", "")) in wanted]
-    if args.max_pages_per_run > 0:
-        sources = sources[:args.max_pages_per_run]
+    else:
+        by_slug = {page_slug(row["page"]): row for row in sources}
+        due = select_due(list(by_slug), schedule, args.max_pages_per_run or len(by_slug), now=time.time())
+        if not due:
+            print("facebook: no pages due")
+            return 0
+        sources = [by_slug[slug] for slug in due]
+        print(f"facebook schedule: {len(sources)}/{len(by_slug)} pages")
     if not sources:
         print("no active Facebook pages selected", file=sys.stderr)
         return 1
@@ -247,6 +262,9 @@ def main() -> int:
         record_run(account_label, cost_usd=None, source_count=len(sources), ok=False)
         for source in sources:
             record_fetch(f"facebook:{page_slug(source['page'])}", backend="Apify", ok=False, error=exc)
+            # 批次層級失敗（Apify 端），短退避讓這些頁下輪就能再排上
+            mark_failure(schedule, page_slug(source["page"]), base_hours=3, cap_hours=24)
+        save_schedule(SCHEDULE_STATE, schedule)
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     seen = SeenState(RAW_SOURCE)
@@ -285,6 +303,8 @@ def main() -> int:
     for source in sources:
         key = f"facebook:{page_slug(source['page'])}"
         record_fetch(key, backend="Apify", ok=True, items=items_by_source.get(key, 0))
+        mark_success(schedule, page_slug(source["page"]), interval_hours=args.account_interval_hours)
+    save_schedule(SCHEDULE_STATE, schedule)
     cost_text = f"${cost:.6f}" if cost is not None else "not reported"
     print(
         f"done: {written} new items from {len(sources)} pages; "

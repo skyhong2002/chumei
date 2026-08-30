@@ -6,6 +6,7 @@ launchd 每 3 小時呼叫一次即可。
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import time
@@ -18,7 +19,8 @@ from chumei_lib import read_sources_csv
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / ".venv" / "bin" / "python"
 STATE = ROOT / "state" / "pipeline.json"
-IG_MIN_INTERVAL_H = 20  # Threads / X 使用；Instagram 已改為帳號級分批排程。
+IG_MIN_INTERVAL_H = 20  # Threads / X 單帳號重抓間隔；Instagram 已改為帳號級分批排程。
+PIPELINE_INTERVAL_H = 3  # launchd 呼叫節奏，用來換算「每輪該抓幾個」的滾動批量。
 
 
 def run_step(name, args):
@@ -63,15 +65,21 @@ def main():
         else:
             print("instagram: skipped (--skip-ig)")
 
-        # Threads / X 同樣走 RSSHub，跟 IG 一樣一天一輪
-        last_social = state.get("last_social_run", 0)
-        if (ROOT / "scripts" / "fetch_social.py").exists() and (time.time() - last_social) > IG_MIN_INTERVAL_H * 3600:
-            results["social"] = run_step("threads/x", ["fetch_social.py", "--limit", "5", "--sleep", "8"])
+        # Threads / X 滾動：每輪抓一小批（帳號級排程），單帳號間隔仍 ~IG_MIN_INTERVAL_H
+        if (ROOT / "scripts" / "fetch_social.py").exists():
+            social_count = sum(
+                row.get("active", "true").strip().lower() not in {"false", "link"}
+                and row.get("platform") in {"threads", "x"}
+                for row in read_sources_csv("social_accounts.csv")
+            )
+            social_batch = max(1, math.ceil(social_count * PIPELINE_INTERVAL_H / IG_MIN_INTERVAL_H))
+            results["social"] = run_step("threads/x", ["fetch_social.py", "--limit", "5", "--sleep", "8",
+                                                       "--max-accounts", str(social_batch),
+                                                       "--account-interval-hours", str(IG_MIN_INTERVAL_H)])
             state["last_social_run"] = time.time()
 
-        # FB 走 Apify 按結果計費；依所有帳號剩餘額度、重置日與批次成本動態配速。
+        # FB 走 Apify 按結果計費；依額度配速決定單頁間隔，每輪滾動抓一小批。
         fb_script = ROOT / "scripts" / "fetch_facebook.py"
-        last_fb = state.get("last_fb_run", 0)
         fb_count = sum(
             row.get("active", "true").strip().lower() not in {"false", "link"}
             for row in read_sources_csv("fb_pages.csv")
@@ -79,9 +87,11 @@ def main():
         fb_quota = pool_status(refresh=True)
         fb_interval_h = recommended_interval_hours(fb_quota, source_count=fb_count)
         state["facebook_interval_hours"] = fb_interval_h
-        if (fb_script.exists() and not fb_quota.get("exhausted")
-                and (time.time() - last_fb) > fb_interval_h * 3600):
-            results["facebook"] = run_step("facebook", ["fetch_facebook.py", "--limit", "5"])
+        if fb_script.exists() and not fb_quota.get("exhausted"):
+            fb_batch = max(1, math.ceil(fb_count * PIPELINE_INTERVAL_H / fb_interval_h))
+            results["facebook"] = run_step("facebook", ["fetch_facebook.py", "--limit", "5",
+                                                       "--max-pages-per-run", str(fb_batch),
+                                                       "--account-interval-hours", f"{fb_interval_h:g}"])
             state["last_fb_run"] = time.time()
 
         # 限時動態 24h 就消失，每輪都抓（批量查詢，額度便宜）
