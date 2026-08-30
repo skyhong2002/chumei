@@ -1343,6 +1343,7 @@ def build_sources_data(events):
     def attach(name, school, org_type, platform, url, label, sid, note=None, fallback_kind=None):
         n = _norm_org(name)
         src_campus = _org_campus(name) if school == "nycu" else None
+        brand = bool(BRAND_NAME_RE.match(name))
         best_i, best = -1, 0.55
         for i, e in enumerate(entries):
             if e["school"] != school:
@@ -1351,6 +1352,9 @@ def build_sources_data(events):
             if school == "nycu" and src_campus and e.get("campus") and e["campus"] != src_campus:
                 continue
             v = _org_sim(n, norms[i])
+            # 英文品牌名只認完全同名：NYCU LIFE（團隊）≠ NYCU LIFE 活動系統（平台）
+            if v < 1.1 and (brand or BRAND_NAME_RE.match(e["name"])):
+                continue
             if v and src_campus and e.get("campus") == src_campus:
                 v += 0.05  # 校區吻合優先
             if v > best:
