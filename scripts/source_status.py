@@ -267,6 +267,46 @@ def method_summaries(rows: list[dict]) -> list[dict]:
     return sorted(result, key=lambda row: (-row["sources"], row["backend"]))
 
 
+def detect_incidents(*, now: float, profile_schedule: dict, story_schedule: dict,
+                     apify: dict, facebook_interval_hours: float, rows: list[dict]) -> list[dict]:
+    """進行中事件：純機器判定（排程冷卻、額度配速），不靠人工開關。"""
+    incidents = []
+    ig_cd = float(profile_schedule.get("global_cooldown_until") or 0)
+    st_cd = float(story_schedule.get("global_cooldown_until") or 0)
+    # 兩邊同時冷卻或錯誤帶登入失效特徵 → 不是普通限流，是共用 session 死了
+    session_dead = (ig_cd > now and st_cd > now) or any(
+        marker in str(row.get("lastError") or "").lower()
+        for row in rows if str(row.get("kind", "")).startswith("instagram")
+        for marker in ("require_login", "not authenticated"))
+    session_hint = "錯誤特徵指向共用登入（session）失效，需要人工更新登入後才會恢復。" if session_dead else ""
+    if ig_cd > now:
+        streak = max(1, int(profile_schedule.get("rate_limit_streak") or 0))
+        incidents.append({
+            "id": "ig-posts-cooldown", "severity": "major", "until": ig_cd,
+            "title": "Instagram 貼文抓取暫停中",
+            "detail": f"Instagram 拒絕了共用登入的請求，整批抓取暫停（第 {streak} 次退避）；"
+                      f"期間 IG 貼文與頭貼不會更新。{session_hint}"})
+    if st_cd > now:
+        streak = max(1, int(story_schedule.get("rate_limit_streak") or 0))
+        incidents.append({
+            "id": "ig-stories-cooldown", "severity": "major", "until": st_cd,
+            "title": "Instagram 限時動態抓取暫停中",
+            "detail": f"限時動態批次被 Instagram 擋下（第 {streak} 次退避）。{session_hint}"})
+    if apify.get("exhausted"):
+        incidents.append({
+            "id": "fb-quota-exhausted", "severity": "major", "until": apify.get("cycleEnd"),
+            "title": "Facebook 粉專抓取暫停中",
+            "detail": "Apify 帳號池本期額度已用完，Facebook 貼文暫停更新到額度重置。"})
+    elif facebook_interval_hours >= 48:
+        remaining = float(apify.get("remainingUsd") or 0)
+        incidents.append({
+            "id": "fb-slow-pacing", "severity": "minor", "until": None,
+            "title": "Facebook 更新頻率降低",
+            "detail": f"為了讓剩餘 Apify 額度（US${remaining:.2f}）撐到重置日，"
+                      f"Facebook 粉專改為約每 {facebook_interval_hours / 24:.1f} 天抓取一輪。"})
+    return incidents
+
+
 def apify_quota(refresh: bool = True) -> dict:
     """Return sanitized aggregate and per-account limits; tokens never leave the server."""
     return pool_status(refresh=refresh)
@@ -347,6 +387,9 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
         "pipeline": {"lastRun": pipeline.get("last_run"), "lastResults": pipeline.get("last_results", {}),
                      "intervalHours": 3.0},
         "counts": counts, "apiUsage": usage, "apify": apify,
+        "incidents": detect_incidents(now=now, profile_schedule=profile_schedule,
+                                      story_schedule=story_schedule, apify=apify,
+                                      facebook_interval_hours=facebook_interval, rows=rows),
         "methods": method_summaries(rows),
         "sources": rows,
     }
