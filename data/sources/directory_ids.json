@@ -77,7 +77,6 @@
 "nthu|清華書院招生中心": 76,
 "nycu|陽明交大圖書館": 77,
 "nycu|陽明吉他社": 78,
-"nycu|NYCU LIFE 官方活動": 79,
 "nthu|中文系會": 80,
 "nycu|交大公告-藝文體育": 81,
 "nycu|交大電機營": 82,
@@ -830,7 +829,6 @@
 "nycu|guangfu|魔術方塊社": 442,
 "nthu||魔術社": 70,
 "nthu||NTHU Racing 清大賽車工廠": 105,
-"nycu||NYCU LIFE 官方活動": 79,
 "nycu||NYCU 國際學生會": 55,
 "nycu||NYCU 軟體開發社": 23,
 "nycu||Open House 校園職涯平台": 36,
@@ -995,5 +993,6 @@
 "nycu|guangfu|角色扮演社": 520,
 "nycu|guangfu|貢丸喜劇社": 521,
 "nycu|guangfu|遊戲設計社": 522,
-"nycu|guangfu|交大二餐7-11": 524
+"nycu|guangfu|交大二餐7-11": 524,
+"nycu||NYCU LIFE": 79
 }

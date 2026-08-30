@@ -3,7 +3,7 @@ infonews_lecture,交大公告-演講課程,infonews_category,nycu,official,https
 infonews_arts,交大公告-藝文體育,infonews_category,nycu,official,https://infonews.nycu.edu.tw/,SuperType=7
 infonews_other,交大公告-其他活動,infonews_category,nycu,official,https://infonews.nycu.edu.tw/,SuperType=9
 nthu_bulletin_arts,清大公告-藝文活動,rpage_list,nthu,official,https://bulletin.site.nthu.edu.tw/p/403-1086-5083-1.php?Lang=zh-tw,
-nycu_life_api,NYCU LIFE 官方活動,api,nycu,official,https://events.life.nycu.edu.tw/api/activities,
+nycu_life_api,NYCU LIFE,api,nycu,official,https://events.life.nycu.edu.tw/api/activities,
 nthu_dsa_important,清大課外活動組-重要公告,rpage_list,nthu,official,https://dsa.site.nthu.edu.tw/p/403-1266-6887-1.php?Lang=zh-tw,
 nthu_dsa_general,清大課外活動組-一般公告,rpage_list,nthu,official,https://dsa.site.nthu.edu.tw/p/403-1266-6890-1.php?Lang=zh-tw,
 nthu_cac_events,清大藝術文化總中心-當期展演節目,rpage_list,nthu,official,https://cac.site.nthu.edu.tw/p/403-1549-9475-1.php?Lang=zh-tw,

@@ -1236,6 +1236,9 @@ def _org_campus(text):
     return None
 
 
+BRAND_NAME_RE = re.compile(r"^(?:NYCU|NCTU|NTHU)\s+[A-Za-z]")
+
+
 def org_display_name(name, school, campus=None):
     """依名錄校別產生一致的公開名稱，避免同名單位無法辨識。
 
@@ -1244,6 +1247,8 @@ def org_display_name(name, school, campus=None):
     """
     raw = str(name or "").strip()
     if not raw or school not in {"nthu", "nycu", "both"}:
+        return raw
+    if BRAND_NAME_RE.match(raw):  # 英文品牌名（NYCU LIFE）：縮寫是名稱本體，不轉中文前綴
         return raw
     if school == "nycu":
         prefix = "陽明" if campus == "yangming" else "交大" if campus == "guangfu" else "陽明交大"
@@ -1467,7 +1472,8 @@ def build_sources_data(events):
     }
     bad = [e for e in entries
            if expected_prefix.get((e["school"], e.get("campus")))
-           and not e["name"].startswith(expected_prefix[(e["school"], e.get("campus"))])]
+           and not e["name"].startswith(expected_prefix[(e["school"], e.get("campus"))])
+           and not BRAND_NAME_RE.match(e["name"])]
     duplicate_names = {name for name, n in Counter(e["name"] for e in entries).items() if n > 1}
     if bad or duplicate_names:
         raise ValueError(f"organization display-name audit failed: bad={len(bad)}, duplicates={sorted(duplicate_names)}")
