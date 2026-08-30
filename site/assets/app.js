@@ -1940,6 +1940,7 @@
       if (!e) return;
       var cover = e.cover_image || e.poster_image;
       var where = [e.campus ? (labels.campus || {})[e.campus] : null, e.venue].filter(Boolean).join(" ");
+      var goingN = window.chumeiGoing ? window.chumeiGoing.count(e.id) : 0;
       hoverPop.innerHTML =
         (cover ? '<img src="' + esc(cover) + '" alt="">' : "") +
         '<div class="cal-pop-body"><p class="chips">' +
@@ -1947,7 +1948,8 @@
         (e.category ? '<span class="chip">' + esc(e.category) + "</span>" : "") + "</p>" +
         "<strong>" + esc(e.title) + "</strong>" +
         '<span class="cal-pop-meta">' + esc(fmtWhen(e)) + (where ? "｜" + esc(where) : "") + "</span>" +
-        (e.organizer ? '<span class="cal-pop-meta">' + esc(e.organizer) + "</span>" : "") + "</div>";
+        (e.organizer ? '<span class="cal-pop-meta">' + esc(e.organizer) + "</span>" : "") +
+        (goingN ? '<span class="cal-pop-meta">🎟 ' + goingN + " 人會去</span>" : "") + "</div>";
       hoverPop.hidden = false;
       var r = a.getBoundingClientRect();
       var pw = 280, ph = hoverPop.offsetHeight || 200;
@@ -2532,6 +2534,13 @@
       });
     }
 
+    var TICKET_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg>';
+    function goingBtn(e, cls) {
+      return '<button class="going-btn ' + cls + '" data-event-id="' + esc(e.id) + '" data-event-title="' + esc(e.title) +
+        '" aria-pressed="false" aria-label="我會去：' + esc(e.title) + '" title="我會去：' + esc(e.title) + '">' + TICKET_SVG +
+        '<span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button>';
+    }
+
     function agendaMonthHtml(m) {
       // 手機：議程列表 — 只列有活動的日子
       var daysInMonth = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
@@ -2554,10 +2563,11 @@
             var ed = new Date(e.start_at);
             var when = e.all_day ? "全天" : String(ed.getHours()).padStart(2, "0") + ":" + String(ed.getMinutes()).padStart(2, "0");
             var where = [e.campus ? labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
-            return '<a class="agd-ev ev-' + esc(e.school) + '" href="/event/' + e.id + '/">' +
+            return '<div class="agd-ev-row"><a class="agd-ev ev-' + esc(e.school) + '" href="/event/' + e.id + '/">' +
               '<span class="agd-when">' + esc(when) + "</span>" +
               '<span class="agd-main"><span class="agd-title">' + esc(e.title) + "</span>" +
-              (where ? '<span class="agd-meta">' + esc(where) + "</span>" : "") + "</span></a>";
+              (where ? '<span class="agd-meta">' + esc(where) + "</span>" : "") + "</span></a>" +
+              goingBtn(e, "agd-ev-going") + "</div>";
           }).join("") + "</div>";
       }
       return '<section class="cal-month" id="cal-' + m.getFullYear() + "-" + (m.getMonth() + 1) + '">' +
@@ -2591,8 +2601,9 @@
         var evs = dayEvents.map(function (e) {
           var ed = new Date(e.start_at);
           var tt = e.all_day ? "" : String(ed.getHours()).padStart(2, "0") + ":" + String(ed.getMinutes()).padStart(2, "0");
-          return '<a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
-            (tt ? '<span class="cal-ev-t">' + tt + "</span>" : "") + esc(e.title) + "</a>";
+          return '<div class="cal-ev-row"><a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
+            (tt ? '<span class="cal-ev-t">' + tt + "</span>" : "") + esc(e.title) + "</a>" +
+            goingBtn(e, "cal-ev-going") + "</div>";
         }).join("");
         cells += '<div class="' + cls + '"><span class="cal-day">' + d.getDate() + "</span>" + evs + "</div>";
       }

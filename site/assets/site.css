@@ -934,6 +934,21 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 :root[data-theme="dark"] .cal-ev.ev-both { background: #123B36; color: #9FE5DA; }
 .cal-ev-t { font-weight: 700; opacity: 0.72; margin-right: 4px; font-variant-numeric: tabular-nums; }
 @media (max-width: 1079px) { .cal-ev-t { display: none; } }
+/* 月曆格：pill 旁的迷你「我會去」——平時藏起來，hover 該列、已標記或已有人數才顯示 */
+.cal-ev-row { display: flex; align-items: center; gap: 3px; margin-top: 3px; min-width: 0; }
+.cal-ev-row .cal-ev { flex: 1; min-width: 0; margin-top: 0; }
+.cal-ev-going {
+  display: none; align-items: center; gap: 2px; flex-shrink: 0;
+  height: 22px; padding: 0 4px; border: 0; border-radius: 6px;
+  color: var(--color-text-muted); font-size: 0.7rem;
+}
+.cal-ev-row:hover .cal-ev-going,
+.cal-ev-going[aria-pressed="true"],
+.cal-ev-going:has(.going-count:not([hidden])) { display: inline-flex; }
+.cal-ev-going:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.cal-ev-going svg { width: 13px; height: 13px; }
+.cal-ev-going .going-count { font-size: 0.7rem; }
+.cal-ev-going[aria-pressed="true"] { color: var(--color-success-text); }
 
 /* 日曆頁在寬螢幕上放寬版面，讓 7 欄格子有空間 */
 main.main-wide { max-width: min(1680px, 100%); }
@@ -1126,7 +1141,8 @@ main.main-wide { max-width: min(1680px, 100%); }
   /* overflow:hidden 會讓 sticky 表頭改黏在名錄容器而非視窗，捲動時就會跟著往下跑。 */
   .src-table { overflow: visible; }
   .src-row {
-    grid-template-columns: minmax(0, 1fr) auto 36px;
+    /* 追蹤鈕實寬 44px：欄開 36px 會讓它溢出去壓到場次/更新欄 */
+    grid-template-columns: minmax(0, 1fr) auto 44px;
     gap: 2px 8px; padding: 8px 0;
   }
   .src-c-name { overflow: hidden; }
@@ -1687,6 +1703,18 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 .agd-meta { font-size: 0.76rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agd-empty { color: var(--color-text-muted); font-size: 0.85rem; padding: 8px 2px; }
+/* 日曆議程列：「我會去」與活動列並排（同 feed-ev-row 模式） */
+.agd-ev-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; min-width: 0; }
+.agd-ev-row .agd-ev { flex: 1; min-width: 0; margin-bottom: 0; }
+.agd-ev-going {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  min-width: 44px; min-height: 44px; padding: 0 7px; flex-shrink: 0;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+}
+.agd-ev-going:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.agd-ev-going svg { width: 18px; height: 18px; }
+.agd-ev-going[aria-pressed="true"] { background: var(--color-success-surface); border-color: var(--color-success-text); }
 
 /* ---------- 追蹤愛心 + toast ---------- */
 .heart-btn { position: relative; cursor: pointer; font-family: inherit; background: none; }
