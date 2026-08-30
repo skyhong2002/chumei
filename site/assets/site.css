@@ -1385,6 +1385,8 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .feed-topic { display: inline-flex; gap: 7px; align-items: center; color: var(--color-text-secondary); font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
 .feed-topic .sep { color: var(--color-text-muted); font-weight: 400; }
 .feed-time { color: var(--color-text-muted); font-size: 0.88rem; white-space: nowrap; }
+/* 發文很久後才收錄、因收錄序排在前面的貼文標示 */
+.feed-late { font-size: 0.78rem; color: var(--chumei-bamboo-text); font-weight: 600; }
 .post-menu { position: relative; margin-left: auto; }
 .post-menu summary {
   list-style: none; cursor: pointer; position: relative;

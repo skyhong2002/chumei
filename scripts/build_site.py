@@ -24,6 +24,7 @@ EXTRACT_DIR = ROOT / "state" / "extraction"
 POSTER_DIR = SITE / "assets" / "posters"
 POST_IMG_DIR = SITE / "assets" / "posts"
 FEED_LIMIT = 300          # 河道最多保留幾則最近貼文
+FEED_STALE_DAYS = 14      # 收錄落差超過這個天數的舊文不搭收錄序，回歸發文時間排序
 FEED_TEXT_LIMIT = 2000    # 貼文全文上限（超過才截斷）
 FEED_FOLD_CHARS = 220     # 超過這個字數就先摺疊、附「顯示全文」
 VERSIONED_ASSETS = ("tokens.css", "site.css", "app.js")
@@ -1743,9 +1744,27 @@ def build_posts_data(events, sid_to_entry=None):
             posted = min((evs[0].get("first_seen") if evs else None) or it.get("fetched_at") or now, now)
         return posted
 
-    # 只保留追蹤名錄裡的來源（名錄外的帳號不進河道），依貼文時間取最近 FEED_LIMIT 則
+    def discovery_time(key):
+        """收錄時間：滾動抓取下貼文常在發文後數小時～數天才進系統，
+        按發文時間排會讓新收錄沉底、置頂永遠不動；按收錄時間排，每輪抓到的都浮上來。"""
+        it = inbox[key]
+        evs = groups.get(key) or []
+        return min(it.get("fetched_at")
+                   or (evs[0].get("first_seen") if evs else None)
+                   or post_time(key), now)
+
+    def feed_rank(key):
+        """河道排序鍵：收錄序，但收錄落差超過 FEED_STALE_DAYS 的舊文（掃新帳號
+        時撈到的多年前貼文）不搭收錄序霸榜，回歸發文時間自然沉底。"""
+        posted, disc = post_time(key), discovery_time(key)
+        posted_dt, disc_dt = _iso_dt(posted), _iso_dt(disc)
+        if posted_dt and disc_dt and (disc_dt - posted_dt).total_seconds() > FEED_STALE_DAYS * 86400:
+            return posted
+        return disc
+
+    # 只保留追蹤名錄裡的來源（名錄外的帳號不進河道），依收錄序取最近 FEED_LIMIT 則
     keys = [k for k in inbox if (sid_to_entry or {}).get(k[0]) or k in groups]
-    keys.sort(key=post_time, reverse=True)
+    keys.sort(key=feed_rank, reverse=True)
     keys = keys[:FEED_LIMIT * 2]
 
     posts = []
@@ -1781,13 +1800,20 @@ def build_posts_data(events, sid_to_entry=None):
         posted_dt, fetched_dt = _iso_dt(posted), _iso_dt(it.get("fetched_at"))
         if not evs and posted_dt and fetched_dt and abs((posted_dt - fetched_dt).total_seconds()) < 120:
             continue   # 發文時間其實是抓取時間（來源沒給日期），排不出先後就不放
+        discovered = discovery_time(key)
+        discovered_dt = _iso_dt(discovered)
+        # 發文後 2 天～FEED_STALE_DAYS 內才收錄的貼文會因收錄序排在前面：
+        # 標「新收錄」說明它為什麼在這（更舊的已回歸發文序沉底，不用標）
+        gap = (discovered_dt - posted_dt).total_seconds() if posted_dt and discovered_dt else 0
+        late = 48 * 3600 < gap <= FEED_STALE_DAYS * 86400
         post_school = it.get("school") or lead.get("school")
         posts.append({
             "source_id": sid, "post_id": pid,
             "source_name": directory_entry.get("name") or it.get("source_name"), "platform": it.get("platform"),
             "school": post_school,
             "campus": post_campus(directory_entry, evs) if post_school == "nycu" else None,
-            "url": it.get("url"), "posted_at": posted,
+            "url": it.get("url"), "posted_at": posted, "fetched_at": discovered,
+            **({"late": True} if late else {}),
             "org_type": it.get("org_type") or lead.get("organizer_type"),
             "text": text[:FEED_TEXT_LIMIT] + ("…" if len(text) > FEED_TEXT_LIMIT else ""),
             "image": image, "avatar": avatar,
@@ -1797,7 +1823,7 @@ def build_posts_data(events, sid_to_entry=None):
                                "category": e.get("category"),
                                "venue": e.get("venue")} for e in evs), key=lambda x: x["start_at"]),
         })
-    posts.sort(key=lambda p: p.get("posted_at") or "", reverse=True)
+    # posts 依 keys（feed_rank 序）建構，順序即排序；不再重排
     # 同一單位在 IG／Threads／FB 貼同一篇：只留最新的一則
     kept_by_org, deduped = {}, []
     for post in posts:
@@ -1911,7 +1937,8 @@ def _feed_row(p, now):
     head = ('<div class="feed-head">'
             f'<strong class="feed-name">{name}</strong>' +
             (f'<span class="feed-topic"><span class="sep">›</span>{esc(school_label)}</span>' if school_label else "") +
-            f'<span class="feed-time">{esc(_feed_ago(p.get("posted_at"), now))}</span>{menu}</div>')
+            f'<span class="feed-time">{esc(_feed_ago(p.get("posted_at"), now))}'
+            + ('<span class="feed-late">・新收錄</span>' if p.get("late") else "") + f'</span>{menu}</div>')
     long_text = len(p.get("text") or "") > FEED_FOLD_CHARS
     body = ((f'<p class="feed-text{" is-long" if long_text else ""}">{esc(p["text"])}</p>' if p.get("text") else "") +
             ('<button class="feed-text-toggle" type="button">顯示全文</button>' if long_text else "") +

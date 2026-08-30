@@ -725,7 +725,7 @@
         var head = '<div class="feed-head">' +
           '<strong class="feed-name">' + (orgHref ? '<a class="feed-org-link" href="' + orgHref + '">' + esc(p.source_name || "") + "</a>" : esc(p.source_name || "")) + "</strong>" +
           (schoolLabel ? '<span class="feed-topic"><span class="sep">›</span>' + esc(schoolLabel) + "</span>" : "") +
-          '<span class="feed-time">' + esc(ago(p.posted_at)) + "</span>" + menu + "</div>";
+          '<span class="feed-time">' + esc(ago(p.posted_at)) + (p.late ? '<span class="feed-late">・新收錄</span>' : "") + "</span>" + menu + "</div>";
         var longText = (p.text || "").length > 220;
         var body = (p.text ? '<p class="feed-text' + (longText ? " is-long" : "") + '">' + esc(p.text) + "</p>" : "") +
           (longText ? '<button class="feed-text-toggle" type="button">顯示全文</button>' : "") +
