@@ -1803,9 +1803,11 @@ def build_posts_data(events, sid_to_entry=None):
         discovered = discovery_time(key)
         discovered_dt = _iso_dt(discovered)
         # 發文後 2 天～FEED_STALE_DAYS 內才收錄的貼文會因收錄序排在前面：
-        # 標「新收錄」說明它為什麼在這（更舊的已回歸發文序沉底，不用標）
+        # 標「新收錄」說明它為什麼在這（更舊的已回歸發文序沉底，不用標）。
+        # 每輪 build 重算：收錄超過 24h 就不再「新」，自動拔標。
         gap = (discovered_dt - posted_dt).total_seconds() if posted_dt and discovered_dt else 0
-        late = 48 * 3600 < gap <= FEED_STALE_DAYS * 86400
+        fresh_pickup = discovered_dt and (_iso_dt(now) - discovered_dt).total_seconds() <= 24 * 3600
+        late = bool(fresh_pickup and 48 * 3600 < gap <= FEED_STALE_DAYS * 86400)
         post_school = it.get("school") or lead.get("school")
         posts.append({
             "source_id": sid, "post_id": pid,
