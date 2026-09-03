@@ -1,7 +1,9 @@
 import collections
+import copy
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,6 +246,159 @@ class RelatedEventsTests(unittest.TestCase):
         self.assertIn("同場社博", rendered)
         self.assertIn('data-event-title="社團博覽會"', rendered)
         self.assertIn('<span class="gb-go">我會去</span><span class="gb-going">已加入</span>', rendered)
+
+
+class DedupeTwinPostTests(unittest.TestCase):
+    """同一篇貼文重貼到 IG／Threads／FB，抽出的活動要收成一場。"""
+
+    RECRUIT = "社團博覽會擺攤資訊：陽明交大 9/9 工三前草坪，清華大學 9/10 新體育館旁 L 型馬路，歡迎來聊聊"
+    SHOWCASE = "本週兩齣戲同時開演，A 廳與 B 廳各一場，散場後有演後座談，歡迎留下來聊聊你的想法"
+
+    def event(self, eid, title, source_id, post_id, start="2026-09-09T17:30:00+08:00", **kw):
+        ev = {
+            "id": eid, "title": title, "start_at": start, "end_at": None, "all_day": False,
+            "venue": "工三前草坪", "school": "nycu",
+            "source": {"platform": source_id.split("_")[0], "source_id": source_id,
+                       "post_id": post_id, "url": f"https://example.com/{post_id}"},
+            "extraction": {"confidence": 0.8},
+        }
+        ev.update(kw)
+        return ev
+
+    def dedupe(self, events, texts):
+        with mock.patch.object(build_site, "_post_norm_texts", return_value=texts):
+            return build_site.dedupe(events)
+
+    def test_cross_platform_repost_merges_despite_unrelated_titles(self):
+        fb = self.event("evt_fb", "丁未梅竹籌備委員會徵才｜陽明交大社團博覽會", "fb_meichu", "p1")
+        ig = self.event("evt_ig", "梅竹籌備委員會徵才說明", "ig_meichu", "p2")
+
+        out = self.dedupe([fb, ig], {("fb_meichu", "p1"): "前情提要" + self.RECRUIT,
+                                     ("ig_meichu", "p2"): self.RECRUIT})
+
+        self.assertEqual([e["id"] for e in out], ["evt_fb"])
+        self.assertEqual([p["source_id"] for p in out[0]["alt_posts"]], ["ig_meichu"])
+
+    def test_unrelated_posts_at_the_same_slot_stay_separate(self):
+        a = self.event("evt_a", "梅竹籌備委員會徵才說明", "ig_meichu", "p1")
+        b = self.event("evt_b", "美術社社博攤位", "ig_art", "p2")
+
+        out = self.dedupe([a, b], {("ig_meichu", "p1"): self.RECRUIT,
+                                   ("ig_art", "p2"): self.SHOWCASE})
+
+        self.assertEqual(sorted(e["id"] for e in out), ["evt_a", "evt_b"])
+
+    def test_sessions_from_one_post_never_collapse(self):
+        a = self.event("evt_a", "《別照鏡子》晚場", "ig_drama", "p1", venue="A 廳")
+        b = self.event("evt_b", "《樂園混音》晚場", "ig_drama", "p1", venue="B 廳")
+
+        out = self.dedupe([a, b], {("ig_drama", "p1"): self.SHOWCASE})
+
+        self.assertEqual(sorted(e["id"] for e in out), ["evt_a", "evt_b"])
+
+    def test_twinned_multi_session_posts_pair_up_one_to_one(self):
+        texts = {("ig_drama", "p1"): self.SHOWCASE, ("fb_drama", "p2"): self.SHOWCASE}
+        events = [
+            self.event("evt_ig_a", "《別照鏡子》晚場", "ig_drama", "p1", venue="A 廳"),
+            self.event("evt_ig_b", "《樂園混音》晚場", "ig_drama", "p1", venue="B 廳"),
+            self.event("evt_fb_a", "別照鏡子 晚間場次", "fb_drama", "p2", venue="A 廳"),
+            self.event("evt_fb_b", "樂園混音 晚間場次", "fb_drama", "p2", venue="B 廳"),
+        ]
+
+        out = self.dedupe(events, texts)
+
+        self.assertEqual(len(out), 2)
+        merged = {e["title"]: [p["post_id"] for p in e.get("alt_posts", [])] for e in out}
+        self.assertEqual(sorted(merged), ["《別照鏡子》晚場", "《樂園混音》晚場"])
+        self.assertEqual(merged["《別照鏡子》晚場"], ["p2"])
+        self.assertEqual(merged["《樂園混音》晚場"], ["p2"])
+
+    def test_short_posts_are_not_treated_as_twins(self):
+        a = self.event("evt_a", "口琴社社課", "ig_a", "p1")
+        b = self.event("evt_b", "吉他社社課", "ig_b", "p2")
+
+        out = self.dedupe([a, b], {})  # 太短的貼文不進比對表
+
+        self.assertEqual(sorted(e["id"] for e in out), ["evt_a", "evt_b"])
+
+
+class DedupeDistinctSessionTests(unittest.TestCase):
+    """抽取器刻意拆開的多場次，不可以被當成重複收掉。"""
+
+    def event(self, eid, title, post_id, start, organizer="陽明交大學生會陽明分會",
+              source_id="ig_ymsa", venue=None):
+        return {
+            "id": eid, "title": title, "start_at": start, "end_at": None, "all_day": False,
+            "venue": venue, "school": "nycu", "organizer": organizer,
+            "source": {"platform": "instagram", "source_id": source_id, "post_id": post_id,
+                       "url": f"https://example.com/{post_id}"},
+            "extraction": {"confidence": 0.8},
+        }
+
+    def dedupe(self, events):
+        with mock.patch.object(build_site, "_post_norm_texts", return_value={}):
+            return build_site.dedupe(events)
+
+    def test_sessions_listed_in_one_post_survive_near_identical_titles(self):
+        events = [
+            self.event("evt_a", "第33屆陽明分會選舉實體投票（活四）", "p1",
+                       "2026-05-11T11:00:00+08:00", venue="活動中心四樓"),
+            self.event("evt_b", "第33屆陽明分會選舉實體投票（人社院）", "p1",
+                       "2026-05-11T11:30:00+08:00", venue="人社院"),
+        ]
+
+        self.assertEqual(sorted(e["id"] for e in self.dedupe(events)), ["evt_a", "evt_b"])
+
+    def test_one_post_listing_two_clubs_at_the_same_slot_stays_split(self):
+        events = [
+            self.event("evt_a", "EMBA 羽球社社課", "p1", "2026-03-05T16:00:00+08:00"),
+            self.event("evt_b", "EMBA 桌球社社課", "p1", "2026-03-05T16:00:00+08:00"),
+        ]
+
+        self.assertEqual(sorted(e["id"] for e in self.dedupe(events)), ["evt_a", "evt_b"])
+
+    def test_different_clubs_booths_at_one_fair_stay_split(self):
+        """剝掉各自的社名後核心同為「社團博覽會攤位」，但那是兩個社團的兩個攤位。"""
+        events = [
+            self.event("evt_a", "社團博覽會｜關懷生命社攤位", "p1", "2026-08-31T11:00:00+08:00",
+                       organizer="陽明關懷生命社", source_id="ig_dogs"),
+            self.event("evt_b", "愛杏管弦樂團社團博覽會攤位", "p2", "2026-08-31T11:00:00+08:00",
+                       organizer="陽明愛杏管弦樂團", source_id="fb_aising"),
+        ]
+
+        self.assertEqual(sorted(e["id"] for e in self.dedupe(events)), ["evt_a", "evt_b"])
+
+    def test_same_organizer_written_two_ways_still_merges(self):
+        events = [
+            self.event("evt_a", "清大鋼琴社春季音樂會", "p1", "2026-05-14T19:00:00+08:00",
+                       organizer="清大鋼琴社", source_id="ig_piano"),
+            self.event("evt_b", "鋼琴社春季音樂會", "p2", "2026-05-14T19:00:00+08:00",
+                       organizer="清大鋼琴社", source_id="fb_piano"),
+        ]
+
+        self.assertEqual([e["id"] for e in self.dedupe(events)], ["evt_a"])
+
+
+class DedupeDeterminismTests(unittest.TestCase):
+    def test_title_core_strips_the_same_prefix_every_run(self):
+        """走訪 set 會受 hash 隨機化影響，同一份輸入不能每次 build 得到不同結果。"""
+        events = [
+            {"id": "evt_a", "title": "清大鋼琴社春季音樂會", "start_at": "2026-05-14T19:00:00+08:00",
+             "all_day": False, "venue": "大禮堂", "organizer": "清大鋼琴社", "school": "nthu",
+             "source": {"platform": "instagram", "source_id": "ig_piano", "post_id": "p1",
+                        "url": "https://example.com/p1"},
+             "extraction": {"confidence": 0.8}},
+            {"id": "evt_b", "title": "春季音樂會", "start_at": "2026-05-14T19:00:00+08:00",
+             "all_day": False, "venue": "大禮堂", "organizer": "清大鋼琴社", "school": "nthu",
+             "source": {"platform": "facebook", "source_id": "fb_piano", "post_id": "p2",
+                        "url": "https://example.com/p2"},
+             "extraction": {"confidence": 0.7}},
+        ]
+        with mock.patch.object(build_site, "_post_norm_texts", return_value={}):
+            runs = {tuple(e["id"] for e in build_site.dedupe(copy.deepcopy(events)))
+                    for _ in range(5)}
+
+        self.assertEqual(runs, {("evt_a",)})
 
 
 if __name__ == "__main__":

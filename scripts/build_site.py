@@ -10,6 +10,7 @@ import sys
 from collections import Counter
 from datetime import datetime, date, timedelta, timezone
 from difflib import SequenceMatcher
+from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -139,6 +140,38 @@ def _similar(a, b):
     return len(ba & bb) / max(1, len(ba | bb)) >= 0.6
 
 
+def _title_overlap(a, b):
+    A, B = _bigrams(norm_title(a)), _bigrams(norm_title(b))
+    return len(A & B) / max(1, len(A | B))
+
+
+def _post_key(e):
+    src = e["source"]
+    return (src["source_id"], src["post_id"])
+
+
+def _post_keys(e):
+    """活動涵蓋的所有貼文（主來源＋已併入的轉貼）。"""
+    return {_post_key(e)} | {(p.get("source_id"), p.get("post_id")) for p in e.get("alt_posts", [])}
+
+
+def _source_ids(e):
+    return {sid for sid, _ in _post_keys(e)}
+
+
+@lru_cache(maxsize=1)
+def _post_norm_texts():
+    """(source_id, post_id) → 正規化貼文原文。太短的貼文比對不可靠（「本週社課照常」
+    兩篇不相干的也會高度相似），直接不納入。"""
+    from chumei_lib import iter_inbox
+    out = {}
+    for it in iter_inbox():
+        t = _feed_norm_text(it.get("text"))
+        if len(t) >= 40:
+            out[(it["source_id"], it["post_id"])] = t
+    return out
+
+
 def dedupe(events):
     def score(e):
         plat = {"api": 3, "bulletin": 1}.get(e["source"]["platform"], 0)
@@ -149,28 +182,79 @@ def dedupe(events):
     for e in events:
         day = (e.get("start_at") or "")[:10]
         groups.setdefault((norm_title(e["title"])[:24], day), []).append(e)
+    # 併進來的標題要留著：後面幾階段拿代表標題比對會漏掉「A≁B、B≈C」的鏈狀重複
+    alt_titles = {}
+
     def absorb(keep, dup_e):
         """dup_e 併入 keep：原始貼文完整記錄進 alt_posts（顯示用），網址進 alt_sources（相容舊 API）。"""
         keep.setdefault("alt_posts", []).append(dup_e["source"])
         keep["alt_posts"] += dup_e.get("alt_posts", [])
         keep["alt_sources"] = [p.get("url") for p in keep["alt_posts"] if p.get("url")]
+        alt_titles.setdefault(keep["id"], []).append(dup_e["title"])
+        alt_titles[keep["id"]] += alt_titles.pop(dup_e["id"], [])
+
+    def titles_of(e):
+        return [e["title"], *alt_titles.get(e["id"], [])]
+
+    def merge_bucket(grp, matches):
+        """桶內合併。兩條規則貫穿所有階段：
+        1. 同一篇貼文抽出的多場活動（三個投票所、四條縱走路線、羽球／桌球社課）
+           是抽取器刻意拆開的不同場次，永遠不互相合併；
+        2. 一篇貼文對上另一篇同內容貼文時，各場依標題相似度一一配對，
+           不會整批壓成一場（代表事件吸走一篇貼文後就不再吃它的其他場次）。
+        """
+        kept = []
+        for e in sorted(grp, key=score, reverse=True):
+            cands = [k for k in kept if not (_post_keys(k) & _post_keys(e)) and matches(k, e)]
+            if cands:
+                dup = max(cands, key=lambda k: _title_overlap(k["title"], e["title"]))
+                absorb(dup, e)
+                if e.get("school") != dup.get("school"):
+                    dup["school"] = "both"  # 跨校轉發＝兩校聯合
+            else:
+                kept.append(e)
+        return kept
 
     stage1 = []
     for grp in groups.values():
-        grp.sort(key=score, reverse=True)
-        best = grp[0]
-        for g in grp[1:]:
-            absorb(best, g)
-        stage1.append(best)
+        stage1 += merge_bucket(grp, lambda k, e: True)
+
+    # 第一階段半：跨平台同文貼文（IG／Threads／FB 重貼、兩社合體貼文）抽出的活動是同一場。
+    # 標題由 LLM 各自生成，同一篇貼文兩邊可以寫成「投資銀行實務工作坊」與「Investment
+    # Banking Workshop」，比標題永遠救不回來；改比貼文原文，同時段的活動一一配對。
+    # 一篇貼文列多場次時（同時段的四齣戲）依標題相似度配對，不整批併成一場；
+    # 同一篇貼文自己抽出的多場永不互相合併。
+    texts = _post_norm_texts()
+
+    def twin_post(k, e):
+        return _feed_same_post(texts.get(_post_key(e)), texts.get(_post_key(k)))
+
+    slots = {}
+    for e in stage1:
+        slots.setdefault(((e.get("start_at") or "")[:16], bool(e.get("all_day"))), []).append(e)
+    twinned = []
+    for grp in slots.values():
+        twinned += merge_bucket(grp, twin_post)
 
     # 第二階段：同一天、標題相似（同活動多貼文/轉發）。
     # 跨平台轉發常見「社名＋活動名」vs「活動名」——剝掉主辦名後核心相同也視為同活動。
     def title_core(e):
-        t = norm_title(e["title"])
-        for cand in {norm_title(e.get("organizer") or ""), _norm_org(e.get("organizer") or "")}:
+        """回傳（剝掉主辦名的核心標題, 是否真的剝到）。"""
+        t, stripped = norm_title(e["title"]), False
+        # 用 dict.fromkeys 而不是 set：set 的走訪順序受 hash 隨機化影響，
+        # 同一份輸入每次 build 會剝出不同的核心標題，去重結果跟著飄。
+        for cand in dict.fromkeys([norm_title(e.get("organizer") or ""), _norm_org(e.get("organizer") or "")]):
             if cand and len(cand) >= 3 and cand in t and len(t) - len(cand) >= 3:
-                t = t.replace(cand, "")
-        return t
+                t, stripped = t.replace(cand, ""), True
+        return t, stripped
+
+    def same_core(k, e):
+        (ck, sk), (ce, se) = title_core(k), title_core(e)
+        if not ck or ck != ce:
+            return False
+        # 兩邊各自剝掉不同的主辦名，剩下的共同核心是「社團博覽會攤位」這種泛稱——
+        # 不同社團在同一場博覽會各自擺攤，是不同活動。
+        return not (sk and se and _norm_org(k.get("organizer") or "") != _norm_org(e.get("organizer") or ""))
 
     # 同帳號連發多篇貼文宣傳同一場活動，標題每次寫法不同（「工工新生北區茶會」vs
     # 「工業工程與管理學系北區新生茶會」）會低於相似門檻；改用「同帳號＋不同貼文＋
@@ -178,45 +262,48 @@ def dedupe(events):
     def same_slot(k, e):
         if k.get("all_day") or e.get("all_day") or k.get("start_at") != e.get("start_at"):
             return False
-        ks, es = k["source"], e["source"]
-        if ks["source_id"] == es["source_id"] and ks["post_id"] == es["post_id"]:
-            return False
-        ta, tb = norm_title(k["title"]), norm_title(e["title"])
-        ba, bb = _bigrams(ta), _bigrams(tb)
+        if _post_keys(k) & _post_keys(e):
+            return False  # 同一篇貼文抽出的多場次（同時段的四齣戲）本來就是不同活動
         va, vb = norm_title(k.get("venue")), norm_title(e.get("venue"))
         venue_ok = bool(va and vb and (va in vb or vb in va or _similar(va, vb)))
-        if ks["source_id"] == es["source_id"]:
-            if len(ba & bb) < 2:
-                return False
-            if va and vb:
-                return venue_ok
-            # 缺地點佐證時提高標題門檻：只共享尾綴（「游泳／羽球夏令營」）不算同活動
-            return len(ba & bb) / max(1, len(ba | bb)) >= 0.4
+        pairs = [(norm_title(a), norm_title(b)) for a in titles_of(k) for b in titles_of(e)]
+        if _source_ids(k) & _source_ids(e):
+            for ta, tb in pairs:
+                ba, bb = _bigrams(ta), _bigrams(tb)
+                if len(ba & bb) < 2:
+                    continue
+                if va and vb:
+                    return venue_ok
+                # 缺地點佐證時提高標題門檻：只共享尾綴（「游泳／羽球夏令營」）不算同活動
+                if len(ba & bb) / max(1, len(ba | bb)) >= 0.4:
+                    return True
+            return False
         # 跨帳號（主辦與轉發單位各自發文、副標改寫）要更硬的證據：
         # 起訖時間全等＋地點相容＋標題共同前綴夠長（系列名，如「台灣矽谷解密：」）。
         # 前綴不能太短，免得「社團博覽會Ａ社攤位」「社團博覽會Ｂ社攤位」這類同場不同攤被誤併。
         if not venue_ok or k.get("end_at") != e.get("end_at"):
             return False
-        prefix = next((i for i, (x, y) in enumerate(zip(ta, tb)) if x != y), min(len(ta), len(tb)))
-        return prefix >= 6
+        return any(next((i for i, (x, y) in enumerate(zip(ta, tb)) if x != y), min(len(ta), len(tb))) >= 6
+                   for ta, tb in pairs)
+
+    def similar_titles(k, e):
+        """代表標題用完整相似度（含包含關係）；併進來的標題只認 bigram 相似度——
+        轉貼常留下沒有主辦前綴的通用寫法（「北區新生茶會」），拿它做「包含即相似」
+        會把材料系的茶會接到數學系的茶會上。"""
+        if _similar(norm_title(k["title"]), norm_title(e["title"])):
+            return True
+        return any(min(len(a), len(b)) > 5 and _title_overlap(a, b) >= 0.6
+                   for a in map(norm_title, titles_of(k)) for b in map(norm_title, titles_of(e)))
+
+    def same_event(k, e):
+        return similar_titles(k, e) or same_core(k, e) or same_slot(k, e)
 
     by_day = {}
-    for e in stage1:
+    for e in twinned:
         by_day.setdefault((e.get("start_at") or "")[:10], []).append(e)
     out = []
     for grp in by_day.values():
-        kept = []
-        for e in sorted(grp, key=score, reverse=True):
-            dup = next((k for k in kept if _similar(norm_title(k["title"]), norm_title(e["title"]))
-                        or (title_core(k) and title_core(k) == title_core(e))
-                        or same_slot(k, e)), None)
-            if dup:
-                absorb(dup, e)
-                if e.get("school") != dup.get("school"):
-                    dup["school"] = "both"  # 跨校轉發＝兩校聯合
-            else:
-                kept.append(e)
-        out.extend(kept)
+        out += merge_bucket(grp, same_event)
     return out
 
 
@@ -975,7 +1062,7 @@ def related_events(event, events, limit=8):
     return [(candidate, reason) for _, _, _, candidate, reason in ranked[:limit]]
 
 
-def detail_page(e, org=None, org_sections=(), alt_posts=(), related=()):
+def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_time=False):
     st, en = e.get("start_at"), e.get("end_at")
     loc = join_loc(e)
     gcal = ""
@@ -999,6 +1086,9 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=()):
     if date_match:
         year, month, day = (int(part) for part in date_match.groups())
         date_label = f"{year} 年 {month} 月 {day} 日"
+        # 同一天同名的多場次（上午場／下午場各一頁）光靠日期分不出來，補上開始時間
+        if with_time and not e.get("all_day") and len(st or "") >= 16:
+            date_label += f" {st[11:16]}"
     else:
         date_label = "日期待確認"
     page_heading = f"{e['title']}｜{date_label}"
@@ -2285,6 +2375,8 @@ def main():
             if ent is not None and ent["id"] not in seen_ent:
                 seen_ent.add(ent["id"])
                 ent_events.setdefault(ent["id"], []).append(e)
+    # 同名又同一天的活動（同一場地一天兩場）頁面標題要能分辨，先數出來
+    same_day_twins = Counter((e["title"], (e.get("start_at") or "")[:10]) for e in events)
     for e in events:
         ent = sid_to_entry.get(e["source"]["source_id"])
         org = (ent["id"], ent["name"]) if ent else None
@@ -2314,7 +2406,8 @@ def main():
         d.mkdir(parents=True, exist_ok=True)
         related = related_events(e, events)
         (d / "index.html").write_text(detail_page(
-            e, org=org, org_sections=org_sections, alt_posts=alt_posts, related=related))
+            e, org=org, org_sections=org_sections, alt_posts=alt_posts, related=related,
+            with_time=same_day_twins[(e["title"], (e.get("start_at") or "")[:10])] > 1))
 
     refresh_legacy_event_seo({e["id"] for e in events})
     org_ids = source_page(events, entries)
