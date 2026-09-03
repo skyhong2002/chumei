@@ -206,6 +206,10 @@ def log_error(username, err):
         f.write(json.dumps({"ts": now_iso(), "username": username, "error": str(err)[:300]}, ensure_ascii=False) + "\n")
 
 
+# 節流基準（2026-09-02）：IG 對抓取帳號發出 scraping_warning。當時 24h／4 批 ≈ 每天
+# 324 次 profile 請求，而 RSSHub 每次都會 POST 一次 ig_sso_users 重新驗證 session，
+# 正是被判定為自動化的模式。48h／2 批把量砍半（≈160 次/日），代價是新貼文的發現
+# 從「1 天內」變「2 天內」。要調快之前先想清楚：IG 下一次不是警告，是停用。
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--accounts", help="逗號分隔，只抓這些 username")
@@ -214,10 +218,10 @@ def main():
     ap.add_argument("--sleep-min", type=float, default=25, help="帳號間最短等待秒數")
     ap.add_argument("--sleep-max", type=float, default=45, help="帳號間最長等待秒數")
     ap.add_argument("--batch-size", type=int, default=10, help="每小批帳號數")
-    ap.add_argument("--batches", type=int, default=4, help="每輪最多跑幾個小批")
+    ap.add_argument("--batches", type=int, default=2, help="每輪最多跑幾個小批")
     ap.add_argument("--batch-buffer-min", type=float, default=300, help="小批間最短緩衝秒數")
     ap.add_argument("--batch-buffer-max", type=float, default=480, help="小批間最長緩衝秒數")
-    ap.add_argument("--account-interval-hours", type=float, default=24,
+    ap.add_argument("--account-interval-hours", type=float, default=48,
                     help="同一帳號成功後至少間隔幾小時再抓")
     ap.add_argument("--max-accounts", type=int, default=0,
                     help="覆寫這一輪帳號上限（0=使用 batch-size × batches）")
