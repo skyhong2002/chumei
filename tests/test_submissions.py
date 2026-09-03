@@ -231,13 +231,97 @@ class ProcessTests(unittest.TestCase):
             handles = process_submissions.load_tracked_handles()
         self.assertIn("nycuwlef", handles["facebook"])
 
-    def test_tracked_profile_and_untracked_profile(self):
-        with mock.patch.object(process_submissions, "SOURCE_SUGGESTIONS", Path(self.tempdir.name) / "s.jsonl"):
-            tracked = self._run("https://www.instagram.com/nthu_sa/")
-            self.assertEqual((tracked["status"], tracked["event_url"]), ("existing", "/org/42/"))
-            got = self._run("https://www.instagram.com/newclub/")
-            self.assertEqual(got["status"], "source_suggested")
-            self.assertIn("newclub", (Path(self.tempdir.name) / "s.jsonl").read_text())
+    def test_tracked_profile_links_to_its_org_page(self):
+        got = self._run("https://www.instagram.com/nthu_sa/")
+        self.assertEqual((got["status"], got["event_url"]), ("existing", "/org/42/"))
+
+    def test_untracked_profile_is_added_without_human_review(self):
+        added = []
+
+        def fake_add(info, verdict, sub_id):
+            added.append((info["platform"], info["handle"], verdict["name"]))
+            return "ig_accounts.csv"
+
+        got = self._run(
+            "https://www.instagram.com/newclub/",
+            fetch_account_preview=lambda url, info, env: ("新社團", ["9/20 迎新茶會"]),
+            review_source_with_codex=lambda *a: {
+                "relevant": True, "name": "清大新社團", "school": "nthu", "org_type": "club",
+                "category_hint": "學術性", "reason": "清大社團，持續發活動資訊。", "confidence": 0.9},
+            add_tracked_source=fake_add,
+        )
+        self.assertEqual(got["status"], "source_added")
+        self.assertEqual(added, [("instagram", "newclub", "清大新社團")])
+        self.assertIn("清大新社團", got["reason"])
+        # 同一輪裡再回報一次同帳號不會重複寫入
+        self.assertIn("newclub", self.ctx["handles"]["instagram"])
+        # 建站前還沒有單位頁；建站後由 settle_source_added 補上連結，狀態與說明不變
+        self.assertIsNone(got["event_url"])
+        process_submissions.settle_source_added(self.store, {**self.ctx["orgs"], "ig_newclub": 99})
+        after = self.store.get(got["id"])
+        self.assertEqual((after["status"], after["event_url"], after["reason"]),
+                         ("source_added", "/org/99/", got["reason"]))
+
+    def test_added_profile_links_org_page_when_it_already_exists(self):
+        got = self._run(
+            "https://www.threads.net/@nthu_sa/",
+            fetch_account_preview=lambda url, info, env: ("清大學生會", ["9/20 迎新"]),
+            review_source_with_codex=lambda *a: {
+                "relevant": True, "name": "清大學生會", "school": "nthu", "org_type": "gov",
+                "category_hint": "", "reason": "官方帳號。", "confidence": 0.95},
+            add_tracked_source=lambda info, verdict, sub_id: "social_accounts.csv",
+        )
+        self.ctx["orgs"]["threads_nthu_sa"] = 42
+        process_submissions.settle_source_added(self.store, self.ctx["orgs"])
+        self.assertEqual((got["status"], self.store.get(got["id"])["event_url"]), ("source_added", "/org/42/"))
+
+    def test_unreachable_profile_is_rejected(self):
+        got = self._run("https://www.instagram.com/ghost/",
+                        fetch_account_preview=lambda url, info, env: ("", []))
+        self.assertEqual(got["status"], "rejected")
+        self.assertIn("抓不到", got["reason"])
+
+    def test_missing_account_is_rejected(self):
+        def gone(url, info, env):
+            raise process_submissions.AccountNotFound("NotFoundError: User ID not found")
+
+        got = self._run("https://www.instagram.com/gone/", fetch_account_preview=gone)
+        self.assertEqual(got["status"], "rejected")
+        self.assertIn("找不到", got["reason"])
+
+    def test_transient_fetch_failure_retries_instead_of_rejecting(self):
+        """抓取管線整條壞掉時每個帳號都讀不到，不能因此把正常投稿判成不收。"""
+        def flaky(url, info, env):
+            raise RuntimeError('RSSHub: FetchError: fetch failed')
+
+        sub = self.store.create("u1", "https://www.instagram.com/flaky/")
+        seen = []
+        with mock.patch.object(process_submissions, "fetch_account_preview", flaky), \
+             mock.patch.object(process_submissions, "MANUAL_REVIEW",
+                               Path(self.tempdir.name) / "m.jsonl"):
+            for _ in range(submissions.MAX_ATTEMPTS):
+                process_submissions.process_one(self.store, self.store.get(sub["id"]), self.ctx)
+                seen.append(self.store.get(sub["id"])["status"])
+        self.assertEqual(seen, ["pending"] * (submissions.MAX_ATTEMPTS - 1) + ["manual"])
+
+    def test_irrelevant_profile_is_rejected(self):
+        got = self._run("https://www.instagram.com/someshop/",
+                        fetch_account_preview=lambda url, info, env: ("某某商家", ["全面八折"]),
+                        review_source_with_codex=lambda *a: {
+                            "relevant": False, "name": "某某商家", "school": "external",
+                            "org_type": "external", "category_hint": None,
+                            "reason": "與清交校園活動無關。", "confidence": 0.9})
+        self.assertEqual(got["status"], "rejected")
+
+    def test_low_confidence_profile_still_goes_to_a_human(self):
+        got = self._run("https://www.instagram.com/maybe/",
+                        fetch_account_preview=lambda url, info, env: ("？", ["嗯"]),
+                        review_source_with_codex=lambda *a: {
+                            "relevant": True, "name": "不確定", "school": "both", "org_type": "club",
+                            "category_hint": None, "reason": "看不出跟兩校的關係。", "confidence": 0.2},
+                        MANUAL_REVIEW=Path(self.tempdir.name) / "manual.jsonl")
+        self.assertEqual(got["status"], "manual")
+        self.assertIn("maybe", (Path(self.tempdir.name) / "manual.jsonl").read_text())
 
     def test_already_covered_post_links_event(self):
         got = self._run("https://instagram.com/p/OLD/?igsh=x")

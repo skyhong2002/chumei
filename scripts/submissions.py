@@ -27,7 +27,8 @@ STATUS_LABELS = {
     "published": "已上線",
     "existing": "已收錄",
     "not_event": "未辨識出活動",
-    "source_suggested": "帳號已列入評估",
+    "source_added": "已加入追蹤",
+    "source_suggested": "帳號已列入評估",  # 舊資料：改成自動審核前的狀態
     "manual": "待人工確認",
     "rejected": "不收錄",
     "error": "處理失敗",

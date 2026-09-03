@@ -1,8 +1,9 @@
 """連結回報審核：登入者貼的連結 → 判讀 → 進 inbox 走既有抽取管線。
 
 每一筆 pending：
-1. 先用程式比對：已在 inbox／events 裡的貼文直接回「已收錄」，帳號主頁比對名錄，
-   已追蹤的帳號回「已收錄」、沒追蹤的寫進 state/submissions/source_suggestions.jsonl 等人工。
+1. 先用程式比對：已在 inbox／events 裡的貼文直接回「已收錄」。帳號主頁比對名錄，
+   已追蹤的回「已收錄」；沒追蹤的抓最近貼文交給 Codex 審，過了就直接寫進 registry CSV
+   （站長不用再確認一次），下一輪抓取就開始收錄。
 2. 抓頁面內容（IG 貼文走 instaloader，其餘 og tags＋正文；文字太少就截圖）。
 3. Codex 判讀：相關嗎？新活動、對上既有活動、還是不收。信心不足留人工。
 4. new_event → append data/feeds/inbox/user_submission.jsonl，接著只對這個來源跑
@@ -14,6 +15,7 @@ launchd 每 15 分鐘跑一輪（tw.observe.chumei.submissions）；也可手動
 from __future__ import annotations
 
 import argparse
+import csv
 import html as html_lib
 import json
 import re
@@ -32,13 +34,18 @@ from submissions import MAX_ATTEMPTS, SubmissionStore, classify_url, normalize_u
 SOURCE_ID = "user_submission"
 EVENTS_JSON = ROOT / "site" / "api" / "events.json"
 STATE_DIR = ROOT / "state" / "submissions"
-SOURCE_SUGGESTIONS = STATE_DIR / "source_suggestions.jsonl"
 MANUAL_REVIEW = STATE_DIR / "manual_review.jsonl"
 EXTRACT_CACHE = ROOT / "state" / "extraction" / f"{SOURCE_ID}.json"
 SCHEMA = ROOT / "scripts" / "submission_schema.json"
+SOURCE_SCHEMA = ROOT / "scripts" / "source_schema.json"
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36 chumei.observe.tw"
 MIN_TEXT_FOR_NO_SCREENSHOT = 120
 CONFIDENCE_FLOOR = 0.6
+# classify_url 用 twitter，registry CSV 用 x
+CSV_TO_KIND = {"x": "twitter"}
+KIND_TO_CSV = {"instagram": "instagram", "facebook": "facebook", "threads": "threads", "twitter": "x"}
+# 各平台的 registry 檔；沒列到的走 social_accounts.csv（第一欄多一個 platform）
+REGISTRY_FILES = {"instagram": "ig_accounts.csv", "facebook": "fb_pages.csv"}
 
 TRIAGE_PROMPT = """你是「竹梅活動觀測站」（清大＋陽明交大校園活動聚合站）的收件審核員。有使用者回報了一個連結，附上抓到的頁面內容（可能還有截圖或海報）。請判斷這個連結該怎麼處理。
 
@@ -54,6 +61,18 @@ TRIAGE_PROMPT = """你是「竹梅活動觀測站」（清大＋陽明交大校�
 - posted_at：內容裡看得出的發文／公告日期（ISO8601，含 +08:00），看不出填 null。
 - reason：一句話給回報者看的理由（臺灣正體中文，≤60 字，不要提到「候選清單」這類內部詞）。
 - confidence：0–1，對整體判斷的信心；內容零碎、看不清、要猜的 → 調低。
+輸出只能是 JSON。"""
+
+SOURCE_PROMPT = """你是「竹梅活動觀測站」（清大＋陽明交大校園活動聚合站）的來源審核員。有使用者回報了一個社群帳號主頁，希望竹梅長期追蹤它的貼文。附上帳號的顯示名稱與最近幾則貼文。請判斷要不要收進追蹤清單。
+
+判斷標準：
+- relevant：這個帳號是否會持續發布「清大或陽明交大的學生看得到、去得了的公開活動資訊」（系所、系學會、社團、學生自治組織、校方單位、校園媒體，以及辦活動給兩校學生的校外單位）。個人帳號、與兩校無關的商家或粉專、只發迷因且從不預告活動 → relevant: false。貼文量少但明顯是兩校的正式單位 → 仍然可以收。
+- name：這個單位對外的正式名稱（臺灣正體中文）。顯示名稱含花字、口號或表情符號時整理成乾淨的單位名。
+- school：nthu／nycu／both／external。跨兩校的填 both；校外單位填 external。
+- org_type：official（校方單位）／department（系所）／club（社團、系學會、學生自治、學生自媒體）／external（校外單位或商家）。
+- category_hint：二到五個字的分類提示（例如 學術性、運動、校園媒體、系學會、校園商家）；判斷不出填 null。
+- reason：一句話給回報者看的理由（臺灣正體中文，≤60 字）。
+- confidence：0–1。抓不到貼文、看不出跟兩校的關係、要用猜的 → 調低。
 輸出只能是 JSON。"""
 
 
@@ -102,8 +121,11 @@ def load_tracked_handles():
         handles["instagram"].add(r["username"].strip().lstrip("@").lower())
     for r in read_sources_csv("fb_pages.csv"):
         handles["facebook"].add(page_slug(r["page"]))
+    # registry 的 x 對應 classify_url 的 twitter，不對齊的話已追蹤的 X 帳號會被判成沒收錄
     for r in read_sources_csv("social_accounts.csv"):
-        handles.setdefault(r["platform"].strip().lower(), set()).add(r["username"].strip().lstrip("@").lower())
+        platform = r["platform"].strip().lower()
+        handles.setdefault(CSV_TO_KIND.get(platform, platform), set()).add(
+            r["username"].strip().lstrip("@").lower())
     return handles
 
 
@@ -299,6 +321,126 @@ def triage_with_codex(env, url, info, content, candidates, image_paths):
         return json.loads(Path(f"{td}/out.json").read_text())
 
 
+# ---------- 帳號主頁：自動審核並收進追蹤名單 ----------
+
+RSSHUB_ACCOUNT_ROUTES = {"instagram": "/instagram/2/user/{u}", "threads": "/threads/{u}",
+                         "twitter": "/twitter/user/{u}"}
+
+
+def _rss_preview(text, limit=8):
+    """RSS → (頻道標題, 最近貼文摘要)。只取判讀要看的欄位，不去耦合各 fetcher 的解析器。"""
+    text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", text, flags=re.S)
+    m = re.search(r"<title>(.*?)</title>", text, re.S)
+    title = _strip_tags(html_lib.unescape(m.group(1))) if m else ""
+    posts = []
+    for item in list(re.finditer(r"<item>(.*?)</item>", text, re.S))[:limit]:
+        body = item.group(1)
+        when = re.search(r"<pubDate>(.*?)</pubDate>", body, re.S)
+        desc = re.search(r"<description>(.*?)</description>", body, re.S)
+        txt = _strip_tags(html_lib.unescape(desc.group(1))) if desc else ""
+        if txt:
+            posts.append(f"{when.group(1)[:16] if when else ''}｜{txt[:240]}")
+    return title, posts
+
+
+class AccountNotFound(Exception):
+    """RSSHub 明確回報查無此帳號——跟「路由暫時壞掉」是兩回事。"""
+
+
+def fetch_account_preview(url, info, env):
+    """回傳 (顯示名稱, 最近貼文摘要)。
+
+    IG／Threads／X 走本地 RSSHub：那正是之後排程抓這個帳號會走的路。只有 RSSHub 明講
+    NotFoundError 才算帳號不存在；其他失敗（IG 登入流程整條掛掉時每個帳號都會 503）
+    一律往外拋讓上層重試——把暫時性故障當成「這個帳號不能收」會冤枉掉正常的投稿。
+    FB 沒有免費路由，退回頁面 og tags。
+    """
+    from fetch_instagram import rsshub_error
+    route = RSSHUB_ACCOUNT_ROUTES.get(info["platform"])
+    if route:
+        base = env.get("CHUMEI_RSSHUB_BASE", "http://127.0.0.1:1200")
+        resp = requests.get(base + route.format(u=info["handle"]), params={"limit": 8},
+                            timeout=(10, 60))
+        if resp.status_code == 200 and b"<rss" in resp.content[:200]:
+            return _rss_preview(resp.text)
+        error = rsshub_error(resp)
+        if error and "NotFoundError" in str(error):
+            raise AccountNotFound(str(error))
+        raise error or RuntimeError(f"RSSHub 沒回傳 RSS（HTTP {resp.status_code}）")
+    page = fetch_generic(url)
+    body = (page.get("text") or "")[:1500]
+    return (page.get("title") or ""), ([body] if body else [])
+
+
+def review_source_with_codex(env, url, info, name, posts, note):
+    listing = "\n".join(f"- {p}" for p in posts[:8]) or "（抓不到貼文）"
+    user = (
+        f"回報的帳號：{url}\n平台：{info['platform']}\n帳號代號：@{info['handle']}\n"
+        f"顯示名稱：{name or '（抓不到）'}\n"
+        f"{('回報者備註：' + note) if note else ''}\n\n最近的貼文：\n{listing[:6000]}"
+    )
+    with tempfile.TemporaryDirectory(prefix="chumei-src-") as td:
+        cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
+               "--output-schema", str(SOURCE_SCHEMA), "-o", f"{td}/out.json"]
+        model = env.get("CHUMEI_CODEX_MODEL")
+        if model:
+            cmd += ["-m", model]
+        r = subprocess.run(cmd, cwd=td, capture_output=True, text=True, timeout=420,
+                           input=SOURCE_PROMPT + "\n\n---\n" + user)
+        if r.returncode != 0:
+            raise RuntimeError(f"codex exec rc={r.returncode}: {r.stderr[-200:]}")
+        return json.loads(Path(f"{td}/out.json").read_text())
+
+
+def add_tracked_source(info, verdict, sub_id):
+    """通過審核的帳號寫進對應的 registry CSV；回傳檔名。"""
+    platform = KIND_TO_CSV[info["platform"]]
+    reason = (verdict.get("reason") or "").strip()
+    note = (f"{now_iso()[:10]} 使用者回報 {sub_id}：自動審核通過"
+            + (f"（{reason}）" if reason else ""))
+    tail = [verdict["name"], verdict["school"], verdict["org_type"],
+            verdict.get("category_hint") or "", "true", note]
+    fname = REGISTRY_FILES.get(platform)
+    row = [info["handle"]] + tail if fname else [platform, info["handle"]] + tail
+    fname = fname or "social_accounts.csv"
+    with (ROOT / "data" / "sources" / fname).open("a", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerow(row)
+    return fname
+
+
+def review_account(sub, url, info, ctx, finish, dry_run):
+    """帳號主頁不進人工佇列：審過就直接進追蹤名單，下一輪抓取開始收錄。"""
+    env = ctx["env"]
+    try:
+        name, posts = fetch_account_preview(url, info, env)
+    except AccountNotFound:
+        return finish("rejected", "找不到這個帳號，可能已改名、刪除或設為不公開。")
+    if not name and not posts:
+        return finish("rejected", "抓不到這個帳號的公開內容，沒辦法判斷。")
+    verdict = review_source_with_codex(env, url, info, name, posts, sub.get("note"))
+    verdict_json = json.dumps(verdict, ensure_ascii=False)
+    reason = (verdict.get("reason") or "").strip() or "系統判讀完成。"
+    conf = float(verdict.get("confidence") or 0)
+    print(f"  source relevant={verdict.get('relevant')} conf={conf:.2f} :: {reason}")
+    if conf < CONFIDENCE_FLOOR:
+        if not dry_run:
+            _append_jsonl(MANUAL_REVIEW, {"ts": now_iso(), "submission": sub["id"], "url": url,
+                                          "verdict": verdict, "note": sub.get("note") or ""})
+        return finish("manual", "系統不太確定這個帳號，已交給站長人工確認。", verdict=verdict_json)
+    if not verdict.get("relevant"):
+        return finish("rejected", reason, verdict=verdict_json)
+    # 單位頁通常要等下次建站才會有；先試著對，沒有的話 settle_source_added 之後補
+    link = org_url(ctx["orgs"], info)
+    if dry_run:
+        return finish("source_added", reason, verdict=verdict_json, event_url=link)
+    fname = add_tracked_source(info, verdict, sub["id"])
+    ctx["handles"].setdefault(info["platform"], set()).add(info["handle"])
+    print(f"  + {fname}: {info['platform']} @{info['handle']} → {verdict['name']}")
+    return finish("source_added",
+                  f"已加入追蹤清單（{verdict['name']}），之後的新貼文會自動收錄。",
+                  verdict=verdict_json, event_url=link)
+
+
 # ---------- 落地 ----------
 
 def _append_jsonl(path, record):
@@ -381,11 +523,17 @@ def process_one(store, sub, ctx, dry_run=False):
         if info["handle"] in tracked:
             return finish("existing", "這個帳號已經在竹梅的追蹤清單裡，新貼文會自動收錄。",
                           event_url=org_url(ctx["orgs"], info))
-        if not dry_run:
-            _append_jsonl(SOURCE_SUGGESTIONS, {"ts": now_iso(), "submission": sub["id"], "url": url,
-                                               "platform": info["platform"], "handle": info["handle"],
-                                               "note": sub.get("note") or ""})
-        return finish("source_suggested", "收到，這個帳號會由站長確認後加入追蹤清單。")
+        try:
+            return review_account(sub, url, info, ctx, finish, dry_run)
+        except Exception as exc:  # noqa: BLE001
+            if sub["attempts"] + 1 < MAX_ATTEMPTS:
+                return finish("pending", f"暫時讀不到這個帳號（{str(exc)[:80]}），稍後重試。",
+                              bump_attempts=True)
+            # 一直讀不到多半是抓取管線的問題，不是這個帳號的錯：交給站長，不要默默丟掉
+            if not dry_run:
+                _append_jsonl(MANUAL_REVIEW, {"ts": now_iso(), "submission": sub["id"], "url": url,
+                                              "error": str(exc)[:200], "note": sub.get("note") or ""})
+            return finish("manual", "一直讀不到這個帳號的內容，已交給站長確認。", bump_attempts=True)
 
     # 單篇內容：已在 inbox／events 裡就直接對回
     key = inbox_by_url.get(url) or (inbox_by_sc.get(info["post_id"]) if info["kind"] == "ig_post" else None)
@@ -488,6 +636,17 @@ def settle_accepted(store, index):
                 store.update(sub["id"], "accepted", reason)
 
 
+def settle_source_added(store, orgs):
+    """建站後：新加入追蹤的帳號有了單位頁，把 /org/{id} 連結補上。"""
+    for sub in store.list_by_status(["source_added"], limit=200):
+        if sub.get("event_url"):
+            continue
+        info = classify_url(normalize_url(sub["url"]) or sub["url"])
+        link = org_url(orgs, info)
+        if link:
+            store.update(sub["id"], "source_added", sub.get("reason") or "", event_url=link)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=20)
@@ -522,6 +681,7 @@ def main():
     if ctx["needs_extract"]:
         run_extract()
     settle_accepted(store, ctx["events"])
+    settle_source_added(store, ctx["orgs"])
     return 0
 
 

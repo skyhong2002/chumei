@@ -1342,7 +1342,7 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
         form = f"""
         <form method="post" action="/auth/submissions" class="submit-form">
           <label class="submit-label" for="submit-url">連結</label>
-          <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="https://www.instagram.com/p/…" autocomplete="off">
+          <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="貼文或帳號主頁，例如 https://www.instagram.com/p/…" autocomplete="off">
           <label class="submit-label" for="submit-note">備註（選填，只有你和站長看得到）</label>
           <input id="submit-note" class="submit-input" type="text" name="note" maxlength="{MAX_NOTE_LENGTH}" placeholder="例如：主辦是清大天文社、活動在 9/20">
           <button class="btn btn-primary account-action" type="submit">送出</button>
@@ -1359,7 +1359,9 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
     return f"""
         <p class="eyebrow">回報連結</p>
         <h2>看到活動，貼連結給竹梅</h2>
-        <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。每個連結的處理狀態都公開在下面。</p>
+        <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。</p>
+        <p>也可以直接貼<strong>帳號主頁</strong>。確認是清交的單位、社團或校園媒體之後就會加進追蹤清單，之後的新貼文都自動收錄，不用等人工放行。</p>
+        <p>每個連結的處理狀態都公開在下面。</p>
         {alert}
         {form}
         <h3 class="submit-list-title">最近的回報</h3>
@@ -1373,14 +1375,14 @@ def _submit_page_html(items: list[dict], notice: str | None, user: dict | None, 
 <section class="account-page">
   <div class="hero">
     <h1>回報活動</h1>
-    <p>幫竹梅補上漏掉的活動。處理進度公開，已收錄的會直接連到活動頁。</p>
+    <p>幫竹梅補上漏掉的活動，或還沒追蹤的帳號。處理進度公開，已收錄的會直接連到活動頁。</p>
   </div>
   <section class="account-card submit-card" id="submit">{inner}</section>
 </section>
 """
     return page_shell(
         "回報活動｜竹梅活動觀測站",
-        "把活動貼文或公告的連結回報給竹梅，系統會自動判讀收錄。",
+        "把活動貼文、公告或帳號主頁的連結回報給竹梅，系統會自動判讀收錄。",
         content,
         canonical="https://chumei.observe.tw/submit/",
     )
