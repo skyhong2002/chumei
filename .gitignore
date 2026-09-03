@@ -17,3 +17,5 @@ site/sitemap.xml
 site/robots.txt
 site/source/
 site/org/
+
+.DS_Store
