@@ -65,6 +65,13 @@ def parse_pages():
 
 
 class SEOOutputTests(unittest.TestCase):
+    def test_about_links_nycu_life_team_to_its_current_site(self):
+        source = (SITE / "about" / "index.html").read_text()
+        self.assertIn(
+            '<a href="https://nycu.life/" rel="noopener">NYCU LIFE 數碼寶貝社</a>',
+            source,
+        )
+
     def test_every_shell_uses_the_same_footer_links(self):
         expected = [
             "/", "/", "/events/", "/calendar/", "/stories/", "/notify/",
