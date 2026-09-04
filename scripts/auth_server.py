@@ -15,6 +15,8 @@ Public routes (Caddy proxies /auth/*, /account*, /submit*, /@* to this service):
   DELETE /auth/follows/{org_id} unfollow one organization
   GET  /auth/submissions      current user's link reports
   POST /auth/submissions      report a link (JSON or form; login required)
+  GET  /contribute/           Apify community contribution dashboard
+  GET/POST /auth/apify-contributions  list or register encrypted Apify tokens
   POST /auth/logout           revoke local session
   GET  /auth/health           runtime/configuration status
 """
@@ -53,6 +55,18 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
+from apify_contributions import (
+    MAX_ACCOUNTS_PER_USER,
+    PRIORITY_BONUS_PER_ACCOUNT,
+    active_count as apify_active_count,
+    dashboard as apify_dashboard,
+    disable as disable_apify_contribution,
+    encryption_available as apify_encryption_available,
+    ensure_schema as ensure_apify_schema,
+    register as register_apify_contribution,
+    user_rows as apify_user_rows,
+    verify_token as verify_apify_token,
+)
 from build_site import event_ics, ics_calendar, page_shell
 from chumei_lib import ROOT, load_env
 from submissions import (
@@ -78,7 +92,9 @@ SESSION_COOKIE = "chumei_session"
 # 僅允許小寫英數與底線，總長度最多 64 字元。
 EVENT_ID_RE = re.compile(r"evt_[a-z0-9_]{6,60}")
 HANDLE_RE = re.compile(r"[a-z0-9_]{3,20}")
-RESERVED_HANDLES = {"admin", "chumei", "account", "submit", "auth", "about", "event", "org", "source"}
+RESERVED_HANDLES = {
+    "admin", "chumei", "account", "submit", "contribute", "auth", "about", "event", "org", "source"
+}
 OAUTH_STATE_COOKIE = "chumei_oauth_state"
 SESSION_AGE_SECONDS = 30 * 24 * 60 * 60
 OAUTH_STATE_AGE_SECONDS = 10 * 60
@@ -388,6 +404,7 @@ class AuthStore:
                     ON user_saved_feeds(user_id, created_at, id);
                 """
             )
+            ensure_apify_schema(conn)
             columns = {r[1] for r in conn.execute("PRAGMA table_info(oauth_states)")}
             if "link_user_id" not in columns:
                 conn.execute("ALTER TABLE oauth_states ADD COLUMN link_user_id TEXT")
@@ -572,7 +589,7 @@ class AuthStore:
     ) -> str:
         """把 (provider, subject) 綁到 user_id。回傳 ok / merged / already。
 
-        若該身分已屬於另一個使用者，把對方的追蹤、參加、回報與 session
+        若該身分已屬於另一個使用者，把對方的追蹤、參加、回報、Apify 貢獻與 session
         全部搬過來再刪除對方（merged）。
         """
         now = _now()
@@ -606,6 +623,10 @@ class AuthStore:
                 )
                 conn.execute(
                     "UPDATE sessions SET user_id = ? WHERE user_id = ?", (user_id, other_id)
+                )
+                conn.execute(
+                    "UPDATE apify_contributions SET user_id = ?, updated_at = ? WHERE user_id = ?",
+                    (user_id, now, other_id),
                 )
                 conn.execute(
                     "UPDATE oauth_identities SET user_id = ?, email = ?, avatar_url = COALESCE(?, avatar_url), updated_at = ? "
@@ -769,7 +790,9 @@ class AuthStore:
             ).fetchall()
         return [self._fetch_request_payload(row) for row in rows]
 
-    def create_fetch_request(self, user_id: str, source: dict) -> tuple[str, dict | None]:
+    def create_fetch_request(
+        self, user_id: str, source: dict, daily_limit: int = FETCH_REQUEST_DAILY_LIMIT
+    ) -> tuple[str, dict | None]:
         now = _now()
         day_start = now - (now % 86400)
         with self._connection() as conn:
@@ -785,7 +808,7 @@ class AuthStore:
                 "SELECT count(*) FROM source_fetch_requests WHERE user_id = ? AND created_at >= ?",
                 (user_id, day_start),
             ).fetchone()[0]
-            if used >= FETCH_REQUEST_DAILY_LIMIT:
+            if used >= daily_limit:
                 return "limit", None
             request_id = "fetch_" + uuid.uuid4().hex[:16]
             conn.execute(
@@ -1780,6 +1803,147 @@ document.addEventListener("click",function(event){{
     )
 
 
+def _contribution_time(value: object) -> str:
+    if not value:
+        return "尚無資料"
+    try:
+        if isinstance(value, (int, float)):
+            moment = datetime.fromtimestamp(float(value), timezone.utc)
+        else:
+            moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return moment.astimezone(timezone(timedelta(hours=8))).strftime("%Y/%-m/%-d %-H:%M")
+    except (TypeError, ValueError, OSError):
+        return "尚無資料"
+
+
+def _contribute_html(
+    user: dict | None,
+    public: dict,
+    mine: list[dict],
+    *,
+    encryption_ready: bool,
+    nycu_ok: bool,
+    google_ok: bool,
+) -> str:
+    esc = html.escape
+    totals = public["totals"]
+    scoreboard_rows = []
+    for rank, row in enumerate(public["scoreboard"], 1):
+        name = esc(str(row["name"]))
+        person = (
+            f'<a href="/@{quote(str(row["handle"]), safe="")}">{name}</a>'
+            if row.get("handle") else name
+        )
+        scoreboard_rows.append(
+            f'<tr><td class="contrib-rank">{rank}</td><td>{person}</td>'
+            f'<td>{int(row["accounts"])}</td><td>+{int(row["priorityBonus"])}</td>'
+            f'<td>US${float(row["remainingUsd"]):.2f}</td></tr>'
+        )
+    scoreboard_body = (
+        "".join(scoreboard_rows)
+        if scoreboard_rows
+        else '<tr><td colspan="5" class="contrib-empty">還沒有社群貢獻，第一名等你。</td></tr>'
+    )
+
+    account_rows = []
+    for row in public["accounts"]:
+        name = esc(str(row["contributor"]))
+        person = (
+            f'<a href="/@{quote(str(row["handle"]), safe="")}">{name}</a>'
+            if row.get("handle") else name
+        )
+        account_rows.append(
+            '<article class="contrib-account">'
+            f'<div><strong>{esc(str(row["accountLabel"]))}</strong><span>{person}</span></div>'
+            f'<div><strong>US${float(row["remainingUsd"]):.3f}</strong><span>本期剩餘</span></div>'
+            f'<div><strong>{_contribution_time(row.get("cycleEnd"))}</strong><span>額度重置</span></div>'
+            '</article>'
+        )
+    accounts_body = "".join(account_rows) or '<p class="contrib-empty">目前沒有有效的社群帳號。</p>'
+
+    if user:
+        my_rows = []
+        for row in mine:
+            active = row["status"] == "active"
+            action = (
+                f'<button type="button" class="btn contrib-disable" data-disable="{esc(row["publicId"])}">停止貢獻</button>'
+                if active else '<span class="contrib-muted">已停止；重新提交同一 token 即可恢復</span>'
+            )
+            my_rows.append(
+                '<article class="contrib-my-row">'
+                f'<div><strong>{esc(row["accountLabel"])}</strong>'
+                f'<span>{"有效" if active else "已停止"} · 本期剩餘 US${float(row["remainingUsd"]):.3f}</span></div>'
+                f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先抓取</span></div>{action}'
+                '</article>'
+            )
+        my_body = "".join(my_rows) or '<p class="contrib-empty">你還沒有貢獻 Apify 帳號。</p>'
+        form_disabled = "" if encryption_ready else " disabled"
+        form_note = (
+            "token 送到竹梅伺服器後會立即驗證並加密保存；公開頁只顯示遮罩代號與額度。"
+            if encryption_ready else "伺服器的貢獻加密金鑰尚未設定，目前暫停收件。"
+        )
+        action = f"""
+<section class="contrib-panel" id="my-contributions">
+  <div class="contrib-heading"><div><p class="eyebrow">你的貢獻</p><h2>新增 Apify 帳號</h2></div><span class="contrib-rule">每個有效帳號＝每日 +3 次優先抓取</span></div>
+  <form id="contribution-form" class="contrib-form">
+    <label for="apify-token">Apify API token</label>
+    <div class="contrib-token-row"><input id="apify-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="apify_api_…" required{form_disabled}><button class="btn btn-primary" type="submit"{form_disabled}>驗證並貢獻</button></div>
+    <p>{form_note} 每位使用者最多 {MAX_ACCOUNTS_PER_USER} 個有效帳號。</p>
+    <p class="contrib-message" id="contribution-message" role="status"></p>
+  </form>
+  <div class="contrib-my-list">{my_body}</div>
+</section>"""
+    else:
+        action = _login_card_html(nycu_ok, google_ok, "/contribute/")
+
+    content = f"""
+<section class="contribute-page">
+  <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1><p>把閒置的 Apify 免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。有效帳號越多，每輪處理的來源就越多。</p></section>
+  <section class="contrib-totals" aria-label="社群貢獻總覽">
+    <article><span>有效帳號</span><strong>{int(totals["accounts"])}</strong></article>
+    <article><span>貢獻者</span><strong>{int(totals["contributors"])}</strong></article>
+    <article><span>每輪加速槽位</span><strong>+{int(totals["extraSlots"])}</strong></article>
+    <article><span>本期剩餘額度</span><strong>US${float(totals["remainingUsd"]):.2f}</strong></article>
+  </section>
+  <section class="contrib-explain">
+    <article><strong>1</strong><h2>登入後提交</h2><p>只收 Apify API token，不收密碼；伺服器先向 Apify 驗證額度。</p></article>
+    <article><strong>2</strong><h2>加密加入帳號池</h2><p>token 不會出現在公開 API、排行榜、log 或 Git，只用來執行爬取 Actor。</p></article>
+    <article><strong>3</strong><h2>全站一起加速</h2><p>每個有效帳號讓每輪 IG 貼文與限動各多 3 個槽位，貢獻者每天也多 3 次優先抓取。</p></article>
+  </section>
+  {action}
+  <section class="contrib-grid">
+    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>帳號</th><th>優先額度</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
+    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Registered pool</p><h2>已註冊帳號</h2></div><a href="/status/">查看全池狀態 →</a></div><div class="contrib-account-list">{accounts_body}</div></section>
+  </section>
+</section>
+<style>
+.contribute-page{{padding-bottom:56px}}.contrib-hero p{{max-width:760px}}.contrib-totals{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}}.contrib-totals article,.contrib-panel,.contrib-explain article{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface)}}.contrib-totals article{{padding:16px}}.contrib-totals span,.contrib-account span,.contrib-my-row span,.contrib-form p,.contrib-muted{{display:block;color:var(--color-text-muted);font-size:.78rem}}.contrib-totals strong{{display:block;margin-top:4px;font-size:clamp(1.55rem,3vw,2.3rem)}}.contrib-explain{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}}.contrib-explain article{{padding:18px}}.contrib-explain article>strong{{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft)}}.contrib-explain h2{{font-size:1rem;margin:14px 0 6px}}.contrib-explain p{{margin:0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-grid{{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-top:12px}}.contrib-panel{{padding:18px;margin-top:12px}}.contrib-heading{{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}}.contrib-heading h2{{margin:2px 0 0;font-size:1.15rem}}.contrib-heading p{{margin:0}}.contrib-heading a,.contrib-rule{{font-size:.78rem;color:var(--color-text-secondary)}}.contrib-rule{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-pill);padding:5px 9px}}.contrib-form{{padding:14px;border-radius:var(--radius-md);background:var(--color-surface-soft)}}.contrib-form label{{display:block;margin-bottom:7px;font-size:.8rem;font-weight:650}}.contrib-token-row{{display:flex;gap:8px}}.contrib-token-row input{{min-width:0;flex:1;height:42px;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:0 12px;background:var(--color-canvas);color:var(--color-text-primary);font:inherit}}.contrib-form p{{margin:8px 0 0;line-height:1.5}}.contrib-form .contrib-message{{min-height:1.3em;color:var(--color-text-secondary)}}.contrib-my-list,.contrib-account-list{{display:grid;gap:8px;margin-top:12px}}.contrib-my-row,.contrib-account{{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px;border-top:1px solid var(--color-border-subtle)}}.contrib-account{{grid-template-columns:minmax(0,1fr) auto auto}}.contrib-account:first-child,.contrib-my-row:first-child{{border-top:0}}.contrib-account strong,.contrib-my-row strong{{display:block;font-size:.88rem}}.contrib-disable{{font-size:.74rem}}.contrib-table-wrap{{overflow-x:auto}}.contrib-panel table{{width:100%;border-collapse:collapse;font-size:.82rem}}.contrib-panel th,.contrib-panel td{{padding:10px 8px;border-top:1px solid var(--color-border-subtle);text-align:left;white-space:nowrap}}.contrib-panel thead th{{border-top:0;color:var(--color-text-muted);font-size:.72rem}}.contrib-rank{{font-weight:700}}.contrib-empty{{padding:18px!important;color:var(--color-text-muted);text-align:center!important}}@media(max-width:800px){{.contrib-totals{{grid-template-columns:1fr 1fr}}.contrib-explain,.contrib-grid{{grid-template-columns:1fr}}}}@media(max-width:560px){{.contrib-token-row{{display:grid}}.contrib-my-row,.contrib-account{{grid-template-columns:1fr auto}}.contrib-my-row .contrib-disable{{grid-column:1/-1;width:100%}}}}
+</style>
+<script>
+document.addEventListener('submit',async function(event){{
+  if(event.target.id!=='contribution-form')return;
+  event.preventDefault();
+  var form=event.target,input=form.querySelector('#apify-token'),message=form.querySelector('#contribution-message');
+  var token=input.value.trim(); input.value=''; message.textContent='正在向 Apify 驗證…';
+  var button=form.querySelector('button[type="submit"]'); button.disabled=true;
+  try{{var response=await fetch('/auth/apify-contributions',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{token:token}})}});var data=await response.json();if(!response.ok)throw new Error(data.error||'貢獻失敗');message.textContent='驗證完成，已加入社群帳號池。';setTimeout(function(){{location.reload()}},700)}}catch(error){{message.textContent=error.message;button.disabled=false}}
+}});
+document.addEventListener('click',async function(event){{
+  var button=event.target.closest('[data-disable]');if(!button)return;
+  if(!confirm('停止貢獻後，竹梅會立即清除加密 token，確定嗎？'))return;
+  button.disabled=true;var response=await fetch('/auth/apify-contributions/'+encodeURIComponent(button.dataset.disable),{{method:'DELETE'}});
+  if(response.ok)location.reload();else button.disabled=false;
+}});
+</script>
+"""
+    return page_shell(
+        "貢獻｜竹梅活動觀測站",
+        "貢獻 Apify 免費額度，增加竹梅的公開資訊抓取頻率與個人優先抓取額度。",
+        content,
+        canonical="https://chumei.observe.tw/contribute/",
+    )
+
+
 def create_app(
     config: AuthConfig | None = None,
     store: AuthStore | None = None,
@@ -2130,10 +2294,15 @@ def create_app(
             return JSONResponse(
                 {"ok": False, "error": "authentication required"}, status_code=401
             )
+        contribution_count = apify_active_count(store.path, user["id"])
+        priority_bonus = contribution_count * PRIORITY_BONUS_PER_ACCOUNT
+        daily_limit = FETCH_REQUEST_DAILY_LIMIT + priority_bonus
         if request.method == "GET":
             return JSONResponse({
                 "ok": True,
-                "dailyLimit": FETCH_REQUEST_DAILY_LIMIT,
+                "dailyLimit": daily_limit,
+                "baseDailyLimit": FETCH_REQUEST_DAILY_LIMIT,
+                "contributionBonus": priority_bonus,
                 "requests": store.fetch_requests_for_user(user["id"]),
             })
         try:
@@ -2146,14 +2315,20 @@ def create_app(
         source = next((item for item in source_registry() if item["id"] == source_id), None)
         if not source:
             return JSONResponse({"ok": False, "error": "unknown source"}, status_code=400)
-        code, item = store.create_fetch_request(user["id"], source)
+        code, item = store.create_fetch_request(user["id"], source, daily_limit=daily_limit)
         if code == "limit":
             return JSONResponse(
-                {"ok": False, "error": "daily request limit reached", "dailyLimit": FETCH_REQUEST_DAILY_LIMIT},
+                {"ok": False, "error": "daily request limit reached", "dailyLimit": daily_limit},
                 status_code=429,
             )
         return JSONResponse(
-            {"ok": True, "code": code, "request": item, "dailyLimit": FETCH_REQUEST_DAILY_LIMIT},
+            {
+                "ok": True,
+                "code": code,
+                "request": item,
+                "dailyLimit": daily_limit,
+                "contributionBonus": priority_bonus,
+            },
             status_code=201 if code == "ok" else 200,
         )
 
@@ -2423,6 +2598,95 @@ def create_app(
         code = "unlinked" if removed else "unlink_fail"
         return RedirectResponse(f"/account/?link={code}", 303)
 
+    async def contribute_page(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        public = apify_dashboard(store.path)
+        mine = apify_user_rows(store.path, user["id"]) if user else []
+        return HTMLResponse(_contribute_html(
+            user,
+            public,
+            mine,
+            encryption_ready=apify_encryption_available(),
+            nycu_ok=config.configured,
+            google_ok=config.google_configured,
+        ))
+
+    async def apify_contributions(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if request.method == "GET":
+            public = apify_dashboard(store.path)
+            payload = {"ok": True, **public}
+            if user:
+                count = apify_active_count(store.path, user["id"])
+                payload["mine"] = apify_user_rows(store.path, user["id"])
+                payload["priorityBonus"] = count * PRIORITY_BONUS_PER_ACCOUNT
+                payload["dailyPriorityLimit"] = (
+                    FETCH_REQUEST_DAILY_LIMIT + payload["priorityBonus"]
+                )
+            return JSONResponse(payload)
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "請先登入竹梅再貢獻帳號。"}, status_code=401
+            )
+        if not apify_encryption_available():
+            return JSONResponse(
+                {"ok": False, "error": "伺服器尚未設定貢獻加密金鑰。"}, status_code=503
+            )
+        try:
+            if int(request.headers.get("content-length") or 0) > 2048:
+                raise ValueError("request too large")
+            body = await request.json()
+            token = str(body.get("token") or "") if isinstance(body, dict) else ""
+            quota = await run_in_threadpool(verify_apify_token, token)
+        except requests.HTTPError as exc:
+            status = getattr(exc.response, "status_code", None)
+            message = "Apify token 無效或已撤銷。" if status in {401, 403} else "Apify 暫時無法驗證這個 token。"
+            return JSONResponse({"ok": False, "error": message}, status_code=400 if status in {401, 403} else 502)
+        except requests.RequestException:
+            return JSONResponse(
+                {"ok": False, "error": "Apify 暫時無法連線，請稍後再試。"}, status_code=502
+            )
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return JSONResponse(
+                {"ok": False, "error": "請貼上有效的 Apify API token。"}, status_code=400
+            )
+        try:
+            code, item = register_apify_contribution(store.path, user["id"], token, quota)
+        except RuntimeError:
+            return JSONResponse(
+                {"ok": False, "error": "伺服器目前無法安全保存這個 token。"}, status_code=503
+            )
+        if code == "claimed":
+            return JSONResponse(
+                {"ok": False, "error": "這個 Apify 帳號已由另一位貢獻者註冊。"}, status_code=409
+            )
+        if code == "limit":
+            return JSONResponse(
+                {"ok": False, "error": f"每人最多 {MAX_ACCOUNTS_PER_USER} 個有效帳號。"}, status_code=429
+            )
+        return JSONResponse(
+            {
+                "ok": True,
+                "code": code,
+                "contribution": item,
+                "priorityBonus": apify_active_count(store.path, user["id"])
+                * PRIORITY_BONUS_PER_ACCOUNT,
+            },
+            status_code=201 if code == "created" else 200,
+        )
+
+    async def apify_contribution_item(request: Request):
+        user = store.session_user(request.cookies.get(SESSION_COOKIE))
+        if not user:
+            return JSONResponse(
+                {"ok": False, "error": "請先登入竹梅。"}, status_code=401
+            )
+        public_id = str(request.path_params.get("public_id") or "")
+        if not re.fullmatch(r"apy_[a-f0-9]{10}", public_id):
+            return JSONResponse({"ok": False, "error": "找不到這個貢獻。"}, status_code=404)
+        removed = disable_apify_contribution(store.path, user["id"], public_id)
+        return JSONResponse({"ok": removed}, status_code=200 if removed else 404)
+
     async def health(request: Request):
         return JSONResponse(
             {
@@ -2442,10 +2706,18 @@ def create_app(
             Route("/account/", account, methods=["GET"]),
             Route("/submit", submit_page, methods=["GET"]),
             Route("/submit/", submit_page, methods=["GET"]),
+            Route("/contribute", contribute_page, methods=["GET"]),
+            Route("/contribute/", contribute_page, methods=["GET"]),
             Route("/auth/{provider}/start", oauth_start, methods=["GET"]),
             Route("/auth/{provider}/callback", oauth_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
             Route("/auth/fetch-requests", fetch_requests, methods=["GET", "POST"]),
+            Route("/auth/apify-contributions", apify_contributions, methods=["GET", "POST"]),
+            Route(
+                "/auth/apify-contributions/{public_id}",
+                apify_contribution_item,
+                methods=["DELETE"],
+            ),
             Route("/auth/follows", follows, methods=["GET"]),
             Route("/auth/saved-feeds", saved_feeds, methods=["GET", "POST"]),
             Route("/auth/saved-feeds/{feed_id}", saved_feed_item, methods=["PATCH", "DELETE"]),

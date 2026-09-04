@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import requests
+
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -20,6 +22,35 @@ class ApifyPoolTests(unittest.TestCase):
             "UNRELATED": "ignored",
         })
         self.assertEqual([row["label"] for row in accounts], ["PRIMARY", "BETA"])
+
+    def test_runtime_pool_includes_encrypted_community_accounts(self):
+        with patch.object(apify_pool, "load_env", return_value={"APIFY_TOKEN": "primary"}), \
+             patch.object(apify_pool, "active_tokens", return_value=[{
+                 "label": "COMMUNITY-ABC123",
+                 "token": "community-secret",
+                 "contributionId": "contrib_1",
+             }]):
+            accounts = apify_pool.token_accounts()
+        self.assertEqual([row["label"] for row in accounts], ["PRIMARY", "COMMUNITY-ABC123"])
+        self.assertEqual(apify_pool.community_account_count(accounts), 1)
+
+    def test_unauthorized_community_token_is_invalidated(self):
+        response = requests.Response()
+        response.status_code = 401
+        error = requests.HTTPError("401 Client Error", response=response)
+        account = {
+            "label": "COMMUNITY-ABC123",
+            "token": "community-secret",
+            "contributionId": "contrib_1",
+        }
+        with tempfile.TemporaryDirectory() as td, \
+             patch.object(apify_pool, "CACHE_PATH", Path(td) / "quota.json"), \
+             patch.object(apify_pool, "token_accounts", return_value=[account]), \
+             patch.object(apify_pool, "_fetch_quota", side_effect=error), \
+             patch.object(apify_pool, "invalidate") as invalidate:
+            status = apify_pool.pool_status()
+        invalidate.assert_called_once_with(None, "contrib_1", "401 Client Error")
+        self.assertFalse(status["accounts"][0]["available"])
 
     def test_recommended_interval_spends_capacity_before_reset(self):
         status = {

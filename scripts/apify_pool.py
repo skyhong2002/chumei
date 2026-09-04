@@ -13,6 +13,7 @@ from pathlib import Path
 
 import requests
 
+from apify_contributions import active_tokens, invalidate, update_quota
 from chumei_lib import ROOT, load_env
 
 
@@ -27,6 +28,7 @@ MAX_INTERVAL_HOURS = 168.0
 
 def token_accounts(env: dict | None = None) -> list[dict]:
     """Return distinct configured tokens; callers must never serialize token values."""
+    include_community = env is None
     values = env if env is not None else load_env()
     keys = [key for key in values if key == "APIFY_TOKEN" or key.startswith("APIFY_TOKEN_")]
     keys.sort(key=lambda key: (key != "APIFY_TOKEN", key))
@@ -39,7 +41,18 @@ def token_accounts(env: dict | None = None) -> list[dict]:
         seen.add(token)
         label = "PRIMARY" if key == "APIFY_TOKEN" else key.removeprefix("APIFY_TOKEN_")
         accounts.append({"label": label, "token": token})
+    if include_community:
+        for account in active_tokens():
+            if account["token"] in seen:
+                continue
+            seen.add(account["token"])
+            accounts.append(account)
     return accounts
+
+
+def community_account_count(accounts: list[dict] | None = None) -> int:
+    selected = token_accounts() if accounts is None else accounts
+    return sum(bool(row.get("contributionId")) for row in selected)
 
 
 def _read_json(path: Path) -> dict:
@@ -105,8 +118,17 @@ def pool_status(*, refresh: bool = True, now: float | None = None) -> dict:
     rows = []
     for account in configured:
         try:
-            rows.append(_fetch_quota(account, now=now))
-        except (requests.RequestException, ValueError, TypeError):
+            row = _fetch_quota(account, now=now)
+            rows.append(row)
+            if account.get("contributionId"):
+                update_quota(None, account["contributionId"], row)
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            if account.get("contributionId"):
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                if status_code in {401, 403}:
+                    invalidate(None, account["contributionId"], str(exc))
+                else:
+                    update_quota(None, account["contributionId"], {}, error=str(exc))
             prior = dict(cached_by_label.get(account["label"]) or {})
             if prior:
                 prior["stale"] = True

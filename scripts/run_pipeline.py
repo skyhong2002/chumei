@@ -21,6 +21,21 @@ PY = ROOT / ".venv" / "bin" / "python"
 STATE = ROOT / "state" / "pipeline.json"
 IG_MIN_INTERVAL_H = 20  # Threads / X 單帳號重抓間隔；Instagram 已改為帳號級分批排程。
 PIPELINE_INTERVAL_H = 3  # launchd 呼叫節奏，用來換算「每輪該抓幾個」的滾動批量。
+BASE_IG_BATCH = 5
+CONTRIBUTION_SLOTS_PER_ACCOUNT = 3
+MAX_IG_BATCH = 30
+
+
+def instagram_batch_size(status: dict) -> int:
+    community_accounts = sum(
+        str(row.get("label") or "").startswith("COMMUNITY-")
+        and row.get("available") and not row.get("exhausted")
+        for row in status.get("accounts", [])
+    )
+    return min(
+        MAX_IG_BATCH,
+        BASE_IG_BATCH + community_accounts * CONTRIBUTION_SLOTS_PER_ACCOUNT,
+    )
 
 
 def run_step(name, args):
@@ -57,8 +72,11 @@ def main():
         results["rpage"] = run_step("rpage", ["fetch_rpage.py", "--max-pages", "2"])
         results["wp"] = run_step("wp", ["fetch_wp.py"])
 
+        apify_status = pool_status(refresh=True)
+        ig_batch = instagram_batch_size(apify_status)
+
         if not args.skip_ig:
-            ig_args = ["fetch_instagram_public.py", "--limit", "5"]
+            ig_args = ["fetch_instagram_public.py", "--limit", "5", "--max-accounts", str(ig_batch)]
             if args.force_ig:
                 ig_args.append("--force")
             results["instagram"] = run_step("instagram", ig_args)
@@ -85,7 +103,7 @@ def main():
             row.get("active", "true").strip().lower() not in {"false", "link"}
             for row in read_sources_csv("fb_pages.csv")
         )
-        fb_quota = pool_status(refresh=True)
+        fb_quota = apify_status
         fb_interval_h = recommended_interval_hours(fb_quota, source_count=fb_count)
         state["facebook_interval_hours"] = fb_interval_h
         if fb_script.exists() and not fb_quota.get("exhausted"):
@@ -95,10 +113,12 @@ def main():
                                                        "--account-interval-hours", f"{fb_interval_h:g}"])
             state["last_fb_run"] = time.time()
 
-        # 限時動態改走不使用本站 IG 帳號的 Actor；每輪只掃活躍度最高的
-        # 5 個到期帳號，並保留 Apify 額度給既有 Facebook collector。
+        # 限時動態改走不使用本站 IG 帳號的 Actor；每輪掃活躍度最高的
+        # 到期帳號，社群每貢獻一個可用帳號就增加三個處理槽位。
         if (ROOT / "scripts" / "fetch_stories_apify.py").exists():
-            results["stories"] = run_step("stories", ["fetch_stories_apify.py"])
+            results["stories"] = run_step(
+                "stories", ["fetch_stories_apify.py", "--max-accounts", str(ig_batch)]
+            )
 
     results["extract"] = run_step("extract", ["extract_events.py"])
     results["map"] = run_step("map", ["build_map_data.py"])

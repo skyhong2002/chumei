@@ -5,3 +5,4 @@ playwright
 mcp
 uvicorn
 pywebpush
+cryptography

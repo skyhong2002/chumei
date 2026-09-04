@@ -21,6 +21,7 @@ class BuildStatusPageTests(unittest.TestCase):
 
     def test_apify_quota_is_labeled_as_shared(self):
         self.assertIn("Instagram／Facebook 共用 Apify 額度", build_status_page.SCRIPT)
+        self.assertIn('href="/contribute/"', build_status_page.SCRIPT)
 
 
 if __name__ == "__main__":

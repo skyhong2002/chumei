@@ -74,6 +74,7 @@ flowchart LR
 | `scripts/extract_events.py` | LLM 活動判別、文字／海報欄位抽取與快取 |
 | `scripts/build_site.py` | 合併、去重、單位歸戶、場地定位，產生網站、feeds 與 API |
 | `scripts/auth_server.py` | OAuth、Session、個人頁、「我會去」、回報與帳號型自訂訂閱 |
+| `scripts/apify_contributions.py` | 社群 Apify 帳號驗證、加密保存、排行榜與動態抓取加速 |
 | `scripts/push_server.py` | Web Push 訂閱 API 與帳號綁定 |
 | `scripts/publish_push.py` | 依偏好滴灌新活動與「我會去」提醒 |
 | `scripts/publish_telegram.py` | 以原始貼文為單位發布 Telegram 訊息 |
@@ -144,12 +145,14 @@ CHUMEI_FEED_SIGNING_KEY=
 | Google Client ID | `tw.observe.chumei.google-oauth-client-id` |
 | Google Client Secret | `tw.observe.chumei.google-oauth-secret` |
 | 自訂訂閱簽章金鑰 | `tw.observe.chumei.feed-signing-key` |
+| Apify 貢獻 token 加密金鑰 | `tw.observe.chumei.apify-contribution-key` |
 
 兩種登入可在帳號頁互相綁定。若該身分已有帳號，系統會把追蹤、參加標記、回報、已儲存訂閱與 Session 合併到目前帳號；解除綁定時至少保留一種登入方式。
 
 ### 頁面與 Feed
 
 - `/account/`：帳號設定、登入方式、行事曆、回報與自訂訂閱管理。
+- `/contribute/`：社群 Apify 額度貢獻、個人優先抓取額度、排行榜與已註冊帳號池。
 - `/@handle`：可由使用者關閉的公開個人頁。
 - `/auth/calendar/{token}.ics`：「我會去」活動的私密行事曆，可由帳號頁換發。
 - `/feeds/custom.ics`、`/feeds/custom.xml`：不需登入的多維條件組合。
@@ -157,13 +160,16 @@ CHUMEI_FEED_SIGNING_KEY=
 
 `CHUMEI_FEED_SIGNING_KEY` 未另外設定時，服務會從 NYCU OAuth client secret 做用途隔離後衍生簽章金鑰；資料庫只保存 public ID，不保存可直接使用的完整 signed token。
 
-帳號服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將 `/auth/*`、`/account*`、`/@*`、`/feeds/custom.*` 與 `/feeds/s/*` 反代到該服務。
+`CHUMEI_APIFY_CONTRIBUTION_KEY` 未另外設定時，同樣會從 NYCU OAuth client secret 做用途隔離後衍生 Fernet 金鑰。貢獻者的 Apify token 在寫入 SQLite 前即加密；公開 API、排行榜與 log 只使用遮罩代號和額度資訊。
+
+帳號服務由 `deploy/tw.observe.chumei.auth.plist` 常駐在 `127.0.0.1:8324`。Caddy 需將 `/auth/*`、`/account*`、`/contribute*`、`/@*`、`/feeds/custom.*` 與 `/feeds/s/*` 反代到該服務。
 
 ## 推播、Telegram 與抓取排程
 
 - Telegram publisher 以 `CHUMEI_TELEGRAM_ENABLED=true` 啟用；正式發送前可執行 `scripts/publish_telegram.py --check` 與 `--dry-run`。
-- Instagram 支援 `rsshub` 與 `instaloader` 兩個後端；`auto` 會先嘗試 RSSHub，失敗時在該輪切換到 instaloader。
-- Instagram 帳號採持久化分批排程與 jitter，遇到 401／429 會停止該批並指數退避；狀態保存在被 Git 忽略的 `state/`。
+- Instagram 貼文先走免登入公開端點，必要時以 Apify 備援；限時動態走 Apify Story actor，兩者都不使用本站的 Instagram 帳號。
+- Instagram 帳號採持久化分批排程與 jitter，依近期發文頻率調整為 12 小時至 14 天；狀態保存在被 Git 忽略的 `state/`。
+- 每個有效的社群 Apify 貢獻帳號，會讓貢獻者每日多 3 次優先抓取，並讓每輪 Instagram 貼文與限動各多 3 個處理槽位（全站上限 30）。token 只以 Fernet 加密形式保存。
 - 首次正常執行會把現有近期活動設為 baseline，避免洗版；後續每輪 pipeline 最多推送 10 則，22:00–07:59 靜音。
 - Web Push 偏好與帳號追蹤跨裝置同步；發布器每 30 分鐘檢查新活動與隔日「我會去」提醒。
 

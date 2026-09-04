@@ -19,6 +19,7 @@ spec = importlib.util.spec_from_file_location("auth_server", ROOT / "scripts" / 
 auth_server = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = auth_server
 spec.loader.exec_module(auth_server)
+import apify_contributions
 
 
 class FakeResponse:
@@ -142,6 +143,49 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(listing.json()["dailyLimit"], auth_server.FETCH_REQUEST_DAILY_LIMIT)
         self.assertEqual(len(listing.json()["requests"]), 1)
+
+    def test_apify_contribution_grants_three_daily_priority_requests(self):
+        token = "apify_api_" + "community" * 5
+        quota = {
+            "limitUsd": 5.0,
+            "usedUsd": 1.0,
+            "remainingUsd": 4.0,
+            "cycleStart": "2026-09-01T00:00:00Z",
+            "cycleEnd": "2026-10-01T00:00:00Z",
+            "checkedAt": 1000,
+        }
+        denied = self.client.post("/auth/apify-contributions", json={"token": token})
+        self.assertEqual(denied.status_code, 401)
+
+        self._login()
+        with mock.patch.object(auth_server, "verify_apify_token", return_value=quota), \
+             mock.patch.object(apify_contributions, "encryption_secret", return_value="test-secret"):
+            created = self.client.post("/auth/apify-contributions", json={"token": token})
+            self.assertEqual(created.status_code, 201)
+            self.assertEqual(created.json()["priorityBonus"], 3)
+            self.assertNotIn(token, created.text)
+
+            listing = self.client.get("/auth/apify-contributions")
+            self.assertEqual(listing.status_code, 200)
+            self.assertEqual(listing.json()["totals"]["accounts"], 1)
+            self.assertEqual(
+                listing.json()["dailyPriorityLimit"],
+                auth_server.FETCH_REQUEST_DAILY_LIMIT + 3,
+            )
+            self.assertNotIn(token, listing.text)
+
+            fetches = self.client.get("/auth/fetch-requests")
+            self.assertEqual(fetches.json()["contributionBonus"], 3)
+            self.assertEqual(
+                fetches.json()["dailyLimit"], auth_server.FETCH_REQUEST_DAILY_LIMIT + 3
+            )
+
+    def test_contribute_page_is_public_and_never_contains_tokens(self):
+        page = self.client.get("/contribute/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("貢獻排行榜", page.text)
+        self.assertIn("登入", page.text)
+        self.assertNotIn("token_ciphertext", page.text)
 
     def test_repeat_login_reuses_identity(self):
         self._login()
