@@ -14,6 +14,9 @@ class BuildStatusPageTests(unittest.TestCase):
         script = build_status_page.SCRIPT
         self.assertIn("'Instagram public'", script)
         self.assertIn("'Apify Stories'", script)
+        self.assertIn("公開端點優先 · Apify 帳號池備援", script)
+        self.assertIn("Apify 帳號池 · 活躍帳號優先", script)
+        self.assertIn("Apify 帳號池 · 批次抓取", script)
         self.assertIn("'NYCU Open Data'", script)
         self.assertIn("12 小時到 14 天", script)
         self.assertNotIn("RSSHub → Instaloader", script)

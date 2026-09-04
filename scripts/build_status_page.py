@@ -48,9 +48,9 @@ SCRIPT = r"""
     document.querySelector('#apify-quota').classList.toggle('is-exhausted',!!a.exhausted);
     document.querySelector('#apify-quota').innerHTML=`<div class="status-apify-main"><h3>Instagram／Facebook 共用 Apify 額度</h3><strong>US$${remaining.toFixed(3)}</strong><span>${a.available===false?'Apify API：目前無法取得額度':a.exhausted?'Apify API：所有帳號額度皆不可用':`共用 Apify 帳號池 · ${Number(a.usableAccountCount||0)} / ${Number(a.accountCount||0)} 個帳號可使用${temporary?` · 含 US$${temporary.toFixed(2)} 臨時活動額度`:''}`}${a.stale?'（含快取資料）':''}</span><a class="status-apify-contribute" href="/contribute/">貢獻免費額度，讓更新更快 →</a><div class="status-quota-bar" aria-label="Instagram／Facebook 共用的固定月額已使用 ${percent.toFixed(0)}%"><i style="width:${percent}%"></i></div></div><div class="status-apify-stat"><span>已用／固定月額</span><strong>US$${used.toFixed(3)} / ${limit.toFixed(2)}</strong></div><div class="status-apify-stat"><span>最晚重置時間</span><strong>${fmtTime(a.cycleEnd)}</strong></div><div class="status-apify-stat"><span>執行中／資料時間</span><strong>${Number(a.activeActorJobs||0)} 個 Actor</strong><span>${fmtTime(a.checkedAt)}</span></div>${accountRows?`<div class="status-apify-accounts"><h4>Apify API 帳號狀態</h4>${accountRows}</div>`:''}`;
     const info={
-      'Instagram public':['Instagram 貼文','免登入公開端點 · Apify 備援','Instagram public web'],
-      'Apify Stories':['Instagram 限時動態','免登入 Apify · 活躍帳號優先','Apify'],
-      'Apify':['Facebook 粉專貼文','Apify 帳號池 · 批次 Actor API','Apify'],
+      'Instagram public':['Instagram 貼文','公開端點優先 · Apify 帳號池備援','Instagram public web'],
+      'Apify Stories':['Instagram 限時動態','Apify 帳號池 · 活躍帳號優先','Apify'],
+      'Apify':['Facebook 粉專貼文','Apify 帳號池 · 批次抓取','Apify'],
       'RSSHub':['Threads／X 公開貼文','本機 RSSHub','RSSHub'],
       'NTHU RPage':['清大 RPage 公告','網頁爬蟲',null],
       'NYCU InfoNews':['陽明交大公告','網頁爬蟲',null],
