@@ -72,6 +72,16 @@ class SEOOutputTests(unittest.TestCase):
             source,
         )
 
+    def test_about_special_thanks_matches_current_services(self):
+        source = (SITE / "about" / "index.html").read_text()
+        section = source.split("<h2>特別感謝</h2>", 1)[1].split("<h2>關於我</h2>", 1)[0]
+        self.assertIn('<a href="/status/">系統狀態</a>', section)
+        self.assertIn('<a href="https://nycu.life/" rel="noopener">NYCU LIFE 團隊</a>', section)
+        self.assertIn("Instagram 限時動態、Instagram 貼文備援與 Facebook 公開貼文抓取", section)
+        self.assertIn("Threads 與 X 公開貼文抓取", section)
+        self.assertNotIn("Instaloader", section)
+        self.assertNotIn("NYCU LIFE</a>（社團）", section)
+
     def test_every_shell_uses_the_same_footer_links(self):
         expected = [
             "/", "/", "/events/", "/calendar/", "/stories/", "/notify/",
