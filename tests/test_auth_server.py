@@ -196,6 +196,9 @@ class AuthServerTests(unittest.TestCase):
         page = self.client.get("/contribute/")
         self.assertEqual(page.status_code, 200)
         self.assertIn("貢獻排行榜", page.text)
+        self.assertIn("前往 Apify 取得 Token", page.text)
+        self.assertIn('href="https://console.apify.com/account#/integrations"', page.text)
+        self.assertIn('target="_blank"', page.text)
         self.assertIn("登入", page.text)
         self.assertNotIn("token_ciphertext", page.text)
 
