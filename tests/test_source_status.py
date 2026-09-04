@@ -69,7 +69,7 @@ class SourceStatusTests(unittest.TestCase):
         }
         empty_usage = {name: {"requests24h": 0, "requests30d": 0, "sources24h": 0,
                               "errors24h": 0, "cost30dUsd": 0}
-                       for name in ("RSSHub", "Instaloader", "Apify")}
+                       for name in ("Instagram public web", "Apify Instagram", "RSSHub", "Instaloader", "Apify")}
         with patch.object(source_status, "source_registry", return_value=[facebook]), \
              patch.object(source_status, "load_ledger", return_value={}), \
              patch.object(source_status, "_inbox_last_success", return_value={}), \
@@ -89,7 +89,7 @@ class SourceStatusTests(unittest.TestCase):
         }
         empty_usage = {name: {"requests24h": 0, "requests30d": 0, "sources24h": 0,
                               "errors24h": 0, "cost30dUsd": 0}
-                       for name in ("RSSHub", "Instaloader", "Apify")}
+                       for name in ("Instagram public web", "Apify Instagram", "RSSHub", "Instaloader", "Apify")}
 
         def read_state(path):
             if path.name == "instagram_public_profile_schedule.json":
@@ -110,6 +110,46 @@ class SourceStatusTests(unittest.TestCase):
         self.assertIn("冷卻", row["blockedReason"])
         self.assertEqual(payload["counts"]["errors"], 0)
         self.assertEqual(payload["counts"]["blocked"], 1)
+
+    def test_legacy_instagram_error_becomes_due_for_replacement_backend(self):
+        instagram = {
+            "id": "instagram:test", "sourceId": "ig_test", "name": "Test", "username": "test",
+            "platform": "Instagram", "kind": "instagram_profile", "backend": "Instagram public",
+            "kindLabel": "貼文", "school": "other", "targetIntervalHours": 168.0,
+        }
+        empty_usage = {name: {"requests24h": 0, "requests30d": 0, "sources24h": 0,
+                              "errors24h": 0, "cost30dUsd": 0}
+                       for name in ("Instagram public web", "Apify Instagram", "RSSHub", "Instaloader", "Apify")}
+        with patch.object(source_status, "source_registry", return_value=[instagram]), \
+             patch.object(source_status, "load_ledger", return_value={
+                 "instagram:test": {
+                     "backend": "Instaloader", "lastAttempt": 950, "lastSuccess": 900,
+                     "lastError": "challenge_required", "consecutiveFailures": 4,
+                 }
+             }), \
+             patch.object(source_status, "_inbox_last_success", return_value={}), \
+             patch.object(source_status, "_read_json", return_value={}), \
+             patch.object(source_status, "apify_quota", return_value={"exhausted": False}), \
+             patch.object(source_status, "api_usage_summary", return_value=empty_usage):
+            payload = source_status.build_status_payload(now=1000)
+        row = payload["sources"][0]
+        self.assertEqual(row["status"], "due")
+        self.assertEqual(row["nextDue"], 1000)
+        self.assertEqual(row["lastError"], "")
+        self.assertEqual(row["consecutiveFailures"], 0)
+
+    def test_apify_pacing_incident_describes_shared_instagram_usage(self):
+        incidents = source_status.detect_incidents(
+            now=1000,
+            profile_schedule={},
+            story_schedule={},
+            apify={"exhausted": False, "remainingUsd": 14.25},
+            facebook_interval_hours=168,
+            rows=[],
+        )
+        self.assertEqual(incidents[0]["id"], "apify-slow-pacing")
+        self.assertIn("Instagram 限時動態", incidents[0]["detail"])
+        self.assertIn("US$10", incidents[0]["detail"])
 
 
 if __name__ == "__main__":

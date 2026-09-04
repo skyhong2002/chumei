@@ -19,6 +19,13 @@ from chumei_lib import INBOX_DIR, ROOT, read_sources_csv
 LEDGER_PATH = ROOT / "state" / "source_fetch_ledger.json"
 USAGE_PATH = ROOT / "state" / "api_usage.jsonl"
 HISTORY_LIMIT = 20
+APIFY_RESERVE_USD = 10.0
+
+
+CURRENT_LEDGER_BACKENDS = {
+    "Instagram public": {"Instagram public", "Instagram public web", "Apify Instagram"},
+    "Apify Stories": {"Apify Stories"},
+}
 
 
 def _active(row: dict) -> bool:
@@ -219,6 +226,24 @@ def _average_interval(history: list) -> float | None:
     return sum(b - a for a, b in zip(values, values[1:])) / (len(values) - 1) / 3600
 
 
+def _current_ledger_entry(source: dict, entry: dict) -> dict:
+    """Drop stale failure state after a collector backend migration.
+
+    A previous provider's success still says something useful about content
+    freshness, but its attempts, errors, and failure streak must not make the
+    replacement provider look broken before it has been tried.
+    """
+    recorded = str(entry.get("backend") or "")
+    compatible = CURRENT_LEDGER_BACKENDS.get(source.get("backend"), {source.get("backend")})
+    if not recorded or recorded in compatible:
+        return entry
+    return {
+        key: entry[key]
+        for key in ("lastSuccess", "successHistory", "lastItems")
+        if key in entry
+    }
+
+
 def api_usage_summary(now: float | None = None) -> dict:
     now = float(now or time.time())
     rows: list[dict] = []
@@ -228,7 +253,7 @@ def api_usage_summary(now: float | None = None) -> dict:
     except (OSError, ValueError):
         pass
     out = {}
-    for service in ("Instagram public web", "RSSHub", "Instaloader", "Apify"):
+    for service in ("Instagram public web", "Apify Instagram", "RSSHub", "Instaloader", "Apify"):
         selected = [r for r in rows if r.get("service") == service]
         out[service] = {
             "requests24h": sum(int(r.get("requestCount", 0)) for r in selected if r.get("ts", 0) >= now - 86400),
@@ -305,16 +330,18 @@ def detect_incidents(*, now: float, profile_schedule: dict, story_schedule: dict
             "detail": f"限時動態批次被 Instagram 擋下（第 {streak} 次退避）。{session_hint}"})
     if apify.get("exhausted"):
         incidents.append({
-            "id": "fb-quota-exhausted", "severity": "major", "until": apify.get("cycleEnd"),
-            "title": "Facebook 粉專抓取暫停中",
-            "detail": "Apify 帳號池本期額度已用完，Facebook 貼文暫停更新到額度重置。"})
+            "id": "apify-quota-exhausted", "severity": "major", "until": apify.get("cycleEnd"),
+            "title": "Apify 共用爬取額度已用完",
+            "detail": "Facebook 貼文、Instagram 限時動態與 IG 貼文備援暫停使用 Apify，"
+                      "待免費額度重置後恢復。"})
     elif facebook_interval_hours >= 48:
         remaining = float(apify.get("remainingUsd") or 0)
         incidents.append({
-            "id": "fb-slow-pacing", "severity": "minor", "until": None,
-            "title": "Facebook 更新頻率降低",
+            "id": "apify-slow-pacing", "severity": "minor", "until": None,
+            "title": "Apify 共用額度節流中",
             "detail": f"為了讓剩餘 Apify 額度（US${remaining:.2f}）撐到重置日，"
-                      f"每個粉專約每 {facebook_interval_hours / 24:.1f} 天輪抓一次（每輪滾動抓少量頁面）。"})
+                      f"Facebook 每個粉專約每 {facebook_interval_hours / 24:.1f} 天輪抓一次；"
+                      f"Instagram 限時動態與貼文備援只會使用保留 US${APIFY_RESERVE_USD:.0f} 以上的額度。"})
     return incidents
 
 
@@ -340,7 +367,7 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
     facebook_interval = recommended_interval_hours(apify, source_count=facebook_count, now=now)
     rows = []
     for source in source_registry(facebook_interval_hours=facebook_interval):
-        entry = ledger.get(source["id"], {})
+        entry = _current_ledger_entry(source, ledger.get(source["id"], {}))
         last_attempt = entry.get("lastAttempt")
         # Profile/feed inbox timestamps cannot prove that the independent story
         # endpoint was queried.  Stories only gain an exact success time from
@@ -354,7 +381,10 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
             schedule = profile_schedule if source["kind"] == "instagram_profile" else story_schedule
             account = (schedule.get("accounts") or {}).get(source["username"], {})
             last_attempt = account.get("last_attempt") or last_attempt
-            next_due = account.get("next_eligible")
+            # A source absent from the replacement scheduler has not yet been
+            # attempted by that scheduler, so it is due now even if an older
+            # collector fetched the same content recently.
+            next_due = account.get("next_eligible") if account else now
             if account.get("interval_hours"):
                 source["targetIntervalHours"] = float(account["interval_hours"])
             cooldown = float(schedule.get("global_cooldown_until") or 0)
