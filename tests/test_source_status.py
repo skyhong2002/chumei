@@ -17,10 +17,12 @@ class SourceStatusTests(unittest.TestCase):
         registry = {item["id"]: item for item in source_status.source_registry()}
         self.assertIn("instagram:nthu_official", registry)
         self.assertIn("story:nthu_official", registry)
-        self.assertEqual(registry["instagram:nthu_official"]["targetIntervalHours"], 24)
-        self.assertEqual(registry["story:nthu_official"]["backend"], "Instaloader")
+        self.assertEqual(registry["instagram:nthu_official"]["targetIntervalHours"], 168)
+        self.assertEqual(registry["instagram:nthu_official"]["backend"], "Instagram public")
+        self.assertEqual(registry["story:nthu_official"]["backend"], "Apify Stories")
         self.assertTrue(any(item["backend"] == "Apify" for item in registry.values()))
         self.assertTrue(any(item["backend"] == "RSSHub" for item in registry.values()))
+        self.assertTrue(any(item["backend"] == "NYCU Open Data" for item in registry.values()))
 
     def test_ledger_records_success_history_and_real_average(self):
         with tempfile.TemporaryDirectory() as td:
@@ -82,15 +84,15 @@ class SourceStatusTests(unittest.TestCase):
     def test_active_instagram_cooldown_is_blocked_not_error(self):
         instagram = {
             "id": "instagram:test", "sourceId": "ig_test", "name": "Test", "username": "test",
-            "platform": "Instagram", "kind": "instagram_profile", "backend": "RSSHub → Instaloader",
-            "kindLabel": "貼文", "school": "other", "targetIntervalHours": 24.0,
+            "platform": "Instagram", "kind": "instagram_profile", "backend": "Instagram public",
+            "kindLabel": "貼文", "school": "other", "targetIntervalHours": 168.0,
         }
         empty_usage = {name: {"requests24h": 0, "requests30d": 0, "sources24h": 0,
                               "errors24h": 0, "cost30dUsd": 0}
                        for name in ("RSSHub", "Instaloader", "Apify")}
 
         def read_state(path):
-            if path.name == "instagram_profile_schedule.json":
+            if path.name == "instagram_public_profile_schedule.json":
                 return {"global_cooldown_until": 2000, "accounts": {}}
             return {}
 

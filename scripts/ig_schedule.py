@@ -7,7 +7,9 @@ cooldown or make every account immediately eligible again.
 
 import json
 import random
+import statistics
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -19,6 +21,52 @@ RATE_LIMIT_MARKERS = (
     "401 unauthorized",
     "rate limit",
 )
+
+ADAPTIVE_INTERVAL_TIERS = (12, 24, 48, 72, 168, 336)
+
+
+def _timestamp(value):
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(
+            timezone.utc
+        ).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def adaptive_interval_hours(posted_at_values, *, now=None, minimum=12, maximum=336):
+    """Choose a stable polling interval from a profile's recent post cadence.
+
+    Poll around twice per observed posting interval, then progressively slow a
+    dormant account.  Returning one of a few fixed tiers keeps schedule output
+    understandable and avoids oscillating after every fetch.
+    """
+    now = time.time() if now is None else float(now)
+    timestamps = sorted({ts for value in posted_at_values if (ts := _timestamp(value))},
+                        reverse=True)
+    if not timestamps:
+        target = 168
+    else:
+        age_hours = max(0.0, (now - timestamps[0]) / 3600)
+        gaps = [
+            (newer - older) / 3600
+            for newer, older in zip(timestamps, timestamps[1:])
+            if newer > older
+        ]
+        cadence_target = statistics.median(gaps) / 2 if gaps else 24
+        # Once a once-active account goes quiet, do not keep polling it at its
+        # old high-frequency cadence forever.
+        dormancy_target = age_hours / 4
+        target = max(cadence_target, dormancy_target)
+
+    tiers = [tier for tier in ADAPTIVE_INTERVAL_TIERS if minimum <= tier <= maximum]
+    if not tiers:
+        return float(minimum)
+    return float(min(tiers, key=lambda tier: (abs(tier - target), tier)))
 
 
 def load_schedule(path):
@@ -70,6 +118,7 @@ def mark_success(state, username, *, now=None, interval_hours=48,
         "last_attempt": now,
         "last_success": now,
         "consecutive_failures": 0,
+        "interval_hours": interval_hours,
         "next_eligible": now + interval_hours * 3600 + rng(0, jitter_hours * 3600),
     })
 

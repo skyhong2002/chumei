@@ -12,3 +12,6 @@ nthu_peo_news,清大體育室-最新消息,rpage_list,nthu,official,https://nthu
 nthu_rcollege_news,清大住宿書院-最新公告,rpage_list,nthu,official,https://rcollege.site.nthu.edu.tw/p/403-1103-6160-1.php?Lang=zh-tw,
 nthu_oga_news,清大國際處-最新消息,rpage_list,nthu,official,https://oga.site.nthu.edu.tw/p/403-1524-8945-1.php?Lang=zh-tw,
 nycu_arts_center,交大藝文中心,wp_api,nycu,official,https://arts.nycu.edu.tw,
+nycu_osa_extracurricular,陽明交大學務處-課外活動,nycu_open_data,nycu,official,https://osa.nycu.edu.tw/osa/ch/app/data/list?id=3494&module=nycu0085,
+nycu_osa_health,陽明交大學務處-衛生保健,nycu_open_data,nycu,official,https://osa.nycu.edu.tw/osa/ch/app/data/list?id=3554&module=nycu0086,
+nycu_osa_service,陽明交大學務處-服務學習,nycu_open_data,nycu,official,https://osa.nycu.edu.tw/osa/ch/app/data/list?id=3635&module=nycu0088,

@@ -56,15 +56,15 @@ def source_registry(*, facebook_interval_hours: float = 168.0) -> list[dict]:
         }
         sources.append({
             **common, "id": f"instagram:{username}", "sourceId": f"ig_{username}",
-            "kind": "instagram_profile", "backend": "RSSHub → Instaloader",
+            "kind": "instagram_profile", "backend": "Instagram public",
             "kindLabel": "貼文",
-            "targetIntervalHours": 24.0,
+            "targetIntervalHours": 168.0,
         })
         sources.append({
             **common, "id": f"story:{username}", "sourceId": f"ig_{username}",
-            "kind": "instagram_story", "backend": "Instaloader",
+            "kind": "instagram_story", "backend": "Apify Stories",
             "kindLabel": "限時動態",
-            "targetIntervalHours": 18.0,
+            "targetIntervalHours": 168.0,
         })
     for row in read_sources_csv("fb_pages.csv"):
         if not _active(row):
@@ -94,10 +94,11 @@ def source_registry(*, facebook_interval_hours: float = 168.0) -> list[dict]:
     for row in read_sources_csv("bulletin_sources.csv"):
         source_id = row.get("source_id", "").strip()
         kind = row.get("type", "").strip()
-        if not source_id or kind not in {"infonews_category", "rpage_list", "wp_api", "api"}:
+        if not source_id or kind not in {"infonews_category", "nycu_open_data", "rpage_list", "wp_api", "api"}:
             continue
         backend = {
             "infonews_category": "NYCU InfoNews",
+            "nycu_open_data": "NYCU Open Data",
             "rpage_list": "NTHU RPage",
             "wp_api": "WordPress API",
             "api": "JSON API",
@@ -227,7 +228,7 @@ def api_usage_summary(now: float | None = None) -> dict:
     except (OSError, ValueError):
         pass
     out = {}
-    for service in ("RSSHub", "Instaloader", "Apify"):
+    for service in ("Instagram public web", "RSSHub", "Instaloader", "Apify"):
         selected = [r for r in rows if r.get("service") == service]
         out[service] = {
             "requests24h": sum(int(r.get("requestCount", 0)) for r in selected if r.get("ts", 0) >= now - 86400),
@@ -273,6 +274,10 @@ def detect_incidents(*, now: float, profile_schedule: dict, story_schedule: dict
     incidents = []
     ig_cd = float(profile_schedule.get("global_cooldown_until") or 0)
     st_cd = float(story_schedule.get("global_cooldown_until") or 0)
+    profile_public = any(
+        row.get("kind") == "instagram_profile" and row.get("backend") == "Instagram public"
+        for row in rows
+    )
     # 兩邊同時冷卻或錯誤帶登入失效特徵 → 不是普通限流，是共用 session 死了
     session_dead = (ig_cd > now and st_cd > now) or any(
         marker in str(row.get("lastError") or "").lower()
@@ -281,11 +286,17 @@ def detect_incidents(*, now: float, profile_schedule: dict, story_schedule: dict
     session_hint = "錯誤特徵指向共用登入（session）失效，需要人工更新登入後才會恢復。" if session_dead else ""
     if ig_cd > now:
         streak = max(1, int(profile_schedule.get("rate_limit_streak") or 0))
+        detail = (
+            f"Instagram 拒絕了不登入的公開網頁請求，整批抓取暫停（第 {streak} 次退避）；"
+            "這條路徑不會使用任何人的 IG 帳號。"
+            if profile_public else
+            f"Instagram 拒絕了共用登入的請求，整批抓取暫停（第 {streak} 次退避）；"
+            f"期間 IG 貼文與頭貼不會更新。{session_hint}"
+        )
         incidents.append({
             "id": "ig-posts-cooldown", "severity": "major", "until": ig_cd,
             "title": "Instagram 貼文抓取暫停中",
-            "detail": f"Instagram 拒絕了共用登入的請求，整批抓取暫停（第 {streak} 次退避）；"
-                      f"期間 IG 貼文與頭貼不會更新。{session_hint}"})
+            "detail": detail})
     if st_cd > now:
         streak = max(1, int(story_schedule.get("rate_limit_streak") or 0))
         incidents.append({
@@ -317,8 +328,8 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
     ledger = load_ledger()
     inbox_latest = _inbox_last_success()
     pipeline = _read_json(ROOT / "state" / "pipeline.json")
-    profile_schedule = _read_json(ROOT / "state" / "instagram_profile_schedule.json")
-    story_schedule = _read_json(ROOT / "state" / "instagram_stories_schedule.json")
+    profile_schedule = _read_json(ROOT / "state" / "instagram_public_profile_schedule.json")
+    story_schedule = _read_json(ROOT / "state" / "instagram_apify_stories_schedule.json")
     facebook_schedule = _read_json(ROOT / "state" / "facebook_schedule.json")
     social_schedule = _read_json(ROOT / "state" / "social_schedule.json")
     apify = apify_quota(refresh=refresh_apify)
@@ -344,6 +355,8 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
             account = (schedule.get("accounts") or {}).get(source["username"], {})
             last_attempt = account.get("last_attempt") or last_attempt
             next_due = account.get("next_eligible")
+            if account.get("interval_hours"):
+                source["targetIntervalHours"] = float(account["interval_hours"])
             cooldown = float(schedule.get("global_cooldown_until") or 0)
             instagram_cooldown = cooldown
             if cooldown > (next_due or 0):
@@ -370,7 +383,7 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
         error = str(entry.get("lastError") or "")
         blocked = ""
         if error and instagram_cooldown > now:
-            blocked = "Instagram 共用登入工作階段冷卻中"
+            blocked = "Instagram 公開來源冷卻中"
         elif source["kind"] == "facebook" and apify.get("exhausted"):
             blocked = "Apify 本期額度已用完"
         state = "blocked" if blocked else ("error" if error else ("due" if next_due <= now else "ok"))

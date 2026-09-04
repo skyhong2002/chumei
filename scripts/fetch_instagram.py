@@ -1,6 +1,7 @@
-"""IG fetcher：透過 RSSHub／Instaloader 抓公開貼文。
+"""IG fetcher：優先用不登入的公開網頁端點抓貼文。
 
-節制原則：持久化帳號排程、小批次、隨機等待與指數退避（IG cookie 額度是共用資源）。
+舊的 RSSHub／Instaloader 登入後端只保留給人工診斷，不再是預設路徑。
+節制原則：持久化帳號排程、小批次、依帳號活躍度調頻與指數退避。
 """
 
 import argparse
@@ -18,14 +19,17 @@ import requests
 
 from chumei_lib import (SeenState, TZ_TAIPEI, append_inbox, load_env, now_iso,
                         read_sources_csv, ROOT)
-from ig_schedule import (clear_global_rate_limit, is_rate_limited, load_schedule,
-                         mark_failure, mark_success, save_schedule, select_due,
+from ig_schedule import (adaptive_interval_hours, clear_global_rate_limit,
+                         is_rate_limited, load_schedule, mark_failure,
+                         mark_success, save_schedule, select_due,
                          set_global_rate_limit)
 from source_status import record_api_call, record_fetch
 
 RAW_SOURCE = "rsshub"
 ERROR_LOG = ROOT / "state" / "seen" / "instagram_errors.jsonl"
-SCHEDULE_STATE = ROOT / "state" / "instagram_profile_schedule.json"
+AUTH_SCHEDULE_STATE = ROOT / "state" / "instagram_profile_schedule.json"
+PUBLIC_SCHEDULE_STATE = ROOT / "state" / "instagram_public_profile_schedule.json"
+PUBLIC_APP_ID = "936619743392459"
 
 
 def strip_html(s):
@@ -86,6 +90,68 @@ def fetch_rsshub(base, username, limit):
         raise RuntimeError(f"non-RSS response ({resp.status_code})")
     m_av = re.search(r"<image><url>([^<]+)</url>", resp.text)
     return (html.unescape(m_av.group(1)) if m_av else None), list(parse_feed(resp.text))
+
+
+def fetch_public_web(base, username, limit):
+    """Fetch a public profile without cookies or an Instagram login.
+
+    This is the same logged-out ``web_profile_info`` surface used by the
+    open-source FxEmbed Instagram provider.  Instagram may reject a server IP;
+    callers therefore keep a separate cooldown from account-bound backends.
+    """
+    response = requests.get(
+        f"{base.rstrip('/')}/api/v1/users/web_profile_info/",
+        params={"username": username},
+        headers={
+            "Accept": "application/json",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140 Safari/537.36"
+            ),
+            "X-IG-App-ID": PUBLIC_APP_ID,
+        },
+        timeout=(10, 30),
+    )
+    if response.status_code >= 400:
+        raise requests.HTTPError(
+            f"Instagram public web HTTP {response.status_code} for @{username}",
+            response=response,
+        )
+    try:
+        user = response.json()["data"]["user"]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"Instagram public web returned no profile for @{username}") from exc
+
+    media = (user.get("edge_owner_to_timeline_media") or {}).get("edges") or []
+    posts = []
+    for edge in media[:limit]:
+        node = edge.get("node") or {}
+        shortcode = node.get("shortcode")
+        if not shortcode:
+            continue
+        captions = (node.get("edge_media_to_caption") or {}).get("edges") or []
+        caption = ""
+        if captions:
+            caption = ((captions[0].get("node") or {}).get("text") or "").strip()
+        children = (node.get("edge_sidecar_to_children") or {}).get("edges") or []
+        images = [
+            child.get("node", {}).get("display_url")
+            for child in children[:2]
+            if child.get("node", {}).get("display_url")
+        ]
+        if not images and node.get("display_url"):
+            images = [node["display_url"]]
+        posts.append({
+            "post_id": shortcode,
+            "url": f"https://www.instagram.com/p/{shortcode}/",
+            "posted_at": datetime.fromtimestamp(
+                node.get("taken_at_timestamp") or 0, timezone.utc
+            ).isoformat(timespec="seconds"),
+            "text": caption or "（純圖片貼文，內容見海報）",
+            "images": images,
+        })
+    avatar = user.get("profile_pic_url_hd") or user.get("profile_pic_url")
+    return avatar, posts
 
 
 _instaloader_session = None
@@ -157,7 +223,9 @@ def fetch_instaloader(username, limit):
     return avatar, posts
 
 
-def fetch_account(backend, base, username, limit):
+def fetch_account(backend, base, public_base, username, limit):
+    if backend == "public-web":
+        return fetch_public_web(public_base, username, limit)
     if backend == "rsshub":
         return fetch_rsshub(base, username, limit)
     if backend == "instaloader":
@@ -221,12 +289,12 @@ def main():
     ap.add_argument("--batches", type=int, default=2, help="每輪最多跑幾個小批")
     ap.add_argument("--batch-buffer-min", type=float, default=300, help="小批間最短緩衝秒數")
     ap.add_argument("--batch-buffer-max", type=float, default=480, help="小批間最長緩衝秒數")
-    ap.add_argument("--account-interval-hours", type=float, default=48,
-                    help="同一帳號成功後至少間隔幾小時再抓")
+    ap.add_argument("--account-interval-hours", type=float,
+                    help="固定每帳號重抓間隔；未指定時依近期發文頻率自動選 12h–14d")
     ap.add_argument("--max-accounts", type=int, default=0,
                     help="覆寫這一輪帳號上限（0=使用 batch-size × batches）")
-    ap.add_argument("--backend", choices=["auto", "rsshub", "instaloader"],
-                    help="預設讀 CHUMEI_IG_BACKEND，再預設 auto")
+    ap.add_argument("--backend", choices=["public-web", "auto", "rsshub", "instaloader"],
+                    help="預設讀 CHUMEI_IG_BACKEND，再預設不登入的 public-web")
     ap.add_argument("--force", action="store_true", help="忽略帳號排程與全域冷卻，僅供人工診斷")
     ap.add_argument("--dry-run", action="store_true", help="只印出抓到的貼文，不寫 inbox／seen-state／頭貼")
     args = ap.parse_args()
@@ -240,15 +308,17 @@ def main():
 
     env = load_env()
     base = env.get("CHUMEI_RSSHUB_BASE", "http://127.0.0.1:1200")
-    backend = args.backend or env.get("CHUMEI_IG_BACKEND", "auto")
-    if backend not in {"auto", "rsshub", "instaloader"}:
+    public_base = env.get("CHUMEI_IG_PUBLIC_BASE", "https://www.instagram.com")
+    backend = args.backend or env.get("CHUMEI_IG_BACKEND", "public-web")
+    if backend not in {"public-web", "auto", "rsshub", "instaloader"}:
         ap.error(f"invalid CHUMEI_IG_BACKEND: {backend}")
     rows = [r for r in read_sources_csv("ig_accounts.csv") if r.get("active", "true").lower() not in ("false", "link")]
     if args.accounts:
         wanted = set(args.accounts.split(","))
         rows = [r for r in rows if r["username"] in wanted]
     row_by_username = {r["username"].strip().lstrip("@"): r for r in rows}
-    schedule = load_schedule(SCHEDULE_STATE)
+    schedule_path = PUBLIC_SCHEDULE_STATE if backend == "public-web" else AUTH_SCHEDULE_STATE
+    schedule = load_schedule(schedule_path)
     now_ts = time.time()
     cooldown = schedule.get("global_cooldown_until", 0)
     if cooldown > now_ts and not args.force:
@@ -289,8 +359,12 @@ def main():
                 avatar_url, posts = auto_backend.fetch(username, args.limit)
                 attempt_backend = auto_backend.last_attempts[-1][0] if auto_backend.last_attempts else "auto"
             else:
-                avatar_url, posts = fetch_account(backend, base, username, args.limit)
-                attempt_backend = "RSSHub" if backend == "rsshub" else "Instaloader"
+                avatar_url, posts = fetch_account(backend, base, public_base, username, args.limit)
+                attempt_backend = {
+                    "public-web": "Instagram public web",
+                    "rsshub": "RSSHub",
+                    "instaloader": "Instaloader",
+                }[backend]
             if args.dry_run:
                 print(f"[{i+1}/{len(rows)}] @{username}: {len(posts)} posts"
                       + f"{' (avatar ok)' if avatar_url else ''}")
@@ -319,15 +393,17 @@ def main():
             n = append_inbox(RAW_SOURCE, fresh)
             seen.save()
             total_new += n
-            mark_success(schedule, username, interval_hours=args.account_interval_hours,
-                         jitter_hours=3)
+            interval_hours = args.account_interval_hours or adaptive_interval_hours(
+                [post.get("posted_at") for post in posts]
+            )
+            mark_success(schedule, username, interval_hours=interval_hours, jitter_hours=3)
             clear_global_rate_limit(schedule)
-            save_schedule(SCHEDULE_STATE, schedule)
+            save_schedule(schedule_path, schedule)
             attempts = auto_backend.last_attempts if auto_backend else [(attempt_backend, True)]
             for service, ok in attempts:
                 record_api_call(service, operation="instagram profile", ok=ok)
             record_fetch(source_key, backend=attempt_backend, ok=True, items=len(posts))
-            print(f"[{i+1}/{len(rows)}] @{username}: +{n}")
+            print(f"[{i+1}/{len(rows)}] @{username}: +{n}; next ~{interval_hours:g}h")
         except Exception as e:
             failed += 1
             if not args.dry_run:
@@ -336,7 +412,11 @@ def main():
                         record_api_call(service, operation="instagram profile", ok=ok)
                     attempt_backend = auto_backend.last_attempts[-1][0] if auto_backend.last_attempts else "auto"
                 else:
-                    attempt_backend = "RSSHub" if backend == "rsshub" else "Instaloader"
+                    attempt_backend = {
+                        "public-web": "Instagram public web",
+                        "rsshub": "RSSHub",
+                        "instaloader": "Instaloader",
+                    }[backend]
                     record_api_call(attempt_backend, operation="instagram profile", ok=False)
                 record_fetch(source_key, backend=attempt_backend, ok=False, error=e)
                 log_error(username, e)
@@ -345,13 +425,13 @@ def main():
             if is_rate_limited(e):
                 if not args.dry_run:
                     until = set_global_rate_limit(schedule)
-                    save_schedule(SCHEDULE_STATE, schedule)
+                    save_schedule(schedule_path, schedule)
                     until_text = datetime.fromtimestamp(until, TZ_TAIPEI).isoformat(timespec="minutes")
                     print(f"instagram rate-limited; stopping batch, cooldown until {until_text}",
                           file=sys.stderr)
                 return 1
             if not args.dry_run:
-                save_schedule(SCHEDULE_STATE, schedule)
+                save_schedule(schedule_path, schedule)
         if i < len(rows) - 1:
             time.sleep(random.uniform(args.sleep_min, args.sleep_max))
 

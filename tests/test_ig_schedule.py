@@ -6,13 +6,37 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from ig_schedule import (clear_global_rate_limit, is_rate_limited, load_schedule,
-                         mark_failure, mark_success, save_schedule, select_due,
+from ig_schedule import (adaptive_interval_hours, clear_global_rate_limit,
+                         is_rate_limited, load_schedule, mark_failure,
+                         mark_success, save_schedule, select_due,
                          set_global_rate_limit)
 from fetch_stories import story_lifecycle
 
 
 class InstagramScheduleTests(unittest.TestCase):
+    def test_adaptive_interval_tracks_posting_cadence(self):
+        now = datetime(2026, 9, 4, tzinfo=timezone.utc).timestamp()
+        daily = [
+            datetime(2026, 9, day, tzinfo=timezone.utc).isoformat()
+            for day in (4, 3, 2, 1)
+        ]
+        weekly = [
+            datetime(2026, 9, 4, tzinfo=timezone.utc).isoformat(),
+            datetime(2026, 8, 28, tzinfo=timezone.utc).isoformat(),
+            datetime(2026, 8, 21, tzinfo=timezone.utc).isoformat(),
+        ]
+        self.assertEqual(adaptive_interval_hours(daily, now=now), 12)
+        self.assertEqual(adaptive_interval_hours(weekly, now=now), 72)
+
+    def test_adaptive_interval_slows_dormant_and_empty_profiles(self):
+        now = datetime(2026, 9, 4, tzinfo=timezone.utc).timestamp()
+        dormant = [
+            datetime(2026, 6, 1, tzinfo=timezone.utc).isoformat(),
+            datetime(2026, 5, 31, tzinfo=timezone.utc).isoformat(),
+        ]
+        self.assertEqual(adaptive_interval_hours(dormant, now=now), 336)
+        self.assertEqual(adaptive_interval_hours([], now=now), 168)
+
     def test_due_selection_is_fair_and_honors_next_eligible(self):
         state = {"accounts": {
             "a": {"next_eligible": 500, "last_attempt": 100},
@@ -27,6 +51,7 @@ class InstagramScheduleTests(unittest.TestCase):
         mark_success(state, "club", now=100, interval_hours=48, jitter_hours=6,
                      rng=lambda low, high: high)
         self.assertEqual(state["accounts"]["club"]["next_eligible"], 100 + 54 * 3600)
+        self.assertEqual(state["accounts"]["club"]["interval_hours"], 48)
         mark_failure(state, "club", now=200, base_hours=6, jitter_hours=1,
                      rng=lambda low, high: 0)
         self.assertEqual(state["accounts"]["club"]["next_eligible"], 200 + 6 * 3600)

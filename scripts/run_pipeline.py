@@ -53,11 +53,12 @@ def main():
         )
         results["nycu_life"] = run_step("NYCU LIFE", ["fetch_nycu_life.py"])
         results["infonews"] = run_step("infonews", ["fetch_infonews.py", "--max-pages", "2"])
+        results["nycu_open_data"] = run_step("NYCU Open Data", ["fetch_nycu_open_data.py"])
         results["rpage"] = run_step("rpage", ["fetch_rpage.py", "--max-pages", "2"])
         results["wp"] = run_step("wp", ["fetch_wp.py"])
 
         if not args.skip_ig:
-            ig_args = ["fetch_instagram.py", "--limit", "5"]
+            ig_args = ["fetch_instagram_public.py", "--limit", "5"]
             if args.force_ig:
                 ig_args.append("--force")
             results["instagram"] = run_step("instagram", ig_args)
@@ -94,9 +95,10 @@ def main():
                                                        "--account-interval-hours", f"{fb_interval_h:g}"])
             state["last_fb_run"] = time.time()
 
-        # 限時動態 24h 就消失，每輪都抓（批量查詢，額度便宜）
-        if (ROOT / "scripts" / "fetch_stories.py").exists():
-            results["stories"] = run_step("stories", ["fetch_stories.py"])
+        # 限時動態改走不使用本站 IG 帳號的 Actor；每輪只掃活躍度最高的
+        # 5 個到期帳號，並保留 Apify 額度給既有 Facebook collector。
+        if (ROOT / "scripts" / "fetch_stories_apify.py").exists():
+            results["stories"] = run_step("stories", ["fetch_stories_apify.py"])
 
     results["extract"] = run_step("extract", ["extract_events.py"])
     results["map"] = run_step("map", ["build_map_data.py"])

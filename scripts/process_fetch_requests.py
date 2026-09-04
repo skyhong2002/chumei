@@ -58,7 +58,11 @@ def finish(path: Path, request_id: str, status: str, reason: str = "", next_atte
 def cooldown_until(kind: str) -> float:
     if kind not in {"instagram_profile", "instagram_story"}:
         return 0
-    name = "instagram_profile_schedule.json" if kind == "instagram_profile" else "instagram_stories_schedule.json"
+    name = (
+        "instagram_public_profile_schedule.json"
+        if kind == "instagram_profile"
+        else "instagram_apify_stories_schedule.json"
+    )
     try:
         state = json.loads((ROOT / "state" / name).read_text())
         return float(state.get("global_cooldown_until") or 0)
@@ -69,16 +73,17 @@ def cooldown_until(kind: str) -> float:
 def command_for(source: dict) -> list[str] | None:
     username, kind = source["username"], source["kind"]
     if kind == "instagram_profile":
-        return ["fetch_instagram.py", "--accounts", username, "--max-accounts", "1", "--limit", "5",
-                "--sleep-min", "0", "--sleep-max", "0", "--batch-buffer-min", "0", "--batch-buffer-max", "0"]
+        return ["fetch_instagram_public.py", "--accounts", username, "--max-accounts", "1", "--limit", "5"]
     if kind == "instagram_story":
-        return ["fetch_stories.py", "--accounts", username, "--batch-size", "1"]
+        return ["fetch_stories_apify.py", "--accounts", username, "--max-accounts", "1"]
     if kind == "facebook":
         return ["fetch_facebook.py", "--pages", username, "--limit", "5", "--max-pages-per-run", "1"]
     if kind in {"threads", "x"}:
         return ["fetch_social.py", "--platform", kind, "--accounts", username, "--limit", "5", "--sleep", "0"]
     if kind == "infonews_category":
         return ["fetch_infonews.py", "--sources", source["sourceId"], "--max-pages", "2"]
+    if kind == "nycu_open_data":
+        return ["fetch_nycu_open_data.py", "--sources", source["sourceId"]]
     if kind == "rpage_list":
         return ["fetch_rpage.py", "--sources", source["sourceId"], "--max-pages", "2"]
     if kind == "wp_api":
