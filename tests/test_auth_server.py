@@ -180,6 +180,9 @@ class AuthServerTests(unittest.TestCase):
             self.assertEqual(listing.status_code, 200)
             self.assertEqual(listing.json()["totals"]["accounts"], 1)
             self.assertEqual(listing.json()["mine"][0]["accountLabel"], "社團備用")
+            contribution_page = self.client.get("/contribute/").text
+            self.assertIn('class="profile-avatar contrib-avatar"', contribution_page)
+            self.assertIn('src="/auth/avatar/student123"', contribution_page)
             self.assertEqual(
                 listing.json()["dailyPriorityLimit"],
                 auth_server.FETCH_REQUEST_DAILY_LIMIT + 3,

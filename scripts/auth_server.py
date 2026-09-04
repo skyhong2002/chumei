@@ -1503,7 +1503,7 @@ def _going_html(going_ids: list[str]) -> str:
     return "".join(parts)
 
 
-def _avatar_html(user: dict, size: str = "") -> str:
+def _avatar_html(user: dict, size: str = "", *, force_proxy: bool = False) -> str:
     initial = (user.get("display_name") or user.get("handle") or "竹")[:1].upper()
     avatar_url = _safe_avatar_url(user.get("avatar_url")) or (
         user.get("avatar_url")
@@ -1511,11 +1511,14 @@ def _avatar_html(user: dict, size: str = "") -> str:
         else None
     )
     handle = str(user.get("handle") or "")
-    avatar_src = f"/auth/avatar/{quote(handle, safe='')}" if avatar_url and handle else ""
+    avatar_src = (
+        f"/auth/avatar/{quote(handle, safe='')}"
+        if (avatar_url or force_proxy) and handle else ""
+    )
     image = (
         f'<img src="{html.escape(avatar_src, quote=True)}" alt="" '
         'referrerpolicy="no-referrer" onerror="this.remove()">'
-        if avatar_url else ""
+        if avatar_src else ""
     )
     return (
         f'<span class="profile-avatar{(" " + size) if size else ""}" aria-hidden="true">'
@@ -1832,10 +1835,16 @@ def _contribute_html(
     scoreboard_rows = []
     for rank, row in enumerate(public["scoreboard"], 1):
         name = esc(str(row["name"]))
-        person = (
-            f'<a href="/@{quote(str(row["handle"]), safe="")}">{name}</a>'
-            if row.get("handle") else name
+        handle = str(row.get("handle") or "")
+        avatar = _avatar_html(
+            {"display_name": str(row["name"]), "handle": handle},
+            "contrib-avatar",
+            force_proxy=bool(handle),
         )
+        person_name = (
+            f'<a href="/@{quote(handle, safe="")}">{name}</a>' if handle else name
+        )
+        person = f'<span class="contrib-person">{avatar}{person_name}</span>'
         scoreboard_rows.append(
             f'<tr><td class="contrib-rank">{rank}</td><td>{person}</td>'
             f'<td>{int(row["accounts"])} / {int(row["usableAccounts"])}</td>'
@@ -1937,7 +1946,7 @@ def _contribute_html(
   </section>
 </section>
 <style>
-.contribute-page{{padding-bottom:56px}}.contrib-hero p{{max-width:760px}}.contrib-totals{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}}.contrib-totals article,.contrib-panel,.contrib-explain article,.contrib-portal{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface)}}.contrib-totals article{{padding:16px}}.contrib-totals span,.contrib-account span,.contrib-my-row span,.contrib-form p,.contrib-muted{{display:block;color:var(--color-text-muted);font-size:.78rem}}.contrib-totals strong{{display:block;margin-top:4px;font-size:clamp(1.55rem,3vw,2.3rem)}}.contrib-explain{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 12px}}.contrib-explain article{{padding:18px}}.contrib-explain article>strong{{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft)}}.contrib-explain h2{{font-size:1rem;margin:14px 0 6px}}.contrib-explain p{{margin:0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal{{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px;margin-bottom:20px}}.contrib-portal .eyebrow{{margin:0}}.contrib-portal h2{{font-size:1.05rem;margin:4px 0 5px}}.contrib-portal p:not(.eyebrow){{margin:0;max-width:700px;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal-link{{flex:0 0 auto;text-align:center}}.contrib-grid{{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-top:12px}}.contrib-panel{{padding:18px;margin-top:12px}}.contrib-heading{{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}}.contrib-heading h2{{margin:2px 0 0;font-size:1.15rem}}.contrib-heading p{{margin:0}}.contrib-heading a,.contrib-rule{{font-size:.78rem;color:var(--color-text-secondary)}}.contrib-rule{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-pill);padding:5px 9px}}.contrib-form{{padding:14px;border-radius:var(--radius-md);background:var(--color-surface-soft)}}.contrib-form label{{display:block;margin:10px 0 7px;font-size:.8rem;font-weight:650}}.contrib-form label:first-child{{margin-top:0}}.contrib-token-row{{display:flex;gap:8px}}.contrib-token-row input,#apify-name{{box-sizing:border-box;min-width:0;height:42px;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:0 12px;background:var(--color-canvas);color:var(--color-text-primary);font:inherit}}.contrib-token-row input{{flex:1}}#apify-name{{width:100%}}.contrib-form p{{margin:8px 0 0;line-height:1.5}}.contrib-form .contrib-message{{min-height:1.3em;color:var(--color-text-secondary)}}.contrib-my-list,.contrib-account-list{{display:grid;gap:8px;margin-top:12px}}.contrib-my-row,.contrib-account{{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px;border-top:1px solid var(--color-border-subtle)}}.contrib-account{{grid-template-columns:minmax(0,1fr) auto auto}}.contrib-account:first-child,.contrib-my-row:first-child{{border-top:0}}.contrib-account strong,.contrib-my-row strong{{display:block;font-size:.88rem}}.contrib-actions{{display:flex;gap:6px;align-items:center}}.contrib-disable{{font-size:.74rem}}.contrib-table-wrap{{overflow-x:auto}}.contrib-panel table{{width:100%;border-collapse:collapse;font-size:.82rem}}.contrib-panel th,.contrib-panel td{{padding:10px 8px;border-top:1px solid var(--color-border-subtle);text-align:left;white-space:nowrap}}.contrib-panel thead th{{border-top:0;color:var(--color-text-muted);font-size:.72rem}}.contrib-rank{{font-weight:700}}.contrib-empty{{padding:18px!important;color:var(--color-text-muted);text-align:center!important}}@media(max-width:800px){{.contrib-totals{{grid-template-columns:1fr 1fr}}.contrib-explain,.contrib-grid{{grid-template-columns:1fr}}.contrib-portal{{align-items:flex-start;flex-direction:column}}}}@media(max-width:560px){{.contrib-token-row{{display:grid}}.contrib-portal-link{{width:100%}}.contrib-my-row,.contrib-account{{grid-template-columns:1fr auto}}.contrib-actions{{grid-column:1/-1}}.contrib-my-row .contrib-disable{{width:100%}}}}
+.contribute-page{{padding-bottom:56px}}.contrib-hero p{{max-width:760px}}.contrib-totals{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}}.contrib-totals article,.contrib-panel,.contrib-explain article,.contrib-portal{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface)}}.contrib-totals article{{padding:16px}}.contrib-totals span,.contrib-account span,.contrib-my-row span,.contrib-form p,.contrib-muted{{display:block;color:var(--color-text-muted);font-size:.78rem}}.contrib-totals strong{{display:block;margin-top:4px;font-size:clamp(1.55rem,3vw,2.3rem)}}.contrib-explain{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 12px}}.contrib-explain article{{padding:18px}}.contrib-explain article>strong{{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft)}}.contrib-explain h2{{font-size:1rem;margin:14px 0 6px}}.contrib-explain p{{margin:0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal{{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px;margin-bottom:20px}}.contrib-portal .eyebrow{{margin:0}}.contrib-portal h2{{font-size:1.05rem;margin:4px 0 5px}}.contrib-portal p:not(.eyebrow){{margin:0;max-width:700px;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal-link{{flex:0 0 auto;text-align:center}}.contrib-grid{{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-top:12px}}.contrib-panel{{padding:18px;margin-top:12px}}.contrib-heading{{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}}.contrib-heading h2{{margin:2px 0 0;font-size:1.15rem}}.contrib-heading p{{margin:0}}.contrib-heading a,.contrib-rule{{font-size:.78rem;color:var(--color-text-secondary)}}.contrib-rule{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-pill);padding:5px 9px}}.contrib-form{{padding:14px;border-radius:var(--radius-md);background:var(--color-surface-soft)}}.contrib-form label{{display:block;margin:10px 0 7px;font-size:.8rem;font-weight:650}}.contrib-form label:first-child{{margin-top:0}}.contrib-token-row{{display:flex;gap:8px}}.contrib-token-row input,#apify-name{{box-sizing:border-box;min-width:0;height:42px;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:0 12px;background:var(--color-canvas);color:var(--color-text-primary);font:inherit}}.contrib-token-row input{{flex:1}}#apify-name{{width:100%}}.contrib-form p{{margin:8px 0 0;line-height:1.5}}.contrib-form .contrib-message{{min-height:1.3em;color:var(--color-text-secondary)}}.contrib-my-list,.contrib-account-list{{display:grid;gap:8px;margin-top:12px}}.contrib-my-row,.contrib-account{{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px;border-top:1px solid var(--color-border-subtle)}}.contrib-account{{grid-template-columns:minmax(0,1fr) auto auto}}.contrib-account:first-child,.contrib-my-row:first-child{{border-top:0}}.contrib-account strong,.contrib-my-row strong{{display:block;font-size:.88rem}}.contrib-actions{{display:flex;gap:6px;align-items:center}}.contrib-disable{{font-size:.74rem}}.contrib-table-wrap{{overflow-x:auto}}.contrib-panel table{{width:100%;border-collapse:collapse;font-size:.82rem}}.contrib-panel th,.contrib-panel td{{padding:10px 8px;border-top:1px solid var(--color-border-subtle);text-align:left;white-space:nowrap}}.contrib-panel thead th{{border-top:0;color:var(--color-text-muted);font-size:.72rem}}.contrib-person{{display:inline-flex;align-items:center;gap:8px}}.profile-avatar.contrib-avatar{{width:28px;height:28px;font-size:.72rem}}.contrib-rank{{font-weight:700}}.contrib-empty{{padding:18px!important;color:var(--color-text-muted);text-align:center!important}}@media(max-width:800px){{.contrib-totals{{grid-template-columns:1fr 1fr}}.contrib-explain,.contrib-grid{{grid-template-columns:1fr}}.contrib-portal{{align-items:flex-start;flex-direction:column}}}}@media(max-width:560px){{.contrib-token-row{{display:grid}}.contrib-portal-link{{width:100%}}.contrib-my-row,.contrib-account{{grid-template-columns:1fr auto}}.contrib-actions{{grid-column:1/-1}}.contrib-my-row .contrib-disable{{width:100%}}}}
 </style>
 <script>
 document.addEventListener('submit',async function(event){{
