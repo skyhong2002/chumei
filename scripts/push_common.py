@@ -38,7 +38,7 @@ SUBS_PATH = PUSH_DIR / "subscriptions.json"
 LOCK_PATH = PUSH_DIR / "subscriptions.lock"
 VAPID_KEY_PATH = PUSH_DIR / "vapid_private.pem"
 SOURCES_PATH = ROOT / "site" / "data" / "sources.json"
-VAPID_SUB = "mailto:chumei@observe.tw"
+VAPID_SUB = "mailto:sky.cs14@nycu.edu.tw"
 AUTH_DB_PATH = ROOT / "state" / "auth.sqlite3"
 SESSION_COOKIE = "chumei_session"
 

@@ -202,6 +202,6 @@ CHUMEI_FEED_SIGNING_KEY=
 
 ## 資料回報、下架與 License
 
-活動資訊有誤、主辦單位希望調整或下架，可從網站登入後回報，或寄信至 [chumei@observe.tw](mailto:chumei@observe.tw)。GitHub [Issues](../../issues) 僅處理程式問題；轉載的海報與貼文均附原始來源，主辦單位要求即下架。
+活動資訊有誤、主辦單位希望調整或下架，可從網站登入後回報，或寄信至 [sky.cs14@nycu.edu.tw](mailto:sky.cs14@nycu.edu.tw)。GitHub [Issues](../../issues) 僅處理程式問題；轉載的海報與貼文均附原始來源，主辦單位要求即下架。
 
 程式碼採用 [MIT License](LICENSE)；活動內容版權屬各主辦單位。

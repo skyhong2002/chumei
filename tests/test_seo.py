@@ -72,6 +72,14 @@ class SEOOutputTests(unittest.TestCase):
             source,
         )
 
+    def test_about_uses_working_contact_email(self):
+        source = (SITE / "about" / "index.html").read_text()
+        self.assertIn(
+            '<a href="mailto:sky.cs14@nycu.edu.tw">sky.cs14@nycu.edu.tw</a>',
+            source,
+        )
+        self.assertNotIn("chumei@observe.tw", source)
+
     def test_about_special_thanks_matches_current_services(self):
         source = (SITE / "about" / "index.html").read_text()
         section = source.split("<h2>特別感謝</h2>", 1)[1].split("<h2>關於我</h2>", 1)[0]

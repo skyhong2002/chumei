@@ -42,6 +42,9 @@ ORG_SIDS = {5: {"ig_ee_nthu"}, 47: {"fb_nycuartscenter"}}
 class RuleTest(unittest.TestCase):
     """規則引擎：單條規則內各維度 AND、規則之間 OR、not 否決。"""
 
+    def test_vapid_contact_uses_working_email(self):
+        self.assertEqual(pc.VAPID_SUB, "mailto:sky.cs14@nycu.edu.tw")
+
     def match(self, prefs, ev=None):
         return pc.event_matches(ev or event(), pc.normalize_prefs(prefs), ORG_SIDS)
 
