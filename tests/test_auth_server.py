@@ -158,16 +158,28 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(denied.status_code, 401)
 
         self._login()
+        self.assertIn('id="apify-name"', self.client.get("/contribute/").text)
         with mock.patch.object(auth_server, "verify_apify_token", return_value=quota), \
              mock.patch.object(apify_contributions, "encryption_secret", return_value="test-secret"):
-            created = self.client.post("/auth/apify-contributions", json={"token": token})
+            created = self.client.post(
+                "/auth/apify-contributions", json={"token": token, "name": "MY-APIFY"}
+            )
             self.assertEqual(created.status_code, 201)
             self.assertEqual(created.json()["priorityBonus"], 3)
+            self.assertEqual(created.json()["contribution"]["accountLabel"], "MY-APIFY")
             self.assertNotIn(token, created.text)
+
+            public_id = created.json()["contribution"]["publicId"]
+            renamed = self.client.patch(
+                f"/auth/apify-contributions/{public_id}", json={"name": "社團備用"}
+            )
+            self.assertEqual(renamed.status_code, 200)
+            self.assertEqual(renamed.json()["accountLabel"], "社團備用")
 
             listing = self.client.get("/auth/apify-contributions")
             self.assertEqual(listing.status_code, 200)
             self.assertEqual(listing.json()["totals"]["accounts"], 1)
+            self.assertEqual(listing.json()["mine"][0]["accountLabel"], "社團備用")
             self.assertEqual(
                 listing.json()["dailyPriorityLimit"],
                 auth_server.FETCH_REQUEST_DAILY_LIMIT + 3,

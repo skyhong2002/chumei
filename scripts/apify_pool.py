@@ -24,6 +24,24 @@ DEFAULT_COST_PER_SOURCE_USD = 0.015
 MIN_ACCOUNT_RESERVE_USD = 0.02
 MIN_INTERVAL_HOURS = 24.0
 MAX_INTERVAL_HOURS = 168.0
+# These free accounts can receive a one-cycle US$5 social-account promotion on
+# top of their recurring US$5 allowance. Keep temporary credit spendable, but
+# do not present it as a permanent plan upgrade.
+RECURRING_LIMIT_OVERRIDES_USD = {
+    "PRIMARY": 5.0,
+    "GDGNTNU": 5.0,
+    "SKYNTNU": 5.0,
+    "UNICOURSE": 5.0,
+}
+
+
+def recurring_limit(
+    label: str, api_limit: float, *, community: bool = False
+) -> tuple[float, float]:
+    """Return the stable monthly allowance and any temporary API credit."""
+    override = 5.0 if community else RECURRING_LIMIT_OVERRIDES_USD.get(label, float(api_limit))
+    recurring = min(float(api_limit), override)
+    return recurring, max(0.0, float(api_limit) - recurring)
 
 
 def token_accounts(env: dict | None = None) -> list[dict]:
@@ -89,9 +107,12 @@ def _fetch_quota(account: dict, *, now: float) -> dict:
     cycle = data.get("monthlyUsageCycle") or {}
     configured = data.get("limits") or {}
     current = data.get("current") or {}
-    limit = float(configured.get("maxMonthlyUsageUsd") or 0)
+    api_limit = float(configured.get("maxMonthlyUsageUsd") or 0)
+    limit, temporary_credit = recurring_limit(
+        account["label"], api_limit, community=bool(account.get("contributionId"))
+    )
     used = float(current.get("monthlyUsageUsd") or 0)
-    remaining = max(0.0, limit - used)
+    remaining = max(0.0, api_limit - used)
     return {
         "label": account["label"],
         "community": bool(account.get("contributionId")),
@@ -100,10 +121,11 @@ def _fetch_quota(account: dict, *, now: float) -> dict:
         "cycleStart": cycle.get("startAt"),
         "cycleEnd": cycle.get("endAt"),
         "limitUsd": limit,
+        "temporaryCreditUsd": temporary_credit,
         "usedUsd": used,
         "remainingUsd": round(remaining, 6),
         "activeActorJobs": int(current.get("activeActorJobCount") or 0),
-        "exhausted": bool(limit and used >= limit),
+        "exhausted": remaining <= MIN_ACCOUNT_RESERVE_USD,
     }
 
 
@@ -154,6 +176,9 @@ def pool_status(*, refresh: bool = True, now: float | None = None) -> dict:
         "limitUsd": round(sum(float(row.get("limitUsd") or 0) for row in available), 6),
         "usedUsd": round(sum(float(row.get("usedUsd") or 0) for row in available), 6),
         "remainingUsd": round(sum(float(row.get("remainingUsd") or 0) for row in available), 6),
+        "temporaryCreditUsd": round(
+            sum(float(row.get("temporaryCreditUsd") or 0) for row in available), 6
+        ),
         "activeActorJobs": sum(int(row.get("activeActorJobs") or 0) for row in available),
         "accountCount": len(rows),
         "usableAccountCount": sum(

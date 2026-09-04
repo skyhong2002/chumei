@@ -23,6 +23,12 @@ class BuildStatusPageTests(unittest.TestCase):
         self.assertIn("Instagram／Facebook 共用 Apify 額度", build_status_page.SCRIPT)
         self.assertIn('href="/contribute/"', build_status_page.SCRIPT)
 
+    def test_apify_promotion_is_separate_from_the_recurring_limit(self):
+        self.assertIn("temporaryCreditUsd", build_status_page.SCRIPT)
+        self.assertIn("已用／固定月額", build_status_page.SCRIPT)
+        self.assertIn("含臨時贈額", build_status_page.SCRIPT)
+        self.assertIn("本期已用盡", build_status_page.SCRIPT)
+
 
 if __name__ == "__main__":
     unittest.main()

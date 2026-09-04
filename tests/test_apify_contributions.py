@@ -43,8 +43,11 @@ class ApifyContributionTests(unittest.TestCase):
 
     def test_register_encrypts_token_and_builds_public_dashboard(self):
         raw_token = "apify_api_" + "x" * 40
-        code, item = contributions.register(self.path, "user_1", raw_token, QUOTA)
+        code, item = contributions.register(
+            self.path, "user_1", raw_token, QUOTA, name="學生會帳號"
+        )
         self.assertEqual(code, "created")
+        self.assertEqual(item["accountLabel"], "學生會帳號")
 
         with sqlite3.connect(self.path) as conn:
             stored = conn.execute(
@@ -52,6 +55,7 @@ class ApifyContributionTests(unittest.TestCase):
             ).fetchone()
         self.assertNotIn(raw_token, stored)
         self.assertEqual(contributions.active_tokens(self.path)[0]["token"], raw_token)
+        self.assertEqual(contributions.active_tokens(self.path)[0]["label"], "學生會帳號")
 
         public = contributions.dashboard(self.path)
         self.assertEqual(public["totals"]["accounts"], 1)
@@ -59,8 +63,27 @@ class ApifyContributionTests(unittest.TestCase):
         self.assertEqual(public["scoreboard"][0]["priorityBonus"], 3)
         self.assertEqual(public["scoreboard"][0]["accounts"], 1)
         self.assertEqual(public["scoreboard"][0]["usableAccounts"], 1)
+        self.assertEqual(public["scoreboard"][0]["name"], "竹梅同學")
         self.assertNotIn(raw_token, repr(public))
-        self.assertTrue(item["accountLabel"].startswith("COMMUNITY-"))
+        self.assertEqual(public["accounts"][0]["accountLabel"], "學生會帳號")
+
+    def test_owner_can_rename_an_account_without_resubmitting_the_token(self):
+        raw_token = "apify_api_" + "n" * 40
+        _, item = contributions.register(
+            self.path, "user_1", raw_token, QUOTA, name="舊名稱"
+        )
+
+        self.assertEqual(
+            contributions.rename(self.path, "user_1", item["publicId"], " 新 名稱 "),
+            "新 名稱",
+        )
+        self.assertIsNone(
+            contributions.rename(self.path, "user_2", item["publicId"], "偷改")
+        )
+        self.assertEqual(contributions.user_rows(self.path, "user_1")[0]["accountLabel"], "新 名稱")
+        self.assertEqual(contributions.dashboard(self.path)["accounts"][0]["accountLabel"], "新 名稱")
+        with self.assertRaises(ValueError):
+            contributions.rename(self.path, "user_1", item["publicId"], "")
 
     def test_duplicate_token_cannot_be_claimed_by_another_user(self):
         raw_token = "apify_api_" + "y" * 40
@@ -94,6 +117,22 @@ class ApifyContributionTests(unittest.TestCase):
                 "SELECT status,token_ciphertext,remaining_usd FROM apify_contributions"
             ).fetchone()
         self.assertEqual(stored, ("invalid", "", 0.0))
+
+    def test_system_spending_the_quota_does_not_remove_contributor_bonus(self):
+        raw_token = "apify_api_" + "s" * 40
+        _, item = contributions.register(self.path, "user_1", raw_token, QUOTA)
+        contribution_id = contributions.active_tokens(self.path)[0]["contributionId"]
+        contributions.update_quota(self.path, contribution_id, {
+            **QUOTA, "usedUsd": 4.999, "remainingUsd": 0.001,
+        })
+
+        self.assertEqual(contributions.active_count(self.path, "user_1"), 1)
+        self.assertEqual(contributions.user_rows(self.path, "user_1")[0]["priorityBonus"], 3)
+        public = contributions.dashboard(self.path)
+        self.assertEqual(public["scoreboard"][0]["priorityBonus"], 3)
+        self.assertEqual(public["scoreboard"][0]["usableAccounts"], 0)
+        self.assertEqual(public["totals"]["extraSlots"], 0)
+        self.assertEqual(item["accountLabel"].startswith("COMMUNITY-"), True)
 
     def test_reactivation_respects_active_account_limit(self):
         old_token = "apify_api_" + "o" * 40

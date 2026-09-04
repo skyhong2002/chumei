@@ -29,6 +29,7 @@ PRIORITY_BONUS_PER_ACCOUNT = 3
 MAX_ACCOUNTS_PER_USER = 5
 MIN_USABLE_REMAINING_USD = 0.02
 TOKEN_RE = re.compile(r"\S{20,512}")
+MAX_ACCOUNT_NAME_LENGTH = 32
 
 
 def database_path() -> Path:
@@ -77,6 +78,13 @@ def normalize_token(value: str) -> str:
     if not TOKEN_RE.fullmatch(token):
         raise ValueError("invalid Apify token")
     return token
+
+
+def normalize_account_name(value: str) -> str:
+    name = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not name or len(name) > MAX_ACCOUNT_NAME_LENGTH or any(ord(char) < 32 for char in name):
+        raise ValueError("invalid Apify account name")
+    return name
 
 
 def token_hash(token: str) -> str:
@@ -148,6 +156,11 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             ON apify_contributions(status, remaining_usd DESC);
         """
     )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(apify_contributions)")}
+    if "display_name" not in columns:
+        conn.execute(
+            "ALTER TABLE apify_contributions ADD COLUMN display_name TEXT NOT NULL DEFAULT ''"
+        )
 
 
 def _connect(path: Path | None = None) -> sqlite3.Connection:
@@ -158,11 +171,13 @@ def _connect(path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
-def _account_label(public_id: str) -> str:
-    return "COMMUNITY-" + public_id.removeprefix("apy_")[-6:].upper()
+def _account_label(public_id: str, display_name: str = "") -> str:
+    return display_name or "COMMUNITY-" + public_id.removeprefix("apy_")[-6:].upper()
 
 
-def register(path: Path, user_id: str, token: str, quota: dict) -> tuple[str, dict | None]:
+def register(
+    path: Path, user_id: str, token: str, quota: dict, name: str = ""
+) -> tuple[str, dict | None]:
     token = normalize_token(token)
     now = int(time.time())
     digest = token_hash(token)
@@ -181,6 +196,11 @@ def register(path: Path, user_id: str, token: str, quota: dict) -> tuple[str, di
         ).fetchone()[0]
         if (not existing or existing["status"] != "active") and active_count >= MAX_ACCOUNTS_PER_USER:
             return "limit", None
+        display_name = (
+            normalize_account_name(name)
+            if str(name or "").strip()
+            else str(existing["display_name"] or "") if existing else ""
+        )
         values = (
             ciphertext,
             float(quota.get("limitUsd") or 0),
@@ -193,10 +213,10 @@ def register(path: Path, user_id: str, token: str, quota: dict) -> tuple[str, di
         )
         if existing:
             conn.execute(
-                "UPDATE apify_contributions SET token_ciphertext=?,status='active',limit_usd=?,"
+                "UPDATE apify_contributions SET token_ciphertext=?,display_name=?,status='active',limit_usd=?,"
                 "used_usd=?,remaining_usd=?,cycle_start=?,cycle_end=?,checked_at=?,last_error='',"
                 "updated_at=? WHERE id=?",
-                (*values, existing["id"]),
+                (ciphertext, display_name, *values[1:], existing["id"]),
             )
             public_id = existing["public_id"]
             code = "reactivated" if existing["status"] != "active" else "updated"
@@ -204,13 +224,31 @@ def register(path: Path, user_id: str, token: str, quota: dict) -> tuple[str, di
             contribution_id = "contrib_" + secrets.token_hex(10)
             public_id = "apy_" + secrets.token_hex(5)
             conn.execute(
-                "INSERT INTO apify_contributions(id,public_id,user_id,token_hash,token_ciphertext,status,"
+                "INSERT INTO apify_contributions(id,public_id,user_id,token_hash,token_ciphertext,display_name,status,"
                 "limit_usd,used_usd,remaining_usd,cycle_start,cycle_end,checked_at,last_error,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,'active',?,?,?,?,?,?, '',?,?)",
-                (contribution_id, public_id, user_id, digest, ciphertext, *values[1:7], now, now),
+                "VALUES (?,?,?,?,?,?,'active',?,?,?,?,?,?, '',?,?)",
+                (
+                    contribution_id, public_id, user_id, digest, ciphertext, display_name,
+                    *values[1:7], now, now,
+                ),
             )
             code = "created"
-    return code, {"publicId": public_id, "accountLabel": _account_label(public_id)}
+    return code, {
+        "publicId": public_id,
+        "accountLabel": _account_label(public_id, display_name),
+    }
+
+
+def rename(path: Path, user_id: str, public_id: str, name: str) -> str | None:
+    display_name = normalize_account_name(name)
+    with closing(_connect(path)) as conn, conn:
+        ensure_schema(conn)
+        changed = conn.execute(
+            "UPDATE apify_contributions SET display_name=?,updated_at=? "
+            "WHERE user_id=? AND public_id=?",
+            (display_name, int(time.time()), user_id, public_id),
+        ).rowcount
+    return display_name if changed else None
 
 
 def disable(path: Path, user_id: str, public_id: str) -> bool:
@@ -228,9 +266,8 @@ def active_count(path: Path, user_id: str) -> int:
     with closing(_connect(path)) as conn:
         ensure_schema(conn)
         return int(conn.execute(
-            "SELECT count(*) FROM apify_contributions WHERE user_id=? AND status='active' "
-            "AND remaining_usd>?",
-            (user_id, MIN_USABLE_REMAINING_USD),
+            "SELECT count(*) FROM apify_contributions WHERE user_id=? AND status='active'",
+            (user_id,),
         ).fetchone()[0])
 
 
@@ -241,7 +278,7 @@ def active_tokens(path: Path | None = None) -> list[dict]:
     with closing(_connect(db_path)) as conn:
         try:
             rows = conn.execute(
-                "SELECT id,public_id,token_ciphertext FROM apify_contributions "
+                "SELECT id,public_id,display_name,token_ciphertext FROM apify_contributions "
                 "WHERE status='active' AND token_ciphertext<>'' ORDER BY created_at"
             ).fetchall()
         except sqlite3.OperationalError:
@@ -253,7 +290,7 @@ def active_tokens(path: Path | None = None) -> list[dict]:
         except RuntimeError:
             continue
         accounts.append({
-            "label": _account_label(row["public_id"]),
+            "label": _account_label(row["public_id"], row["display_name"]),
             "token": token,
             "contributionId": row["id"],
         })
@@ -307,14 +344,14 @@ def user_rows(path: Path, user_id: str) -> list[dict]:
     with closing(_connect(path)) as conn:
         ensure_schema(conn)
         rows = conn.execute(
-            "SELECT public_id,status,limit_usd,used_usd,remaining_usd,cycle_end,checked_at,created_at "
+            "SELECT public_id,display_name,status,limit_usd,used_usd,remaining_usd,cycle_end,checked_at,created_at "
             "FROM apify_contributions WHERE user_id=? ORDER BY created_at DESC",
             (user_id,),
         ).fetchall()
     return [
         {
             "publicId": row["public_id"],
-            "accountLabel": _account_label(row["public_id"]),
+            "accountLabel": _account_label(row["public_id"], row["display_name"]),
             "status": row["status"],
             "limitUsd": row["limit_usd"],
             "usedUsd": row["used_usd"],
@@ -322,12 +359,11 @@ def user_rows(path: Path, user_id: str) -> list[dict]:
             "cycleEnd": row["cycle_end"],
             "checkedAt": row["checked_at"],
             "createdAt": row["created_at"],
-            "priorityBonus": (
-                PRIORITY_BONUS_PER_ACCOUNT
-                if row["status"] == "active"
+            "usable": (
+                row["status"] == "active"
                 and float(row["remaining_usd"] or 0) > MIN_USABLE_REMAINING_USD
-                else 0
             ),
+            "priorityBonus": PRIORITY_BONUS_PER_ACCOUNT if row["status"] == "active" else 0,
         }
         for row in rows
     ]
@@ -337,8 +373,9 @@ def dashboard(path: Path) -> dict:
     with closing(_connect(path)) as conn:
         ensure_schema(conn)
         rows = conn.execute(
-            "SELECT c.public_id,c.limit_usd,c.used_usd,c.remaining_usd,c.cycle_end,c.checked_at,"
-            "c.created_at,u.id AS user_id,u.display_name,u.handle,u.profile_public "
+            "SELECT c.public_id,c.display_name AS account_name,c.limit_usd,c.used_usd,"
+            "c.remaining_usd,c.cycle_end,c.checked_at,c.created_at,u.id AS user_id,"
+            "u.display_name AS contributor_name,u.handle,u.profile_public "
             "FROM apify_contributions c JOIN users u ON u.id=c.user_id "
             "WHERE c.status='active' ORDER BY c.remaining_usd DESC,c.created_at"
         ).fetchall()
@@ -346,11 +383,11 @@ def dashboard(path: Path) -> dict:
     contributors: dict[str, dict] = {}
     for row in rows:
         handle = row["handle"] if row["profile_public"] else None
-        contributor_name = row["display_name"] if row["profile_public"] else "匿名貢獻者"
+        contributor_name = row["contributor_name"] if row["profile_public"] else "匿名貢獻者"
         contributor_key = row["user_id"]
         usable = float(row["remaining_usd"] or 0) > MIN_USABLE_REMAINING_USD
         account = {
-            "accountLabel": _account_label(row["public_id"]),
+            "accountLabel": _account_label(row["public_id"], row["account_name"]),
             "contributor": contributor_name,
             "handle": handle,
             "limitUsd": row["limit_usd"],
@@ -370,11 +407,11 @@ def dashboard(path: Path) -> dict:
         contributor["usableAccounts"] += int(usable)
         contributor["limitUsd"] += float(row["limit_usd"] or 0)
         contributor["remainingUsd"] += float(row["remaining_usd"] or 0)
-        contributor["priorityBonus"] += PRIORITY_BONUS_PER_ACCOUNT if usable else 0
+        contributor["priorityBonus"] += PRIORITY_BONUS_PER_ACCOUNT
     scoreboard = sorted(
         contributors.values(),
         key=lambda row: (
-            -row["usableAccounts"], -row["accounts"], -row["remainingUsd"], row["name"]
+            -row["accounts"], -row["usableAccounts"], -row["remainingUsd"], row["name"]
         ),
     )
     return {

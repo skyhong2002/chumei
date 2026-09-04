@@ -56,6 +56,7 @@ from starlette.responses import (
 from starlette.routing import Route
 
 from apify_contributions import (
+    MAX_ACCOUNT_NAME_LENGTH,
     MAX_ACCOUNTS_PER_USER,
     PRIORITY_BONUS_PER_ACCOUNT,
     active_count as apify_active_count,
@@ -64,6 +65,7 @@ from apify_contributions import (
     encryption_available as apify_encryption_available,
     ensure_schema as ensure_apify_schema,
     register as register_apify_contribution,
+    rename as rename_apify_contribution,
     user_rows as apify_user_rows,
     verify_token as verify_apify_token,
 )
@@ -1856,7 +1858,7 @@ def _contribute_html(
         account_rows.append(
             '<article class="contrib-account">'
             f'<div><strong>{esc(str(row["accountLabel"]))}</strong>'
-            f'<span>{person} · {"可使用" if row["usable"] else "額度不足"}</span></div>'
+            f'<span>{person} · {"本期可使用" if row["usable"] else "有效貢獻（本期已用盡）"}</span></div>'
             f'<div><strong>US${float(row["remainingUsd"]):.3f}</strong><span>本期剩餘</span></div>'
             f'<div><strong>{_contribution_time(row.get("cycleEnd"))}</strong><span>額度重置</span></div>'
             '</article>'
@@ -1867,32 +1869,39 @@ def _contribute_html(
         my_rows = []
         for row in mine:
             active = row["status"] == "active"
-            usable = active and int(row["priorityBonus"]) > 0
             state_label = (
-                "有效" if usable else "額度不足" if active else
+                "有效貢獻" if active and row["usable"] else
+                "有效貢獻（本期已用盡）" if active else
                 "憑證已失效" if row["status"] == "invalid" else "已停止"
             )
             action = (
                 f'<button type="button" class="btn contrib-disable" data-disable="{esc(row["publicId"])}">停止貢獻</button>'
                 if active else '<span class="contrib-muted">已停止；重新提交同一 token 即可恢復</span>'
             )
+            actions = (
+                '<div class="contrib-actions">'
+                f'<button type="button" class="btn" data-rename="{esc(row["publicId"])}" '
+                f'data-name="{esc(row["accountLabel"])}">重新命名</button>{action}</div>'
+            )
             my_rows.append(
                 '<article class="contrib-my-row">'
                 f'<div><strong>{esc(row["accountLabel"])}</strong>'
                 f'<span>{state_label} · 本期剩餘 US${float(row["remainingUsd"]):.3f}</span></div>'
-                f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先抓取</span></div>{action}'
+                f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先抓取</span></div>{actions}'
                 '</article>'
             )
         my_body = "".join(my_rows) or '<p class="contrib-empty">你還沒有貢獻 Apify 帳號。</p>'
         form_disabled = "" if encryption_ready else " disabled"
         form_note = (
-            "token 送到竹梅伺服器後會立即驗證並加密保存；公開頁只顯示遮罩代號與額度。"
+            "token 送到竹梅伺服器後會立即驗證並加密保存；公開頁只顯示你取的名稱與額度。"
             if encryption_ready else "伺服器的貢獻加密金鑰尚未設定，目前暫停收件。"
         )
         action = f"""
 <section class="contrib-panel" id="my-contributions">
-  <div class="contrib-heading"><div><p class="eyebrow">你的貢獻</p><h2>新增 Apify 帳號</h2></div><span class="contrib-rule">每個有效帳號＝每日 +3 次優先抓取</span></div>
+  <div class="contrib-heading"><div><p class="eyebrow">你的貢獻</p><h2>新增 Apify 帳號</h2></div><span class="contrib-rule">每個有效貢獻＝每日 +3 次優先抓取</span></div>
   <form id="contribution-form" class="contrib-form">
+    <label for="apify-name">帳號名稱</label>
+    <input id="apify-name" name="name" type="text" autocomplete="off" maxlength="{MAX_ACCOUNT_NAME_LENGTH}" placeholder="例如：社團帳號、MY-APIFY" required{form_disabled}>
     <label for="apify-token">Apify API token</label>
     <div class="contrib-token-row"><input id="apify-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="apify_api_…" required{form_disabled}><button class="btn btn-primary" type="submit"{form_disabled}>驗證並貢獻</button></div>
     <p>{form_note} 每位使用者最多 {MAX_ACCOUNTS_PER_USER} 個有效帳號。</p>
@@ -1905,9 +1914,9 @@ def _contribute_html(
 
     content = f"""
 <section class="contribute-page">
-  <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1><p>把閒置的 Apify 免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。有效帳號越多，每輪處理的來源就越多。</p></section>
+  <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1><p>替自己的 Apify Token 命名並把閒置免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。</p></section>
   <section class="contrib-totals" aria-label="社群貢獻總覽">
-    <article><span>有效／已註冊帳號</span><strong>{int(totals["accounts"])} / {int(totals["registeredAccounts"])}</strong></article>
+    <article><span>本期可用／有效貢獻</span><strong>{int(totals["accounts"])} / {int(totals["registeredAccounts"])}</strong></article>
     <article><span>貢獻者</span><strong>{int(totals["contributors"])}</strong></article>
     <article><span>每輪加速槽位</span><strong>+{int(totals["extraSlots"])}</strong></article>
     <article><span>本期剩餘額度</span><strong>US${float(totals["remainingUsd"]):.2f}</strong></article>
@@ -1915,27 +1924,28 @@ def _contribute_html(
   <section class="contrib-explain">
     <article><strong>1</strong><h2>登入後提交</h2><p>只收 Apify API token，不收密碼；伺服器先向 Apify 驗證額度。</p></article>
     <article><strong>2</strong><h2>加密加入帳號池</h2><p>token 不會出現在公開 API、排行榜、log 或 Git，只用來執行爬取 Actor。</p></article>
-    <article><strong>3</strong><h2>全站一起加速</h2><p>每個有效帳號讓每輪 IG 貼文與限動各多 3 個槽位，貢獻者每天也多 3 次優先抓取。</p></article>
+    <article><strong>3</strong><h2>全站一起加速</h2><p>每個有效貢獻讓貢獻者每天多 3 次優先抓取；本期仍有額度的帳號也會增加每輪抓取槽位。</p></article>
   </section>
   {action}
   <section class="contrib-grid">
-    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>註冊／可用</th><th>優先額度</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
+    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>貢獻／本期可用</th><th>優先額度</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
     <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Registered pool</p><h2>已註冊帳號</h2></div><a href="/status/">查看全池狀態 →</a></div><div class="contrib-account-list">{accounts_body}</div></section>
   </section>
 </section>
 <style>
-.contribute-page{{padding-bottom:56px}}.contrib-hero p{{max-width:760px}}.contrib-totals{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}}.contrib-totals article,.contrib-panel,.contrib-explain article{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface)}}.contrib-totals article{{padding:16px}}.contrib-totals span,.contrib-account span,.contrib-my-row span,.contrib-form p,.contrib-muted{{display:block;color:var(--color-text-muted);font-size:.78rem}}.contrib-totals strong{{display:block;margin-top:4px;font-size:clamp(1.55rem,3vw,2.3rem)}}.contrib-explain{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}}.contrib-explain article{{padding:18px}}.contrib-explain article>strong{{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft)}}.contrib-explain h2{{font-size:1rem;margin:14px 0 6px}}.contrib-explain p{{margin:0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-grid{{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-top:12px}}.contrib-panel{{padding:18px;margin-top:12px}}.contrib-heading{{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}}.contrib-heading h2{{margin:2px 0 0;font-size:1.15rem}}.contrib-heading p{{margin:0}}.contrib-heading a,.contrib-rule{{font-size:.78rem;color:var(--color-text-secondary)}}.contrib-rule{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-pill);padding:5px 9px}}.contrib-form{{padding:14px;border-radius:var(--radius-md);background:var(--color-surface-soft)}}.contrib-form label{{display:block;margin-bottom:7px;font-size:.8rem;font-weight:650}}.contrib-token-row{{display:flex;gap:8px}}.contrib-token-row input{{min-width:0;flex:1;height:42px;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:0 12px;background:var(--color-canvas);color:var(--color-text-primary);font:inherit}}.contrib-form p{{margin:8px 0 0;line-height:1.5}}.contrib-form .contrib-message{{min-height:1.3em;color:var(--color-text-secondary)}}.contrib-my-list,.contrib-account-list{{display:grid;gap:8px;margin-top:12px}}.contrib-my-row,.contrib-account{{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px;border-top:1px solid var(--color-border-subtle)}}.contrib-account{{grid-template-columns:minmax(0,1fr) auto auto}}.contrib-account:first-child,.contrib-my-row:first-child{{border-top:0}}.contrib-account strong,.contrib-my-row strong{{display:block;font-size:.88rem}}.contrib-disable{{font-size:.74rem}}.contrib-table-wrap{{overflow-x:auto}}.contrib-panel table{{width:100%;border-collapse:collapse;font-size:.82rem}}.contrib-panel th,.contrib-panel td{{padding:10px 8px;border-top:1px solid var(--color-border-subtle);text-align:left;white-space:nowrap}}.contrib-panel thead th{{border-top:0;color:var(--color-text-muted);font-size:.72rem}}.contrib-rank{{font-weight:700}}.contrib-empty{{padding:18px!important;color:var(--color-text-muted);text-align:center!important}}@media(max-width:800px){{.contrib-totals{{grid-template-columns:1fr 1fr}}.contrib-explain,.contrib-grid{{grid-template-columns:1fr}}}}@media(max-width:560px){{.contrib-token-row{{display:grid}}.contrib-my-row,.contrib-account{{grid-template-columns:1fr auto}}.contrib-my-row .contrib-disable{{grid-column:1/-1;width:100%}}}}
+.contribute-page{{padding-bottom:56px}}.contrib-hero p{{max-width:760px}}.contrib-totals{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}}.contrib-totals article,.contrib-panel,.contrib-explain article{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface)}}.contrib-totals article{{padding:16px}}.contrib-totals span,.contrib-account span,.contrib-my-row span,.contrib-form p,.contrib-muted{{display:block;color:var(--color-text-muted);font-size:.78rem}}.contrib-totals strong{{display:block;margin-top:4px;font-size:clamp(1.55rem,3vw,2.3rem)}}.contrib-explain{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}}.contrib-explain article{{padding:18px}}.contrib-explain article>strong{{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft)}}.contrib-explain h2{{font-size:1rem;margin:14px 0 6px}}.contrib-explain p{{margin:0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-grid{{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-top:12px}}.contrib-panel{{padding:18px;margin-top:12px}}.contrib-heading{{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}}.contrib-heading h2{{margin:2px 0 0;font-size:1.15rem}}.contrib-heading p{{margin:0}}.contrib-heading a,.contrib-rule{{font-size:.78rem;color:var(--color-text-secondary)}}.contrib-rule{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-pill);padding:5px 9px}}.contrib-form{{padding:14px;border-radius:var(--radius-md);background:var(--color-surface-soft)}}.contrib-form label{{display:block;margin:10px 0 7px;font-size:.8rem;font-weight:650}}.contrib-form label:first-child{{margin-top:0}}.contrib-token-row{{display:flex;gap:8px}}.contrib-token-row input,#apify-name{{box-sizing:border-box;min-width:0;height:42px;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:0 12px;background:var(--color-canvas);color:var(--color-text-primary);font:inherit}}.contrib-token-row input{{flex:1}}#apify-name{{width:100%}}.contrib-form p{{margin:8px 0 0;line-height:1.5}}.contrib-form .contrib-message{{min-height:1.3em;color:var(--color-text-secondary)}}.contrib-my-list,.contrib-account-list{{display:grid;gap:8px;margin-top:12px}}.contrib-my-row,.contrib-account{{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px;border-top:1px solid var(--color-border-subtle)}}.contrib-account{{grid-template-columns:minmax(0,1fr) auto auto}}.contrib-account:first-child,.contrib-my-row:first-child{{border-top:0}}.contrib-account strong,.contrib-my-row strong{{display:block;font-size:.88rem}}.contrib-actions{{display:flex;gap:6px;align-items:center}}.contrib-disable{{font-size:.74rem}}.contrib-table-wrap{{overflow-x:auto}}.contrib-panel table{{width:100%;border-collapse:collapse;font-size:.82rem}}.contrib-panel th,.contrib-panel td{{padding:10px 8px;border-top:1px solid var(--color-border-subtle);text-align:left;white-space:nowrap}}.contrib-panel thead th{{border-top:0;color:var(--color-text-muted);font-size:.72rem}}.contrib-rank{{font-weight:700}}.contrib-empty{{padding:18px!important;color:var(--color-text-muted);text-align:center!important}}@media(max-width:800px){{.contrib-totals{{grid-template-columns:1fr 1fr}}.contrib-explain,.contrib-grid{{grid-template-columns:1fr}}}}@media(max-width:560px){{.contrib-token-row{{display:grid}}.contrib-my-row,.contrib-account{{grid-template-columns:1fr auto}}.contrib-actions{{grid-column:1/-1}}.contrib-my-row .contrib-disable{{width:100%}}}}
 </style>
 <script>
 document.addEventListener('submit',async function(event){{
   if(event.target.id!=='contribution-form')return;
   event.preventDefault();
-  var form=event.target,input=form.querySelector('#apify-token'),message=form.querySelector('#contribution-message');
-  var token=input.value.trim(); input.value=''; message.textContent='正在向 Apify 驗證…';
+  var form=event.target,input=form.querySelector('#apify-token'),nameInput=form.querySelector('#apify-name'),message=form.querySelector('#contribution-message');
+  var token=input.value.trim(),name=nameInput.value.trim(); input.value=''; message.textContent='正在向 Apify 驗證…';
   var button=form.querySelector('button[type="submit"]'); button.disabled=true;
-  try{{var response=await fetch('/auth/apify-contributions',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{token:token}})}});var data=await response.json();if(!response.ok)throw new Error(data.error||'貢獻失敗');message.textContent='驗證完成，已加入社群帳號池。';setTimeout(function(){{location.reload()}},700)}}catch(error){{message.textContent=error.message;button.disabled=false}}
+  try{{var response=await fetch('/auth/apify-contributions',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{token:token,name:name}})}});var data=await response.json();if(!response.ok)throw new Error(data.error||'貢獻失敗');nameInput.value='';message.textContent='驗證完成，已加入社群帳號池。';setTimeout(function(){{location.reload()}},700)}}catch(error){{message.textContent=error.message;button.disabled=false}}
 }});
 document.addEventListener('click',async function(event){{
+  var rename=event.target.closest('[data-rename]');if(rename){{var name=prompt('新的帳號名稱',rename.dataset.name||'');if(!name)return;rename.disabled=true;var renamed=await fetch('/auth/apify-contributions/'+encodeURIComponent(rename.dataset.rename),{{method:'PATCH',headers:{{'content-type':'application/json'}},body:JSON.stringify({{name:name}})}});if(renamed.ok)location.reload();else rename.disabled=false;return}}
   var button=event.target.closest('[data-disable]');if(!button)return;
   if(!confirm('停止貢獻後，竹梅會立即清除加密 token，確定嗎？'))return;
   button.disabled=true;var response=await fetch('/auth/apify-contributions/'+encodeURIComponent(button.dataset.disable),{{method:'DELETE'}});
@@ -2644,6 +2654,7 @@ def create_app(
                 raise ValueError("request too large")
             body = await request.json()
             token = str(body.get("token") or "") if isinstance(body, dict) else ""
+            name = str(body.get("name") or "") if isinstance(body, dict) else ""
             quota = await run_in_threadpool(verify_apify_token, token)
         except requests.HTTPError as exc:
             status = getattr(exc.response, "status_code", None)
@@ -2658,7 +2669,14 @@ def create_app(
                 {"ok": False, "error": "請貼上有效的 Apify API token。"}, status_code=400
             )
         try:
-            code, item = register_apify_contribution(store.path, user["id"], token, quota)
+            code, item = register_apify_contribution(
+                store.path, user["id"], token, quota, name=name
+            )
+        except ValueError:
+            return JSONResponse(
+                {"ok": False, "error": f"帳號名稱請填 1–{MAX_ACCOUNT_NAME_LENGTH} 個字。"},
+                status_code=400,
+            )
         except RuntimeError:
             return JSONResponse(
                 {"ok": False, "error": "伺服器目前無法安全保存這個 token。"}, status_code=503
@@ -2691,6 +2709,24 @@ def create_app(
         public_id = str(request.path_params.get("public_id") or "")
         if not re.fullmatch(r"apy_[a-f0-9]{10}", public_id):
             return JSONResponse({"ok": False, "error": "找不到這個貢獻。"}, status_code=404)
+        if request.method == "PATCH":
+            try:
+                if int(request.headers.get("content-length") or 0) > 512:
+                    raise ValueError("request too large")
+                body = await request.json()
+                name = rename_apify_contribution(
+                    store.path, user["id"], public_id,
+                    str(body.get("name") or "") if isinstance(body, dict) else "",
+                )
+            except (json.JSONDecodeError, ValueError, TypeError):
+                return JSONResponse(
+                    {"ok": False, "error": f"帳號名稱請填 1–{MAX_ACCOUNT_NAME_LENGTH} 個字。"},
+                    status_code=400,
+                )
+            return JSONResponse(
+                {"ok": bool(name), "accountLabel": name},
+                status_code=200 if name else 404,
+            )
         removed = disable_apify_contribution(store.path, user["id"], public_id)
         return JSONResponse({"ok": removed}, status_code=200 if removed else 404)
 
@@ -2723,7 +2759,7 @@ def create_app(
             Route(
                 "/auth/apify-contributions/{public_id}",
                 apify_contribution_item,
-                methods=["DELETE"],
+                methods=["PATCH", "DELETE"],
             ),
             Route("/auth/follows", follows, methods=["GET"]),
             Route("/auth/saved-feeds", saved_feeds, methods=["GET", "POST"]),

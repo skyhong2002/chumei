@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,49 @@ import apify_pool
 
 
 class ApifyPoolTests(unittest.TestCase):
+    def test_temporary_free_account_credit_does_not_inflate_recurring_limit(self):
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps({"data": {
+            "monthlyUsageCycle": {"endAt": "2026-09-29T00:00:00Z"},
+            "limits": {"maxMonthlyUsageUsd": 10},
+            "current": {"monthlyUsageUsd": 2.302},
+        }}).encode()
+        with patch.object(apify_pool.requests, "get", return_value=response):
+            for label in ("PRIMARY", "GDGNTNU", "SKYNTNU", "UNICOURSE"):
+                with self.subTest(label=label):
+                    row = apify_pool._fetch_quota(
+                        {"label": label, "token": "secret"}, now=1000
+                    )
+                    self.assertEqual(row["limitUsd"], 5)
+                    self.assertEqual(row["temporaryCreditUsd"], 5)
+                    self.assertEqual(row["remainingUsd"], 7.698)
+                    self.assertFalse(row["exhausted"])
+
+    def test_unknown_paid_account_limit_is_unchanged(self):
+        self.assertEqual(apify_pool.recurring_limit("PAID", 10), (10, 0))
+
+    def test_user_named_contribution_still_uses_free_recurring_limit(self):
+        self.assertEqual(
+            apify_pool.recurring_limit("我的自訂名稱", 10, community=True),
+            (5, 5),
+        )
+
+    def test_tiny_api_remainder_is_not_reported_as_usable(self):
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps({"data": {
+            "limits": {"maxMonthlyUsageUsd": 10},
+            "current": {"monthlyUsageUsd": 9.999},
+        }}).encode()
+        with patch.object(apify_pool.requests, "get", return_value=response):
+            row = apify_pool._fetch_quota(
+                {"label": "PRIMARY", "token": "secret"}, now=1000
+            )
+        self.assertEqual(row["limitUsd"], 5)
+        self.assertEqual(row["remainingUsd"], 0.001)
+        self.assertTrue(row["exhausted"])
+
     def test_token_accounts_are_named_and_deduplicated(self):
         accounts = apify_pool.token_accounts({
             "APIFY_TOKEN": "primary-secret",
