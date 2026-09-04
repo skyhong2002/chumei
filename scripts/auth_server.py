@@ -1836,7 +1836,8 @@ def _contribute_html(
         )
         scoreboard_rows.append(
             f'<tr><td class="contrib-rank">{rank}</td><td>{person}</td>'
-            f'<td>{int(row["accounts"])}</td><td>+{int(row["priorityBonus"])}</td>'
+            f'<td>{int(row["accounts"])} / {int(row["usableAccounts"])}</td>'
+            f'<td>+{int(row["priorityBonus"])}</td>'
             f'<td>US${float(row["remainingUsd"]):.2f}</td></tr>'
         )
     scoreboard_body = (
@@ -1854,7 +1855,8 @@ def _contribute_html(
         )
         account_rows.append(
             '<article class="contrib-account">'
-            f'<div><strong>{esc(str(row["accountLabel"]))}</strong><span>{person}</span></div>'
+            f'<div><strong>{esc(str(row["accountLabel"]))}</strong>'
+            f'<span>{person} · {"可使用" if row["usable"] else "額度不足"}</span></div>'
             f'<div><strong>US${float(row["remainingUsd"]):.3f}</strong><span>本期剩餘</span></div>'
             f'<div><strong>{_contribution_time(row.get("cycleEnd"))}</strong><span>額度重置</span></div>'
             '</article>'
@@ -1865,6 +1867,11 @@ def _contribute_html(
         my_rows = []
         for row in mine:
             active = row["status"] == "active"
+            usable = active and int(row["priorityBonus"]) > 0
+            state_label = (
+                "有效" if usable else "額度不足" if active else
+                "憑證已失效" if row["status"] == "invalid" else "已停止"
+            )
             action = (
                 f'<button type="button" class="btn contrib-disable" data-disable="{esc(row["publicId"])}">停止貢獻</button>'
                 if active else '<span class="contrib-muted">已停止；重新提交同一 token 即可恢復</span>'
@@ -1872,7 +1879,7 @@ def _contribute_html(
             my_rows.append(
                 '<article class="contrib-my-row">'
                 f'<div><strong>{esc(row["accountLabel"])}</strong>'
-                f'<span>{"有效" if active else "已停止"} · 本期剩餘 US${float(row["remainingUsd"]):.3f}</span></div>'
+                f'<span>{state_label} · 本期剩餘 US${float(row["remainingUsd"]):.3f}</span></div>'
                 f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先抓取</span></div>{action}'
                 '</article>'
             )
@@ -1900,7 +1907,7 @@ def _contribute_html(
 <section class="contribute-page">
   <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1><p>把閒置的 Apify 免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。有效帳號越多，每輪處理的來源就越多。</p></section>
   <section class="contrib-totals" aria-label="社群貢獻總覽">
-    <article><span>有效帳號</span><strong>{int(totals["accounts"])}</strong></article>
+    <article><span>有效／已註冊帳號</span><strong>{int(totals["accounts"])} / {int(totals["registeredAccounts"])}</strong></article>
     <article><span>貢獻者</span><strong>{int(totals["contributors"])}</strong></article>
     <article><span>每輪加速槽位</span><strong>+{int(totals["extraSlots"])}</strong></article>
     <article><span>本期剩餘額度</span><strong>US${float(totals["remainingUsd"]):.2f}</strong></article>
@@ -1912,7 +1919,7 @@ def _contribute_html(
   </section>
   {action}
   <section class="contrib-grid">
-    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>帳號</th><th>優先額度</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
+    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>註冊／可用</th><th>優先額度</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
     <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Registered pool</p><h2>已註冊帳號</h2></div><a href="/status/">查看全池狀態 →</a></div><div class="contrib-account-list">{accounts_body}</div></section>
   </section>
 </section>

@@ -19,6 +19,13 @@ class RunPipelineTests(unittest.TestCase):
         ]}
         self.assertEqual(run_pipeline.instagram_batch_size(status), 11)
 
+    def test_claimed_configured_accounts_also_add_slots(self):
+        status = {"accounts": [
+            {"label": "PRIMARY", "community": True, "available": True, "exhausted": False},
+            {"label": "SKYNTNU", "community": True, "available": True, "exhausted": False},
+        ]}
+        self.assertEqual(run_pipeline.instagram_batch_size(status), 11)
+
 
 if __name__ == "__main__":
     unittest.main()

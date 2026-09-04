@@ -57,6 +57,8 @@ class ApifyContributionTests(unittest.TestCase):
         self.assertEqual(public["totals"]["accounts"], 1)
         self.assertEqual(public["totals"]["extraSlots"], 3)
         self.assertEqual(public["scoreboard"][0]["priorityBonus"], 3)
+        self.assertEqual(public["scoreboard"][0]["accounts"], 1)
+        self.assertEqual(public["scoreboard"][0]["usableAccounts"], 1)
         self.assertNotIn(raw_token, repr(public))
         self.assertTrue(item["accountLabel"].startswith("COMMUNITY-"))
 

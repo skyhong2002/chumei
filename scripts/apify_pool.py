@@ -44,6 +44,8 @@ def token_accounts(env: dict | None = None) -> list[dict]:
     if include_community:
         for account in active_tokens():
             if account["token"] in seen:
+                configured = next(row for row in accounts if row["token"] == account["token"])
+                configured["contributionId"] = account["contributionId"]
                 continue
             seen.add(account["token"])
             accounts.append(account)
@@ -92,6 +94,7 @@ def _fetch_quota(account: dict, *, now: float) -> dict:
     remaining = max(0.0, limit - used)
     return {
         "label": account["label"],
+        "community": bool(account.get("contributionId")),
         "available": True,
         "checkedAt": now,
         "cycleStart": cycle.get("startAt"),

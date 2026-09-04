@@ -363,16 +363,19 @@ def dashboard(path: Path) -> dict:
         }
         accounts.append(account)
         contributor = contributors.setdefault(contributor_key, {
-            "name": contributor_name, "handle": handle, "accounts": 0,
+            "name": contributor_name, "handle": handle, "accounts": 0, "usableAccounts": 0,
             "limitUsd": 0.0, "remainingUsd": 0.0, "priorityBonus": 0,
         })
-        contributor["accounts"] += int(usable)
+        contributor["accounts"] += 1
+        contributor["usableAccounts"] += int(usable)
         contributor["limitUsd"] += float(row["limit_usd"] or 0)
         contributor["remainingUsd"] += float(row["remaining_usd"] or 0)
         contributor["priorityBonus"] += PRIORITY_BONUS_PER_ACCOUNT if usable else 0
     scoreboard = sorted(
         contributors.values(),
-        key=lambda row: (-row["accounts"], -row["remainingUsd"], row["name"]),
+        key=lambda row: (
+            -row["usableAccounts"], -row["accounts"], -row["remainingUsd"], row["name"]
+        ),
     )
     return {
         "accounts": accounts,

@@ -34,6 +34,18 @@ class ApifyPoolTests(unittest.TestCase):
         self.assertEqual([row["label"] for row in accounts], ["PRIMARY", "COMMUNITY-ABC123"])
         self.assertEqual(apify_pool.community_account_count(accounts), 1)
 
+    def test_configured_account_keeps_label_when_also_claimed_by_contributor(self):
+        with patch.object(apify_pool, "load_env", return_value={"APIFY_TOKEN": "same-token"}), \
+             patch.object(apify_pool, "active_tokens", return_value=[{
+                 "label": "COMMUNITY-ABC123",
+                 "token": "same-token",
+                 "contributionId": "contrib_1",
+             }]):
+            accounts = apify_pool.token_accounts()
+        self.assertEqual(accounts, [{
+            "label": "PRIMARY", "token": "same-token", "contributionId": "contrib_1"
+        }])
+
     def test_unauthorized_community_token_is_invalidated(self):
         response = requests.Response()
         response.status_code = 401

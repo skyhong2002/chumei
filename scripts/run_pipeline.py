@@ -28,7 +28,7 @@ MAX_IG_BATCH = 30
 
 def instagram_batch_size(status: dict) -> int:
     community_accounts = sum(
-        str(row.get("label") or "").startswith("COMMUNITY-")
+        (row.get("community") or str(row.get("label") or "").startswith("COMMUNITY-"))
         and row.get("available") and not row.get("exhausted")
         for row in status.get("accounts", [])
     )

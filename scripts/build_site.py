@@ -850,6 +850,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
         <a href="/source/">資料來源</a>
         <a href="/status/">系統狀態</a>
         <a href="/submit/">回報活動</a>
+        <a href="/contribute/">貢獻</a>
         <a href="/account/">登入／帳號</a>
         <a href="/about/">關於竹梅</a>
         <button id="theme-toggle">切換深淺色</button>
