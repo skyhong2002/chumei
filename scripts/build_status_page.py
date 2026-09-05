@@ -24,6 +24,7 @@ STYLE = r"""
 .status-method-title{display:flex;flex-direction:column;align-items:flex-start;gap:6px}.status-method-title span{max-width:100%;margin-top:0;white-space:normal;line-height:1.35;overflow-wrap:anywhere}
 .status-incidents{margin:14px 0 0}.status-incident{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);padding:12px 14px;margin-top:8px}.status-incident.is-major{border-color:color-mix(in srgb,#c94d4d 45%,var(--color-border-subtle));background:color-mix(in srgb,var(--color-surface) 90%,#c94d4d 10%)}.status-incident.is-minor{border-color:color-mix(in srgb,#d1993f 45%,var(--color-border-subtle));background:color-mix(in srgb,var(--color-surface) 92%,#d1993f 8%)}.status-incident-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.status-incident-head strong{font-size:.95rem}.status-incident-badge{border-radius:var(--radius-pill);padding:2px 8px;font-size:.7rem;font-weight:700;color:#fff}.is-major .status-incident-badge{background:#c94d4d}.is-minor .status-incident-badge{background:#d1993f}.status-incident p{margin:6px 0 0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}.status-incident-until{display:block;margin-top:6px;color:var(--color-text-muted);font-size:.76rem;font-variant-numeric:tabular-nums}.status-incident-none{margin:14px 0 0;color:var(--color-text-muted);font-size:.8rem}.status-incident-none::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#6a9f75;margin-right:7px}
 .status-apify-contribute{display:inline-block;margin-top:7px;font-size:.78rem;font-weight:650}
+.status-sort-button{display:flex;align-items:center;gap:5px;width:100%;min-height:36px;padding:4px 0;border:0;background:none;color:var(--color-text-muted);font:inherit;font-size:.78rem;font-weight:600;text-align:left;cursor:pointer;white-space:nowrap}.status-sort-button:hover,.status-sort-button[aria-pressed="true"]{color:var(--color-text-primary)}.status-sort-button:focus-visible,.status-sort-mobile select:focus-visible,.status-sort-direction:focus-visible{outline:2px solid var(--color-text-primary);outline-offset:3px}.status-sort-arrow{font-size:.85rem}.status-sort-mobile{display:none;align-items:center;gap:8px;margin:10px 0;font-size:.8rem}.status-sort-mobile select,.status-sort-direction{min-height:44px;border:1px solid var(--color-border-subtle);border-radius:var(--radius-sm,8px);padding:6px 10px;background:var(--color-surface);color:var(--color-text-primary);font:inherit}.status-sort-direction{cursor:pointer}@media(max-width:1100px){.status-sort-mobile{display:flex}}
 </style>
 """
 
@@ -31,7 +32,7 @@ STYLE = r"""
 SCRIPT = r"""
 <script>
 (() => {
-  const state={data:null,auth:false,weights:{},myWeights:{},quota:null,pending:false,filter:'',platform:'',status:'',backend:'',limit:120};
+  const state={data:null,auth:false,weights:{},myWeights:{},quota:null,pending:false,filter:'',platform:'',status:'',backend:'',limit:120,sort:'status',direction:'asc'};
   const fmtTime=value=>{if(!value)return '尚無紀錄';const d=typeof value==='number'?new Date(value*1000):new Date(value);return isNaN(d)?'尚無紀錄':new Intl.DateTimeFormat('zh-TW',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Taipei'}).format(d)};
   const fmtInterval=h=>{if(h==null)return '累積中';if(h<48)return `${h.toFixed(Number.isInteger(h)?0:h<10?1:0)} 小時`;return `${(h/24).toFixed(h<96?1:0)} 天`};
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -83,7 +84,50 @@ SCRIPT = r"""
     const canAdd=state.auth&&Number(state.quota?.remainingToday||0)>0;
     return `<div class="status-weight" role="group" aria-label="${esc(s.name)}的加權">${state.auth&&mine>0?`<button type="button" class="status-fetch status-weight-remove" data-source-request="${esc(s.id)}" data-weight-action="remove" aria-label="收回 ${esc(s.name)} 的 1 點加成" title="收回自己投入的 1 點加成" ${state.pending?'disabled':''}>−</button>`:''}<span class="status-weight-value" aria-label="總權重 ${weight}">${weight}</span>${canAdd?`<button type="button" class="status-fetch status-weight-add" data-source-request="${esc(s.id)}" data-weight-action="add" aria-label="替 ${esc(s.name)} 加 1 點權重" title="${esc(s.blockedReason||'投入 1 點 quota')}" ${state.pending||s.blockedReason?'disabled':''}>+</button>`:''}${mine>0?`<span class="status-weight-own">你投入 ${mine}</span>`:''}</div>`;
   }
-  function renderRows(){const q=state.filter.toLowerCase();const rank={error:0,blocked:1,due:2,ok:3};const rows=state.data.sources.filter(s=>(!q||`${s.name} ${s.username} ${s.backend} ${s.kindLabel||''}`.toLowerCase().includes(q))&&(!state.platform||s.platform===state.platform)&&(!state.status||s.status===state.status)&&(!state.backend||s.backend===state.backend)).sort((a,b)=>(rank[a.status]-rank[b.status])||((a.nextDue||0)-(b.nextDue||0))||a.name.localeCompare(b.name,'zh-Hant'));const visible=rows.slice(0,state.limit);document.querySelector('#source-count').textContent=`顯示 ${visible.length.toLocaleString()} / ${rows.length.toLocaleString()} 筆${state.backend?` · ${state.backend}`:''}`;
+  const sortOptions={name:['來源／內容','asc','來源名稱與內容'],backend:['爬取方式','asc','爬取方式'],status:['狀態','asc','錯誤、受限、等待、正常'],recent:['最近抓取','desc','最近嘗試時間'],next:['下次／頻率','asc','下次抓取時間'],weight:['加權','desc','來源總權重']};
+  const statusRank={error:0,blocked:1,due:2,ok:3};
+  const compareText=(a,b)=>String(a??'').localeCompare(String(b??''),'zh-Hant',{numeric:true});
+  const timeValue=value=>{if(!value)return null;const n=typeof value==='number'?value:Date.parse(value)/1000;return Number.isFinite(n)?n:null};
+  function sortValue(source){
+    switch(state.sort){
+      case 'name':return source.name||null;
+      case 'backend':return source.backend||null;
+      case 'status':return statusRank[source.status]??null;
+      case 'recent':return timeValue(source.lastAttempt);
+      case 'next':return timeValue(source.nextDue);
+      case 'weight':return Number(state.weights[source.id]||0);
+    }
+  }
+  function compareSources(a,b){
+    const av=sortValue(a),bv=sortValue(b);
+    if(av==null&&bv!=null)return 1;
+    if(bv==null&&av!=null)return -1;
+    const primary=av==null?0:typeof av==='number'?av-bv:compareText(av,bv);
+    if(primary)return primary*(state.direction==='asc'?1:-1);
+    if(state.sort==='status'){
+      const nextA=timeValue(a.nextDue),nextB=timeValue(b.nextDue);
+      if(nextA!==nextB)return nextA==null?1:nextB==null?-1:nextA-nextB;
+    }
+    return compareText(a.name,b.name)||compareText(a.platform,b.platform)||compareText(a.kindLabel,b.kindLabel)||compareText(a.username,b.username)||compareText(a.id,b.id);
+  }
+  function renderSort(){
+    document.querySelectorAll('[data-source-sort]').forEach(button=>{
+      const key=button.dataset.sourceSort,active=key===state.sort,[label,,meaning]=sortOptions[key];
+      button.setAttribute('aria-pressed',String(active));
+      button.setAttribute('aria-label',`${label}，依${meaning}排序${active?`，目前${state.direction==='asc'?'升冪':'降冪'}`:''}，點擊${active&&state.direction==='asc'?'降冪':active?'升冪':sortOptions[key][1]==='asc'?'升冪':'降冪'}`);
+      button.querySelector('.status-sort-arrow').textContent=active?(state.direction==='asc'?'↑':'↓'):'↕';
+    });
+    document.querySelector('#source-sort').value=state.sort;
+    const direction=document.querySelector('#source-sort-direction');
+    direction.textContent=state.direction==='asc'?'↑ 升冪':'↓ 降冪';
+    direction.setAttribute('aria-label',`目前${state.direction==='asc'?'升冪，切換為降冪':'降冪，切換為升冪'}`);
+  }
+  function setSort(key,toggle=true){
+    if(!sortOptions[key])return;
+    state.direction=toggle&&state.sort===key?(state.direction==='asc'?'desc':'asc'):sortOptions[key][1];
+    state.sort=key;state.limit=120;renderSort();if(state.data)renderRows();
+  }
+  function renderRows(){const q=state.filter.toLowerCase();const rows=state.data.sources.filter(s=>(!q||`${s.name} ${s.username} ${s.backend} ${s.kindLabel||''}`.toLowerCase().includes(q))&&(!state.platform||s.platform===state.platform)&&(!state.status||s.status===state.status)&&(!state.backend||s.backend===state.backend)).sort(compareSources);const visible=rows.slice(0,state.limit);document.querySelector('#source-count').textContent=`顯示 ${visible.length.toLocaleString()} / ${rows.length.toLocaleString()} 筆${state.backend?` · ${state.backend}`:''}`;
     const items=visible.map(s=>{const blockedLabel=(s.blockedReason||'').includes('冷卻')?'冷卻中':'額度受限';return `<div class="status-src-row"><div class="status-row-name"><div class="status-name">${esc(s.name)}</div><div class="status-sub">${esc(s.platform)} ${esc(s.kindLabel||'')} · ${esc(s.username)}</div></div><div class="status-backend">${esc(s.backend)}</div><div class="status-row-status"><span class="status-chip ${s.status}">${s.status==='ok'?'正常':s.status==='due'?'等待排程':s.status==='blocked'?blockedLabel:'錯誤'}</span>${s.lastError?`<details class="status-error-details"><summary>查看詳情</summary><div>${esc(s.lastError)}</div></details>`:''}</div><div class="status-time status-recent"><div>嘗試 ${fmtTime(s.lastAttempt)}</div><div class="status-sub">成功 ${fmtTime(s.lastSuccess)}</div></div><div class="status-time status-next"><div>${fmtTime(s.nextDue)}</div><div class="status-sub">目標 ${fmtInterval(s.targetIntervalHours)} · 實際 ${fmtInterval(s.averageIntervalHours)}</div></div>${weightControls(s)}</div>`}).join('');const more=visible.length<rows.length?`<button class="filter-expand status-more" data-show-more>顯示更多（還有 ${(rows.length-visible.length).toLocaleString()} 筆）</button>`:'';document.querySelector('#source-rows').innerHTML=items+more||'<p class="status-count">沒有符合的來源。</p>';}
   async function requestFetch(id,action){
     if(state.pending)return;
@@ -103,7 +147,10 @@ SCRIPT = r"""
       try{const r=await fetch('/auth/fetch-requests',{cache:'no-store'});if(r.ok)applyQuota(await r.json());}catch{}
     }finally{state.pending=false;renderRows();}
   }
-  document.addEventListener('click',e=>{const request=e.target.closest('[data-source-request]');if(request){requestFetch(request.dataset.sourceRequest,request.dataset.weightAction);return}if(e.target.closest('[data-show-more]')){state.limit+=120;renderRows();return}const method=e.target.closest('[data-backend-filter]');if(method){state.backend=state.backend===method.dataset.backendFilter?'':method.dataset.backendFilter;state.limit=120;document.querySelectorAll('[data-backend-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.backendFilter===state.backend)));renderRows();return}const status=e.target.closest('[data-status-filter]');if(status){state.status=status.dataset.statusFilter;state.limit=120;document.querySelectorAll('[data-status-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===status)));renderRows();return}const platform=e.target.closest('[data-platform-filter]');if(platform){state.platform=platform.dataset.platformFilter;state.limit=120;document.querySelectorAll('[data-platform-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===platform)));renderRows();}});document.querySelector('#source-search').addEventListener('input',e=>{state.filter=e.target.value;state.limit=120;renderRows()});
+  document.addEventListener('click',e=>{const sort=e.target.closest('[data-source-sort]');if(sort){setSort(sort.dataset.sourceSort);return}const request=e.target.closest('[data-source-request]');if(request){requestFetch(request.dataset.sourceRequest,request.dataset.weightAction);return}if(e.target.closest('[data-show-more]')){state.limit+=120;renderRows();return}const method=e.target.closest('[data-backend-filter]');if(method){state.backend=state.backend===method.dataset.backendFilter?'':method.dataset.backendFilter;state.limit=120;document.querySelectorAll('[data-backend-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.backendFilter===state.backend)));renderRows();return}const status=e.target.closest('[data-status-filter]');if(status){state.status=status.dataset.statusFilter;state.limit=120;document.querySelectorAll('[data-status-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===status)));renderRows();return}const platform=e.target.closest('[data-platform-filter]');if(platform){state.platform=platform.dataset.platformFilter;state.limit=120;document.querySelectorAll('[data-platform-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===platform)));renderRows();}});document.querySelector('#source-search').addEventListener('input',e=>{state.filter=e.target.value;state.limit=120;renderRows()});
+  document.querySelector('#source-sort').addEventListener('change',e=>setSort(e.target.value,false));
+  document.querySelector('#source-sort-direction').addEventListener('click',()=>setSort(state.sort));
+  renderSort();
   Promise.all([fetch('/api/status.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('無法取得來源狀態');return r.json()}),fetch('/auth/fetch-requests',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('無法取得加權資料');return r.json()})]).then(([data,quota])=>{state.data=data;applyQuota(quota);renderSummary();renderRows()}).catch(e=>{document.querySelector('#status-message').textContent=`狀態資料讀取失敗：${e.message}`});
 })();
 </script>
@@ -115,6 +162,12 @@ def build() -> dict:
     OUT_API.parent.mkdir(parents=True, exist_ok=True)
     OUT_PAGE.parent.mkdir(parents=True, exist_ok=True)
     OUT_API.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    columns = [("name", "來源／內容"), ("backend", "爬取方式"), ("status", "狀態"), ("recent", "最近抓取"), ("next", "下次／頻率"), ("weight", "加權")]
+    sort_headers = "".join(
+        f'<button type="button" class="status-sort-button" data-source-sort="{key}">{label}<span class="status-sort-arrow" aria-hidden="true">↕</span></button>'
+        for key, label in columns
+    )
+    sort_options = "".join(f'<option value="{key}">{label}</option>' for key, label in columns)
     content = f"""
 <section class="status-page">
   <section class="hero"><h1>資料來源狀態</h1><p>查看竹梅每個公開帳號與公告來源的抓取排程。登入後可把每日 quota 重複投入同一來源，持續累積抓取權重。數字為來源總權重；有剩餘 quota 時可按「＋」，自己投入的加成可按「−」逐點收回。當天投入的點數收回後會恢復當天 quota；過往點數收回不增加今日額度。系統仍會遵守公開端點冷卻與 Apify 免費額度保留線。<span class="status-snapshot" id="snapshot">資料快照：載入中…</span></p></section>
@@ -132,7 +185,8 @@ def build() -> dict:
   </section>
   <p class="status-note">同一個 Instagram 帳號會分成「貼文」與「限時動態」兩列。貼文依近期發文頻率調整為 12 小時到 14 天；限時動態優先輪詢活躍帳號。兩者都不使用本站的 Instagram 帳號，Apify 只在保留至少 US$10 免費額度時運作。「實際」需累積至少兩次成功紀錄；沒有新內容仍算抓取成功。</p>
   <p id="source-count" class="status-count"></p><p id="status-message" class="status-message" role="status"></p>
-  <div class="status-src-table"><div class="status-src-head"><span>來源／內容</span><span>爬取方式</span><span>狀態</span><span>最近抓取</span><span>下次／頻率</span><span>加權</span></div><div id="source-rows"></div></div>
+  <div class="status-sort-mobile"><label for="source-sort">排序</label><select id="source-sort">{sort_options}</select><button type="button" class="status-sort-direction" id="source-sort-direction">↑ 升冪</button></div>
+  <div class="status-src-table"><div class="status-src-head">{sort_headers}</div><div id="source-rows"></div></div>
 </section>{STYLE}{SCRIPT}
 """
     OUT_PAGE.write_text(page_shell("資料來源狀態｜竹梅活動觀測站", "竹梅各公開來源最後與下次爬取時間、實際頻率和 API 使用量。", content, canonical="https://chumei.observe.tw/status/"), encoding="utf-8")
