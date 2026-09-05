@@ -126,6 +126,12 @@ def _now() -> int:
     return int(time.time())
 
 
+def _taipei_day_start(now: int | None = None) -> int:
+    moment = datetime.fromtimestamp(now if now is not None else _now(), timezone.utc)
+    local = moment.astimezone(timezone(timedelta(hours=8)))
+    return int(local.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+
 def _hash_token(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -393,6 +399,30 @@ class AuthStore:
                     ON source_fetch_requests(status, created_at);
                 CREATE INDEX IF NOT EXISTS source_fetch_requests_user
                     ON source_fetch_requests(user_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS source_priority_weights (
+                    source_id TEXT PRIMARY KEY,
+                    source_name TEXT NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    weight INTEGER NOT NULL DEFAULT 0 CHECK(weight >= 0),
+                    status TEXT NOT NULL DEFAULT 'active',
+                    reason TEXT NOT NULL DEFAULT '',
+                    next_attempt_at INTEGER NOT NULL DEFAULT 0,
+                    last_run_at INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS source_priority_weights_queue
+                    ON source_priority_weights(status, next_attempt_at, weight DESC);
+                CREATE TABLE IF NOT EXISTS source_priority_allocations (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    source_id TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS source_priority_allocations_user
+                    ON source_priority_allocations(user_id, created_at DESC);
+                CREATE INDEX IF NOT EXISTS source_priority_allocations_source
+                    ON source_priority_allocations(source_id, created_at DESC);
                 CREATE TABLE IF NOT EXISTS user_saved_feeds (
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -427,6 +457,31 @@ class AuthStore:
             fetch_cols = {r[1] for r in conn.execute("PRAGMA table_info(source_fetch_requests)")}
             if "next_attempt_at" not in fetch_cols:
                 conn.execute("ALTER TABLE source_fetch_requests ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0")
+            # 舊版尚未完成的「先抓一次」要求改成持久權重。allocation id 沿用舊 id，
+            # 所以初始化可安全重跑，不會重複加權。
+            now = _now()
+            legacy = conn.execute(
+                "SELECT * FROM source_fetch_requests "
+                "WHERE status IN ('pending','processing','deferred') ORDER BY created_at"
+            ).fetchall()
+            for row in legacy:
+                inserted = conn.execute(
+                    "INSERT OR IGNORE INTO source_priority_allocations(id,user_id,source_id,created_at) "
+                    "VALUES (?,?,?,?)",
+                    (row["id"], row["user_id"], row["source_id"], row["created_at"]),
+                ).rowcount
+                if inserted:
+                    conn.execute(
+                        "INSERT INTO source_priority_weights(source_id,source_name,source_kind,weight,status,"
+                        "created_at,updated_at) VALUES (?,?,?,1,'active',?,?) "
+                        "ON CONFLICT(source_id) DO UPDATE SET weight=weight+1,source_name=excluded.source_name,"
+                        "source_kind=excluded.source_kind,updated_at=excluded.updated_at",
+                        (row["source_id"], row["source_name"], row["source_kind"], now, now),
+                    )
+                conn.execute(
+                    "UPDATE source_fetch_requests SET status='migrated',reason='已轉為持久優先權重',"
+                    "updated_at=? WHERE id=?", (now, row["id"]),
+                )
             # 舊帳號補代號：每個帳號都要有公開個人頁的網址
             for row in conn.execute(
                 "SELECT id, display_name, email FROM users WHERE handle IS NULL OR handle = ''"
@@ -787,39 +842,66 @@ class AuthStore:
     def fetch_requests_for_user(self, user_id: str, limit: int = 20) -> list[dict]:
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM source_fetch_requests WHERE user_id = ? "
-                "ORDER BY created_at DESC LIMIT ?", (user_id, max(1, min(limit, 100))),
+                "SELECT a.id,a.source_id,a.created_at,w.source_name,w.source_kind,w.weight,w.status,w.reason "
+                "FROM source_priority_allocations a JOIN source_priority_weights w "
+                "ON w.source_id=a.source_id WHERE a.user_id=? "
+                "ORDER BY a.created_at DESC,a.id DESC LIMIT ?",
+                (user_id, max(1, min(limit, 100))),
             ).fetchall()
-        return [self._fetch_request_payload(row) for row in rows]
+        return [{
+            "id": row["id"], "sourceId": row["source_id"],
+            "sourceName": row["source_name"], "sourceKind": row["source_kind"],
+            "status": row["status"], "reason": row["reason"] or "",
+            "sourceWeight": int(row["weight"]),
+            "createdAt": row["created_at"], "updatedAt": row["created_at"],
+        } for row in rows]
+
+    def fetch_weight_snapshot(self) -> dict[str, int]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT source_id,weight FROM source_priority_weights WHERE weight > 0"
+            ).fetchall()
+        return {str(row["source_id"]): int(row["weight"]) for row in rows}
 
     def create_fetch_request(
         self, user_id: str, source: dict, daily_limit: int = FETCH_REQUEST_DAILY_LIMIT
     ) -> tuple[str, dict | None]:
         now = _now()
-        day_start = now - (now % 86400)
+        day_start = _taipei_day_start(now)
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            existing = conn.execute(
-                "SELECT * FROM source_fetch_requests WHERE source_id = ? "
-                "AND status IN ('pending','processing','deferred') ORDER BY created_at LIMIT 1",
-                (source["id"],),
-            ).fetchone()
-            if existing:
-                return "duplicate", self._fetch_request_payload(existing)
             used = conn.execute(
-                "SELECT count(*) FROM source_fetch_requests WHERE user_id = ? AND created_at >= ?",
+                "SELECT count(*) FROM source_priority_allocations WHERE user_id = ? AND created_at >= ?",
                 (user_id, day_start),
             ).fetchone()[0]
             if used >= daily_limit:
                 return "limit", None
-            request_id = "fetch_" + uuid.uuid4().hex[:16]
+            request_id = "weight_" + uuid.uuid4().hex[:16]
             conn.execute(
-                "INSERT INTO source_fetch_requests(id,user_id,source_id,source_name,source_kind,status,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,'pending',?,?)",
-                (request_id, user_id, source["id"], source["name"], source["kind"], now, now),
+                "INSERT INTO source_priority_allocations(id,user_id,source_id,created_at) VALUES (?,?,?,?)",
+                (request_id, user_id, source["id"], now),
             )
-            row = conn.execute("SELECT * FROM source_fetch_requests WHERE id = ?", (request_id,)).fetchone()
-        return "ok", self._fetch_request_payload(row)
+            conn.execute(
+                "INSERT INTO source_priority_weights(source_id,source_name,source_kind,weight,status,reason,"
+                "next_attempt_at,last_run_at,created_at,updated_at) VALUES (?,?,?,1,'active','',0,0,?,?) "
+                "ON CONFLICT(source_id) DO UPDATE SET source_name=excluded.source_name,"
+                "source_kind=excluded.source_kind,weight=weight+1,"
+                "status=CASE WHEN status='processing' THEN status ELSE 'active' END,"
+                "reason=CASE WHEN status='processing' THEN reason ELSE '' END,"
+                "next_attempt_at=CASE WHEN status='processing' THEN next_attempt_at ELSE 0 END,"
+                "updated_at=excluded.updated_at",
+                (source["id"], source["name"], source["kind"], now, now),
+            )
+            row = conn.execute(
+                "SELECT * FROM source_priority_weights WHERE source_id=?", (source["id"],)
+            ).fetchone()
+        return "weighted", {
+            "id": request_id, "sourceId": row["source_id"],
+            "sourceName": row["source_name"], "sourceKind": row["source_kind"],
+            "status": row["status"], "reason": row["reason"] or "",
+            "sourceWeight": int(row["weight"]),
+            "createdAt": now, "updatedAt": now,
+        }
 
     def merge_user_follows(self, user_id: str, orgs: list[dict]) -> None:
         """Union browser-local follows into a user's durable follow list."""
@@ -1896,7 +1978,7 @@ def _contribute_html(
                 '<article class="contrib-my-row">'
                 f'<div><strong>{esc(row["accountLabel"])}</strong>'
                 f'<span>{state_label} · 本期剩餘 US${float(row["remainingUsd"]):.3f}</span></div>'
-                f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先抓取</span></div>{actions}'
+                f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先 quota</span></div>{actions}'
                 '</article>'
             )
         my_body = "".join(my_rows) or '<p class="contrib-empty">你還沒有貢獻 Apify 帳號。</p>'
@@ -1907,7 +1989,7 @@ def _contribute_html(
         )
         action = f"""
 <section class="contrib-panel" id="my-contributions">
-  <div class="contrib-heading"><div><p class="eyebrow">你的貢獻</p><h2>新增 Apify 帳號</h2></div><span class="contrib-rule">每個有效貢獻＝每日 +3 次優先抓取</span></div>
+  <div class="contrib-heading"><div><p class="eyebrow">你的貢獻</p><h2>新增 Apify 帳號</h2></div><span class="contrib-rule">每個有效貢獻＝每日 +3 點優先 quota</span></div>
   <form id="contribution-form" class="contrib-form">
     <label for="apify-name">帳號名稱</label>
     <input id="apify-name" name="name" type="text" autocomplete="off" maxlength="{MAX_ACCOUNT_NAME_LENGTH}" placeholder="例如：社團帳號、MY-APIFY" required{form_disabled}>
@@ -1933,7 +2015,7 @@ def _contribute_html(
   <section class="contrib-explain">
     <article><strong>1</strong><h2>登入後提交</h2><p>只收 Apify API token，不收密碼；伺服器先向 Apify 驗證額度。</p></article>
     <article><strong>2</strong><h2>加密加入帳號池</h2><p>token 不會出現在公開 API、排行榜、log 或 Git，只用來執行爬取 Actor。</p></article>
-    <article><strong>3</strong><h2>全站一起加速</h2><p>每個有效貢獻讓貢獻者每天多 3 次優先抓取；本期仍有額度的帳號也會增加每輪抓取槽位。</p></article>
+    <article><strong>3</strong><h2>全站一起加速</h2><p>每個有效貢獻讓貢獻者每天多 3 點優先 quota；可重複投入同一來源，權重會持續累加。帳號本期仍有額度時，也會增加每輪抓取槽位。</p></article>
   </section>
   <section class="contrib-portal" aria-labelledby="apify-portal-title">
     <div><p class="eyebrow">Apify Portal</p><h2 id="apify-portal-title">還沒有 Token？從這裡開始</h2><p>登入或免費註冊 Apify，在「API &amp; Integrations」複製 Personal API token，再回到這裡貼上。請不要傳送密碼。</p></div>
@@ -1941,7 +2023,7 @@ def _contribute_html(
   </section>
   {action}
   <section class="contrib-grid">
-    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>貢獻／本期可用</th><th>優先額度</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
+    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>貢獻／本期可用</th><th>每日 quota</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
     <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Registered pool</p><h2>已註冊帳號</h2></div><a href="/status/">查看全池狀態 →</a></div><div class="contrib-account-list">{accounts_body}</div></section>
   </section>
 </section>
@@ -1968,7 +2050,7 @@ document.addEventListener('click',async function(event){{
 """
     return page_shell(
         "貢獻｜竹梅活動觀測站",
-        "貢獻 Apify 免費額度，增加竹梅的公開資訊抓取頻率與個人優先抓取額度。",
+        "貢獻 Apify 免費額度，取得每日優先 quota，持續增加公開來源的抓取權重。",
         content,
         canonical="https://chumei.observe.tw/contribute/",
     )
@@ -2328,12 +2410,18 @@ def create_app(
         priority_bonus = contribution_count * PRIORITY_BONUS_PER_ACCOUNT
         daily_limit = FETCH_REQUEST_DAILY_LIMIT + priority_bonus
         if request.method == "GET":
+            requests = store.fetch_requests_for_user(user["id"], limit=100)
+            day_start = _taipei_day_start()
+            used_today = sum(int(row.get("createdAt") or 0) >= day_start for row in requests)
             return JSONResponse({
                 "ok": True,
                 "dailyLimit": daily_limit,
                 "baseDailyLimit": FETCH_REQUEST_DAILY_LIMIT,
                 "contributionBonus": priority_bonus,
-                "requests": store.fetch_requests_for_user(user["id"]),
+                "usedToday": used_today,
+                "remainingToday": max(0, daily_limit - used_today),
+                "weights": store.fetch_weight_snapshot(),
+                "requests": requests,
             })
         try:
             body = await request.json()
@@ -2358,8 +2446,15 @@ def create_app(
                 "request": item,
                 "dailyLimit": daily_limit,
                 "contributionBonus": priority_bonus,
+                "remainingToday": max(
+                    0,
+                    daily_limit - sum(
+                        int(row.get("createdAt") or 0) >= _taipei_day_start()
+                        for row in store.fetch_requests_for_user(user["id"], limit=100)
+                    ),
+                ),
             },
-            status_code=201 if code == "ok" else 200,
+            status_code=201,
         )
 
     def follow_payload(user: dict | None) -> dict:

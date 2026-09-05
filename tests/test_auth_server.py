@@ -131,18 +131,52 @@ class AuthServerTests(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json()["request"]["sourceId"], "instagram:nthu_official")
-        self.assertEqual(created.json()["request"]["status"], "pending")
+        self.assertEqual(created.json()["request"]["status"], "active")
+        self.assertEqual(created.json()["request"]["sourceWeight"], 1)
 
-        duplicate = self.client.post(
+        weighted_again = self.client.post(
             "/auth/fetch-requests", json={"sourceId": "instagram:nthu_official"}
         )
-        self.assertEqual(duplicate.status_code, 200)
-        self.assertEqual(duplicate.json()["code"], "duplicate")
+        self.assertEqual(weighted_again.status_code, 201)
+        self.assertEqual(weighted_again.json()["code"], "weighted")
+        self.assertEqual(weighted_again.json()["request"]["sourceWeight"], 2)
 
         listing = self.client.get("/auth/fetch-requests")
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(listing.json()["dailyLimit"], auth_server.FETCH_REQUEST_DAILY_LIMIT)
-        self.assertEqual(len(listing.json()["requests"]), 1)
+        self.assertEqual(listing.json()["usedToday"], 2)
+        self.assertEqual(listing.json()["remainingToday"], 3)
+        self.assertEqual(listing.json()["weights"]["instagram:nthu_official"], 2)
+        self.assertEqual(len(listing.json()["requests"]), 2)
+
+        for _ in range(3):
+            self.assertEqual(self.client.post(
+                "/auth/fetch-requests", json={"sourceId": "instagram:nthu_official"}
+            ).status_code, 201)
+        exhausted = self.client.post(
+            "/auth/fetch-requests", json={"sourceId": "instagram:nthu_official"}
+        )
+        self.assertEqual(exhausted.status_code, 429)
+
+    def test_pending_one_shot_request_migrates_to_weight_once(self):
+        self._login()
+        user_id = self.client.get("/auth/me").json()["user"]["id"]
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute(
+                "INSERT INTO source_fetch_requests(id,user_id,source_id,source_name,source_kind,status,"
+                "created_at,updated_at) VALUES (?,?,?,?,?,'pending',1,1)",
+                ("fetch_legacy", user_id, "instagram:nthu_official", "清華大學", "instagram_profile"),
+            )
+        self.store._init_schema()
+        self.store._init_schema()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute(
+                "SELECT weight FROM source_priority_weights WHERE source_id=?",
+                ("instagram:nthu_official",),
+            ).fetchone()[0], 1)
+            self.assertEqual(conn.execute(
+                "SELECT status FROM source_fetch_requests WHERE id='fetch_legacy'"
+            ).fetchone()[0], "migrated")
 
     def test_apify_contribution_grants_three_daily_priority_requests(self):
         token = "apify_api_" + "community" * 5
@@ -200,6 +234,8 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn("貢獻排行榜", page.text)
         self.assertIn("前往 Apify 取得 Token", page.text)
+        self.assertIn("可重複投入同一來源", page.text)
+        self.assertIn("每天多 3 點優先 quota", page.text)
         self.assertIn('href="https://console.apify.com/account#/integrations"', page.text)
         self.assertIn('target="_blank"', page.text)
         self.assertIn("登入", page.text)

@@ -152,7 +152,7 @@ CHUMEI_FEED_SIGNING_KEY=
 ### 頁面與 Feed
 
 - `/account/`：帳號設定、登入方式、行事曆、回報與自訂訂閱管理。
-- `/contribute/`：社群 Apify 額度貢獻、個人優先抓取額度、排行榜與已註冊帳號池。
+- `/contribute/`：社群 Apify 額度貢獻、每日優先 quota、排行榜與已註冊帳號池。
 - `/@handle`：可由使用者關閉的公開個人頁。
 - `/auth/calendar/{token}.ics`：「我會去」活動的私密行事曆，可由帳號頁換發。
 - `/feeds/custom.ics`、`/feeds/custom.xml`：不需登入的多維條件組合。
@@ -169,7 +169,7 @@ CHUMEI_FEED_SIGNING_KEY=
 - Telegram publisher 以 `CHUMEI_TELEGRAM_ENABLED=true` 啟用；正式發送前可執行 `scripts/publish_telegram.py --check` 與 `--dry-run`。
 - Instagram 貼文先走免登入公開端點，必要時以 Apify 備援；限時動態走 Apify Story actor，兩者都不使用本站的 Instagram 帳號。
 - Instagram 帳號採持久化分批排程與 jitter，依近期發文頻率調整為 12 小時至 14 天；狀態保存在被 Git 忽略的 `state/`。
-- 每個有效的社群 Apify 貢獻帳號，會讓貢獻者每日多 3 次優先抓取，並讓每輪 Instagram 貼文與限動各多 3 個處理槽位（全站上限 30）。token 只以 Fernet 加密形式保存。
+- 每個有效的社群 Apify 貢獻帳號，會讓貢獻者每日多 3 點優先 quota，並讓每輪 Instagram 貼文與限動各多 3 個處理槽位（全站上限 30）。每日 quota 可重複投入同一來源；來源權重持久累加，背景服務以加權公平排程提高高權重來源的抓取頻率，同時保留冷卻與額度保護。token 只以 Fernet 加密形式保存。
 - 首次正常執行會把現有近期活動設為 baseline，避免洗版；後續每輪 pipeline 最多推送 10 則，22:00–07:59 靜音。
 - Web Push 偏好與帳號追蹤跨裝置同步；發布器每 30 分鐘檢查新活動與隔日「我會去」提醒。
 

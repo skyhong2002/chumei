@@ -62,9 +62,9 @@ def main():
     results = {}
 
     if not args.skip_fetch:
-        # 登入者的優先要求先消化少量；仍由 processor 套用 IG 冷卻與 Apify 額度保護。
+        # 登入者持續累積的來源權重採加權公平排程；仍套用 IG 冷卻與 Apify 額度保護。
         results["priority_fetch"] = run_step(
-            "priority fetch queue", ["process_fetch_requests.py", "--max-requests", "2", "--buffer-seconds", "20"]
+            "priority weight schedule", ["process_fetch_requests.py", "--max-requests", "2", "--buffer-seconds", "20"]
         )
         results["nycu_life"] = run_step("NYCU LIFE", ["fetch_nycu_life.py"])
         results["infonews"] = run_step("infonews", ["fetch_infonews.py", "--max-pages", "2"])

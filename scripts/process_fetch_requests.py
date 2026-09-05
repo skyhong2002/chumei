@@ -8,6 +8,7 @@ import json
 import sqlite3
 import subprocess
 import time
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from source_status import apify_quota, source_registry
 
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_DB = ROOT / "state" / "auth.sqlite3"
+PRIORITY_MIN_INTERVAL_SECONDS = 3 * 3600
 
 
 def database_path() -> Path:
@@ -32,26 +34,46 @@ def connect(path: Path) -> sqlite3.Connection:
 
 def claim(path: Path) -> dict | None:
     now = int(time.time())
-    with connect(path) as conn:
+    with closing(connect(path)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT * FROM source_fetch_requests WHERE status IN ('pending','deferred') "
-            "AND next_attempt_at <= ? ORDER BY created_at LIMIT 1", (now,),
+            "SELECT * FROM source_priority_weights WHERE weight > 0 "
+            "AND status IN ('active','deferred') AND next_attempt_at <= ? "
+            "ORDER BY ((? - CASE WHEN last_run_at > 0 THEN last_run_at ELSE created_at END) * weight) DESC, "
+            "weight DESC,created_at LIMIT 1",
+            (now, now),
         ).fetchone()
         if not row:
             return None
         changed = conn.execute(
-            "UPDATE source_fetch_requests SET status='processing',reason='',updated_at=? "
-            "WHERE id=? AND status IN ('pending','deferred')", (now, row["id"]),
+            "UPDATE source_priority_weights SET status='processing',reason='',updated_at=? "
+            "WHERE source_id=? AND status IN ('active','deferred')",
+            (now, row["source_id"]),
         ).rowcount
         return dict(row) if changed else None
 
 
-def finish(path: Path, request_id: str, status: str, reason: str = "", next_attempt: int = 0) -> None:
-    with connect(path) as conn:
+def finish(path: Path, request: dict, status: str, reason: str = "", next_attempt: int = 0) -> None:
+    now = int(time.time())
+    if status == "completed":
+        stored_status = "active"
+        next_attempt = max(int(next_attempt), now + PRIORITY_MIN_INTERVAL_SECONDS)
+        last_run = now
+    elif status == "deferred":
+        stored_status = "deferred"
+        last_run = int(request.get("last_run_at") or 0)
+    else:
+        # 無法安全抓取的來源暫停加權排程；再次投入 quota 時會重新啟用。
+        stored_status = "failed"
+        last_run = now
+    with closing(connect(path)) as conn, conn:
         conn.execute(
-            "UPDATE source_fetch_requests SET status=?,reason=?,next_attempt_at=?,updated_at=? WHERE id=?",
-            (status, reason[:300], int(next_attempt), int(time.time()), request_id),
+            "UPDATE source_priority_weights SET status=?,reason=?,next_attempt_at=?,last_run_at=?,updated_at=? "
+            "WHERE source_id=?",
+            (
+                stored_status, reason[:300], int(next_attempt), last_run, now,
+                request["source_id"],
+            ),
         )
 
 
@@ -96,12 +118,12 @@ def command_for(source: dict) -> list[str] | None:
 def process_one(path: Path, request: dict, registry: dict[str, dict], *, dry_run: bool = False) -> str:
     source = registry.get(request["source_id"])
     if not source:
-        finish(path, request["id"], "failed", "來源已從公開登錄移除")
+        finish(path, request, "failed", "來源已從公開登錄移除")
         return "failed"
     cooldown = cooldown_until(source["kind"])
     if cooldown > time.time():
         reason = "Instagram 全域冷卻中，將在冷卻結束後重試"
-        finish(path, request["id"], "deferred", reason, int(cooldown) + 60)
+        finish(path, request, "deferred", reason, int(cooldown) + 60)
         return "deferred"
     if source["kind"] == "facebook":
         quota = apify_quota(refresh=True)
@@ -110,14 +132,14 @@ def process_one(path: Path, request: dict, registry: dict[str, dict], *, dry_run
                 retry = int(datetime.fromisoformat(str(quota.get("cycleEnd")).replace("Z", "+00:00")).timestamp()) + 60
             except (TypeError, ValueError):
                 retry = int(time.time()) + 6 * 3600
-            finish(path, request["id"], "deferred", "Apify 本期額度已用完", retry)
+            finish(path, request, "deferred", "Apify 本期額度已用完", retry)
             return "deferred"
     command = command_for(source)
     if not command:
-        finish(path, request["id"], "failed", "這個來源目前沒有安全的單來源抓取器")
+        finish(path, request, "failed", "這個來源目前沒有安全的單來源抓取器")
         return "failed"
     if dry_run:
-        finish(path, request["id"], "pending", "dry-run")
+        finish(path, request, "deferred", "dry-run", int(time.time()) + 60)
         print("would run:", " ".join(command))
         return "dry-run"
     try:
@@ -126,13 +148,13 @@ def process_one(path: Path, request: dict, registry: dict[str, dict], *, dry_run
             cwd=ROOT, timeout=900, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired:
-        finish(path, request["id"], "failed", "抓取逾時")
+        finish(path, request, "failed", "抓取逾時")
         return "failed"
     if result.returncode == 0:
-        finish(path, request["id"], "completed", (result.stdout or "完成").strip()[-300:])
+        finish(path, request, "completed", (result.stdout or "完成").strip()[-300:])
         return "completed"
     reason = (result.stderr or result.stdout or f"exit {result.returncode}").strip()[-300:]
-    finish(path, request["id"], "failed", reason)
+    finish(path, request, "failed", reason)
     return "failed"
 
 
@@ -154,7 +176,9 @@ def main() -> int:
             break
         outcome = process_one(path, request, registry, dry_run=args.dry_run)
         handled += 1
-        print(f"priority fetch {request['id']} {request['source_id']}: {outcome}")
+        print(
+            f"priority weight {request['source_id']} x{int(request.get('weight') or 0)}: {outcome}"
+        )
         if index + 1 < args.max_requests and outcome not in {"deferred", "dry-run"}:
             time.sleep(max(0, args.buffer_seconds))
     print(f"priority fetch: handled {handled}")
