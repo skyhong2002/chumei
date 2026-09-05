@@ -2663,6 +2663,45 @@
         '<div class="cal-grid">' + cells + "</div></section>";
     }
 
+    var calendarOrgs = {};
+    var calendarOrgNames = {};
+    function organizerFor(e) {
+      var name = (e.organizer || "").trim();
+      var org = calendarOrgs[String(e.org_id)];
+      // org_id identifies the publishing source, which may only be reposting.
+      if (name) {
+        if (org && (org.name === name || org.base_name === name)) return org;
+        return calendarOrgNames[name] || null;
+      }
+      return null;
+    }
+    function organizerHtml(e, detailed) {
+      var org = organizerFor(e);
+      var name = (e.organizer || "").trim() || "主辦待確認";
+      var avatar = '<span class="cal-org-avatar" aria-hidden="true">' + esc(name.charAt(0)) +
+        (org && org.avatar ? '<img src="' + esc(org.avatar) + '" alt="" width="28" height="28" loading="lazy" decoding="async">' : '') + '</span>';
+      if (!detailed) return '<span class="cal-org-line">' + avatar + '<span><span class="cal-org-label">主辦</span>' + esc(name) + '</span></span>';
+      if (!org) return "";
+      var schoolNames = {nthu: "清華大學", nycu: "陽明交通大學", both: "兩校聯合"};
+      var kindNames = {club: "社團", official: "校方單位", department: "系所", bulletin: "公告單位", external: "校外單位"};
+      var meta = [schoolNames[org.school], kindNames[org.kind], org.category].filter(Boolean).join(" · ");
+      var links = (org.links || []).filter(function (link) { return /^https?:\/\//.test(link.url || ""); }).map(function (link) {
+        var platform = {instagram: "Instagram", facebook: "Facebook", threads: "Threads", bulletin: "公告頁", website: "官方網站"}[link.platform] || link.label || "相關連結";
+        return '<a href="' + esc(link.url) + '" target="_blank" rel="noopener noreferrer">' + esc(platform) + '</a>';
+      }).join("");
+      return '<div class="cal-org-card"><a class="cal-org-profile" href="/org/' + esc(String(org.id)) + '/">' + avatar + '<span>' + esc(org.name) + ' →</span></a>' +
+        (meta ? '<p class="cal-org-info">' + esc(meta) + '</p>' : '') + (links ? '<div class="cal-org-links">' + links + '</div>' : '') + '</div>';
+    }
+    function refreshOrganizerSlots() {
+      dayPanel.querySelectorAll("[data-cal-organizer]").forEach(function (slot) {
+        var e = byIdCal[slot.dataset.calOrganizer];
+        if (e) slot.innerHTML = organizerHtml(e, slot.dataset.orgDetail === "true");
+      });
+    }
+    dayPanel.addEventListener("error", function (event) {
+      if (event.target.matches(".cal-org-avatar img")) event.target.remove();
+    }, true);
+
     function renderDay(eventId) {
       var events = byDay[selectedDay] || [];
       var date = new Date(selectedDay + "T12:00:00");
@@ -2676,8 +2715,8 @@
           var thumb = cover ? '<img class="cal-detail-thumb" src="' + esc(cover) + '" alt="" width="72" height="72" loading="lazy" decoding="async">' : "";
           var poster = cover ? '<a class="cal-detail-image" href="/event/' + esc(e.id) + '/"><img src="' + esc(cover) + '" alt="' + esc(e.title + "活動圖片") + '" loading="lazy" decoding="async"></a>' : "";
           return '<details class="cal-day-event ev-' + esc(e.school) + '" data-panel-event="' + esc(e.id) + '"' + (e.id === eventId ? ' open' : '') + '><summary><span class="cal-detail-time">' + time +
-            '</span><span><strong>' + esc(e.title) + '</strong><span class="cal-detail-meta">' + esc(where || "地點待確認") + '</span><span class="cal-detail-hint">查看詳情</span></span>' + thumb + '</summary>' +
-            '<div class="cal-detail-body">' + poster + (e.organizer ? '<p>' + esc(e.organizer) + '</p>' : '') +
+            '</span><span><strong>' + esc(e.title) + '</strong><span data-cal-organizer="' + esc(e.id) + '">' + organizerHtml(e, false) + '</span><span class="cal-detail-meta">' + esc(where || "地點待確認") + '</span></span>' + thumb + '</summary>' +
+            '<div class="cal-detail-body"><div data-cal-organizer="' + esc(e.id) + '" data-org-detail="true">' + organizerHtml(e, true) + '</div>' + poster +
             (e.summary ? '<p>' + esc(e.summary) + '</p>' : '') + '<a href="/event/' + esc(e.id) + '/">完整活動資訊 →</a>' + goingBtn(e, "cal-detail-going") + '</div></details>';
         }).join("") : '<p class="cal-day-empty">這天沒有符合條件的活動。可以選其他日期或清除篩選。</p>');
     }
@@ -2685,6 +2724,7 @@
       var button = event.target.closest("[data-cal-date]");
       if (!button) return;
       selectedDay = button.dataset.calDate;
+      if (hoverPop) hoverPop.hidden = true;
       calEl.querySelectorAll("[data-day]").forEach(function (cell) {
         var selected = cell.dataset.day === selectedDay;
         cell.classList.toggle("selected", selected);
@@ -2752,7 +2792,7 @@
 
     var byIdCal = {};
     bundle.events.forEach(function (e) { byIdCal[e.id] = e; });
-    bindEventHover(calEl, ".cal-ev", function (a) { return byIdCal[a.dataset.id]; }, labels);
+    bindEventHover(calEl, ".cal-ev, .cal-preview", function (a) { return byIdCal[a.dataset.calEvent || a.dataset.id]; }, labels);
 
     var calResizeT;
     window.addEventListener("resize", function () {
@@ -2762,6 +2802,17 @@
 
     monthsAfter = 2;
     redraw();
+    fetch("/data/sources.json").then(function (response) {
+      if (!response.ok) throw new Error("Organizer directory unavailable");
+      return response.json();
+    }).then(function (data) {
+      (data.entries || []).forEach(function (org) {
+        calendarOrgs[String(org.id)] = org;
+        if (!Object.prototype.hasOwnProperty.call(calendarOrgNames, org.name)) calendarOrgNames[org.name] = org;
+        else calendarOrgNames[org.name] = null;
+      });
+      refreshOrganizerSlots();
+    }).catch(function () { /* Event organizer names remain available without directory data. */ });
   }
 })();
 
