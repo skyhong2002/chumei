@@ -2075,3 +2075,11 @@ button.btn:hover { background: var(--color-surface-soft); }
   .cal-day-event[open] .cal-detail-hint { display: none; }
   .cal-more { white-space: nowrap; }
 }
+
+@media (min-width: 701px) {
+  .cal-day-event > summary:has(.cal-detail-thumb) { grid-template-columns: 44px minmax(0, 1fr) 72px; }
+  .cal-detail-thumb { display: block; width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius-sm); background: var(--color-surface-soft); }
+  .cal-detail-image { display: block; margin-bottom: 12px; }
+  .cal-detail-image img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); }
+  .cal-day-event[open] .cal-detail-body { padding-left: 0; }
+}

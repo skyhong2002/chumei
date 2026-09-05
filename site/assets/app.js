@@ -2672,9 +2672,12 @@
           var d = new Date(e.start_at);
           var time = e.all_day ? "全天" : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
           var where = [labels.campus[e.campus], e.venue].filter(Boolean).join(" · ");
+          var cover = e.cover_image || e.poster_image;
+          var thumb = cover ? '<img class="cal-detail-thumb" src="' + esc(cover) + '" alt="" width="72" height="72" loading="lazy" decoding="async">' : "";
+          var poster = cover ? '<a class="cal-detail-image" href="/event/' + esc(e.id) + '/"><img src="' + esc(cover) + '" alt="' + esc(e.title + "活動圖片") + '" loading="lazy" decoding="async"></a>' : "";
           return '<details class="cal-day-event ev-' + esc(e.school) + '" data-panel-event="' + esc(e.id) + '"' + (e.id === eventId ? ' open' : '') + '><summary><span class="cal-detail-time">' + time +
-            '</span><span><strong>' + esc(e.title) + '</strong><span class="cal-detail-meta">' + esc(where || "地點待確認") + '</span><span class="cal-detail-hint">查看詳情</span></span></summary>' +
-            '<div class="cal-detail-body">' + (e.organizer ? '<p>' + esc(e.organizer) + '</p>' : '') +
+            '</span><span><strong>' + esc(e.title) + '</strong><span class="cal-detail-meta">' + esc(where || "地點待確認") + '</span><span class="cal-detail-hint">查看詳情</span></span>' + thumb + '</summary>' +
+            '<div class="cal-detail-body">' + poster + (e.organizer ? '<p>' + esc(e.organizer) + '</p>' : '') +
             (e.summary ? '<p>' + esc(e.summary) + '</p>' : '') + '<a href="/event/' + esc(e.id) + '/">完整活動資訊 →</a>' + goingBtn(e, "cal-detail-going") + '</div></details>';
         }).join("") : '<p class="cal-day-empty">這天沒有符合條件的活動。可以選其他日期或清除篩選。</p>');
     }
