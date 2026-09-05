@@ -300,6 +300,41 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("登入", page.text)
         self.assertNotIn("token_ciphertext", page.text)
 
+    def test_contribute_intro_averages_current_social_source_schedules(self):
+        snapshot_path = Path(self.tempdir.name) / "status.json"
+        snapshot = {
+            "generatedAt": "2026-09-05T09:32:58+00:00",
+            "sources": [
+                {"kind": "facebook", "targetIntervalHours": 168},
+                {"kind": "instagram_profile", "targetIntervalHours": 48},
+                {"kind": "instagram_story", "targetIntervalHours": 72},
+                {"kind": "threads", "targetIntervalHours": 1},
+                {"kind": "facebook", "targetIntervalHours": None},
+                {"kind": "instagram_story", "targetIntervalHours": 0},
+            ],
+        }
+        snapshot_path.write_text(json.dumps(snapshot))
+        with mock.patch.object(auth_server, "CRAWL_STATUS_PATH", snapshot_path):
+            page = self.client.get("/contribute/").text
+            self.assertIn("<strong>4 天</strong>取得一次。想要抓資料快一點嗎？", page)
+            self.assertIn("依目前排程估算", page)
+            self.assertIn("2026/9/5 17:32", page)
+            self.assertLess(page.index("目前每個 FB / IG 來源"), page.index("替自己的 Apify Token 命名"))
+            snapshot["sources"][0]["targetIntervalHours"] = 240
+            snapshot_path.write_text(json.dumps(snapshot))
+            self.assertIn("<strong>5 天</strong>", self.client.get("/contribute/").text)
+
+    def test_contribute_intro_does_not_invent_missing_frequency(self):
+        snapshot_path = Path(self.tempdir.name) / "status.json"
+        with mock.patch.object(auth_server, "CRAWL_STATUS_PATH", snapshot_path):
+            for content in (None, "broken", "[]", '{"sources":[]}', '{"sources":[{"kind":"facebook","targetIntervalHours":-1}]}'):
+                with self.subTest(content=content):
+                    if content is not None:
+                        snapshot_path.write_text(content)
+                    intro = auth_server._contribution_crawl_intro()
+                    self.assertIn("想要抓資料快一點嗎？", intro)
+                    self.assertNotIn("平均每", intro)
+
     def test_repeat_login_reuses_identity(self):
         self._login()
         self._login()
