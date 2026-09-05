@@ -1939,15 +1939,13 @@ def _contribution_time(value: object) -> str:
         return "尚無資料"
 
 
-def _contribution_crawl_intro() -> str:
-    question = "想要抓資料快一點嗎？"
-    fallback = f'<p class="contrib-crawl-hook">{question}</p>'
+def _contribution_estimate(*, now: float | None = None) -> dict | None:
     try:
-        snapshot = crawl_schedule_snapshot()
+        snapshot = crawl_schedule_snapshot(now=now)
     except (OSError, ValueError):
-        return fallback
+        return None
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("sources"), list):
-        return fallback
+        return None
     intervals = []
     for source in snapshot["sources"]:
         if not isinstance(source, dict) or source.get("kind") not in {
@@ -1958,8 +1956,45 @@ def _contribution_crawl_intro() -> str:
         if isinstance(hours, (int, float)) and not isinstance(hours, bool) and math.isfinite(hours) and hours > 0:
             intervals.append(hours)
     if not intervals:
-        return fallback
-    days = f"{sum(intervals) / len(intervals) / 24:.1f}".rstrip("0").rstrip(".")
+        return None
+    return {
+        "averageDays": sum(intervals) / len(intervals) / 24,
+        "usableApifyAccounts": int(snapshot.get("usableApifyAccounts") or 0),
+        "instagramBatchSize": int(snapshot.get("instagramBatchSize") or 0),
+        "generatedAt": snapshot.get("generatedAt"),
+    }
+
+
+def _contribution_impact(before: dict | None, after: dict | None, code: str) -> dict:
+    message = "帳號資料已更新，目前暫時無法估算更新頻率。" if code == "updated" else "感謝你的貢獻！帳號已加入，目前暫時無法估算更新頻率。"
+    if after:
+        current = f"{after['averageDays']:.2f}".rstrip("0").rstrip(".")
+        if code == "updated":
+            message = f"帳號資料已更新。目前更新頻率推估為每 {current} 天一次。"
+        elif before:
+            previous = f"{before['averageDays']:.2f}".rstrip("0").rstrip(".")
+            if round(after["averageDays"], 2) < round(before["averageDays"], 2):
+                message = f"感謝你的貢獻！更新頻率已推估由每 {previous} 天變成每 {current} 天一次。"
+            elif round(after["averageDays"], 2) > round(before["averageDays"], 2):
+                message = f"感謝你的貢獻！依最新額度與重置時間重新估算，更新頻率由每 {previous} 天調整為每 {current} 天一次。"
+            else:
+                message = f"感謝你的貢獻！更新頻率目前仍推估為每 {current} 天一次。"
+            old_batch, new_batch = before["instagramBatchSize"], after["instagramBatchSize"]
+            if new_batch > old_batch:
+                message += f" IG 貼文與限時動態每輪各可處理的來源由 {old_batch} 個增加至 {new_batch} 個。"
+            elif after["usableApifyAccounts"] > before["usableApifyAccounts"]:
+                message += " 新增帳號的可用額度已納入帳號池。"
+        else:
+            message = f"感謝你的貢獻！目前更新頻率推估為每 {current} 天一次。"
+    return {"before": before, "after": after, "message": message}
+
+
+def _contribution_crawl_intro(estimate: dict | None = None) -> str:
+    question = "想要抓資料快一點嗎？"
+    snapshot = estimate if estimate is not None else _contribution_estimate()
+    if not snapshot:
+        return f'<p class="contrib-crawl-hook">{question}</p>'
+    days = f"{snapshot['averageDays']:.1f}".rstrip("0").rstrip(".")
     return (
         '<p class="contrib-crawl-hook">目前每個 FB / IG 來源平均每 '
         f'<strong>{days} 天</strong>取得一次。{question}</p>'
@@ -2072,6 +2107,8 @@ def _contribute_html(
 
     content = f"""
 <section class="contribute-page">
+  <div id="contribution-feedback" class="contrib-feedback" role="status" tabindex="-1" hidden></div>
+  <a id="contribution-refresh-link" href="/contribute/" hidden>重新整理帳號清單 →</a>
   <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1><div id="contribution-crawl-summary" aria-live="polite">{_contribution_crawl_intro()}</div><p>替自己的 Apify Token 命名並把閒置免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。</p></section>
   <section class="contrib-totals" aria-label="社群貢獻總覽">
     <article><span>本期可用／有效貢獻</span><strong>{int(totals["accounts"])} / {int(totals["registeredAccounts"])}</strong></article>
@@ -2095,6 +2132,7 @@ def _contribute_html(
   </section>
 </section>
 <style>
+.contrib-feedback{{margin:12px 0 20px;padding:16px 18px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface-soft);font-size:1rem;font-weight:600;line-height:1.7;overflow-wrap:anywhere}}.contrib-grid>*{{min-width:0}}
 .contrib-hero .contrib-crawl-hook{{margin:14px 0 6px;font-size:clamp(1.1rem,2.2vw,1.4rem);font-weight:600;line-height:1.6;color:var(--color-text-primary)}}.contrib-crawl-hook strong{{white-space:nowrap}}.contrib-hero .contrib-crawl-basis{{margin:0 0 16px;font-size:.76rem;color:var(--color-text-muted);line-height:1.6}}
 .contribute-page{{padding-bottom:56px}}.contrib-hero p{{max-width:760px}}.contrib-totals{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}}.contrib-totals article,.contrib-panel,.contrib-explain article,.contrib-portal{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface)}}.contrib-totals article{{padding:16px}}.contrib-totals span,.contrib-account span,.contrib-my-row span,.contrib-form p,.contrib-muted{{display:block;color:var(--color-text-muted);font-size:.78rem}}.contrib-totals strong{{display:block;margin-top:4px;font-size:clamp(1.55rem,3vw,2.3rem)}}.contrib-explain{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 12px}}.contrib-explain article{{padding:18px}}.contrib-explain article>strong{{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft)}}.contrib-explain h2{{font-size:1rem;margin:14px 0 6px}}.contrib-explain p{{margin:0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal{{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px;margin-bottom:20px}}.contrib-portal .eyebrow{{margin:0}}.contrib-portal h2{{font-size:1.05rem;margin:4px 0 5px}}.contrib-portal p:not(.eyebrow){{margin:0;max-width:700px;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal-link{{flex:0 0 auto;text-align:center}}.contrib-grid{{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-top:12px}}.contrib-panel{{padding:18px;margin-top:12px}}.contrib-heading{{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}}.contrib-heading h2{{margin:2px 0 0;font-size:1.15rem}}.contrib-heading p{{margin:0}}.contrib-heading a,.contrib-rule{{font-size:.78rem;color:var(--color-text-secondary)}}.contrib-rule{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-pill);padding:5px 9px}}.contrib-form{{padding:14px;border-radius:var(--radius-md);background:var(--color-surface-soft)}}.contrib-form label{{display:block;margin:10px 0 7px;font-size:.8rem;font-weight:650}}.contrib-form label:first-child{{margin-top:0}}.contrib-token-row{{display:flex;gap:8px}}.contrib-token-row input,#apify-name{{box-sizing:border-box;min-width:0;height:42px;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:0 12px;background:var(--color-canvas);color:var(--color-text-primary);font:inherit}}.contrib-token-row input{{flex:1}}#apify-name{{width:100%}}.contrib-form p{{margin:8px 0 0;line-height:1.5}}.contrib-form .contrib-message{{min-height:1.3em;color:var(--color-text-secondary)}}.contrib-my-list,.contrib-account-list{{display:grid;gap:8px;margin-top:12px}}.contrib-my-row,.contrib-account{{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px;border-top:1px solid var(--color-border-subtle)}}.contrib-account{{grid-template-columns:minmax(0,1fr) auto auto}}.contrib-account:first-child,.contrib-my-row:first-child{{border-top:0}}.contrib-account strong,.contrib-my-row strong{{display:block;font-size:.88rem}}.contrib-actions{{display:flex;gap:6px;align-items:center}}.contrib-disable{{font-size:.74rem}}.contrib-table-wrap{{overflow-x:auto}}.contrib-panel table{{width:100%;border-collapse:collapse;font-size:.82rem}}.contrib-panel th,.contrib-panel td{{padding:10px 8px;border-top:1px solid var(--color-border-subtle);text-align:left;white-space:nowrap}}.contrib-panel thead th{{border-top:0;color:var(--color-text-muted);font-size:.72rem}}.contrib-person{{display:inline-flex;align-items:center;gap:8px}}.profile-avatar.contrib-avatar{{width:28px;height:28px;font-size:.72rem}}.contrib-rank{{font-weight:700}}.contrib-empty{{padding:18px!important;color:var(--color-text-muted);text-align:center!important}}@media(max-width:800px){{.contrib-totals{{grid-template-columns:1fr 1fr}}.contrib-explain,.contrib-grid{{grid-template-columns:1fr}}.contrib-portal{{align-items:flex-start;flex-direction:column}}}}@media(max-width:560px){{.contrib-token-row{{display:grid}}.contrib-portal-link{{width:100%}}.contrib-my-row,.contrib-account{{grid-template-columns:1fr auto}}.contrib-actions{{grid-column:1/-1}}.contrib-my-row .contrib-disable{{width:100%}}}}
 </style>
@@ -2116,9 +2154,31 @@ document.addEventListener('submit',async function(event){{
   if(event.target.id!=='contribution-form')return;
   event.preventDefault();
   var form=event.target,input=form.querySelector('#apify-token'),nameInput=form.querySelector('#apify-name'),message=form.querySelector('#contribution-message');
-  var token=input.value.trim(),name=nameInput.value.trim(); input.value=''; message.textContent='正在向 Apify 驗證…';
-  var button=form.querySelector('button[type="submit"]'); button.disabled=true;
-  try{{var response=await fetch('/auth/apify-contributions',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{token:token,name:name}})}});var data=await response.json();if(!response.ok)throw new Error(data.error||'貢獻失敗');nameInput.value='';message.textContent='驗證完成，已加入社群帳號池。';setTimeout(function(){{location.reload()}},700)}}catch(error){{message.textContent=error.message;button.disabled=false}}
+  var button=form.querySelector('button[type="submit"]');if(button.disabled)return;
+  var token=input.value.trim(),name=nameInput.value.trim();input.value='';button.disabled=true;message.textContent='正在驗證並計算你的貢獻效果…';
+  try{{
+    var response=await fetch('/auth/apify-contributions',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{token:token,name:name}})}});
+    var data=await response.json();if(!response.ok)throw new Error(data.error||'貢獻失敗');
+    nameInput.value='';message.textContent='';
+    var refreshed=false;
+    function showFeedback(scroll){{
+      if(data.crawlHtml)document.querySelector('#contribution-crawl-summary').innerHTML=data.crawlHtml;
+      var feedback=document.querySelector('#contribution-feedback');
+      feedback.textContent=data.crawlImpact?.message||'感謝你的貢獻！帳號已加入社群帳號池。';
+      feedback.hidden=false;feedback.focus({{preventScroll:true}});
+      if(scroll)feedback.scrollIntoView({{behavior:'smooth',block:'center'}});
+    }}
+    showFeedback(true);
+    try{{
+      var page=await fetch('/contribute/',{{cache:'no-store'}});
+      if(page.ok){{
+        var updated=new DOMParser().parseFromString(await page.text(),'text/html').querySelector('.contribute-page');
+        if(updated){{document.querySelector('.contribute-page').replaceWith(updated);refreshed=true;}}
+      }}
+    }}catch{{}}
+    showFeedback(false);document.querySelector('#contribution-refresh-link').hidden=refreshed;
+  }}catch(error){{message.textContent=error.message;}}
+  finally{{button.disabled=false;}}
 }});
 document.addEventListener('click',async function(event){{
   var rename=event.target.closest('[data-rename]');if(rename){{var name=prompt('新的帳號名稱',rename.dataset.name||'');if(!name)return;rename.disabled=true;var renamed=await fetch('/auth/apify-contributions/'+encodeURIComponent(rename.dataset.rename),{{method:'PATCH',headers:{{'content-type':'application/json'}},body:JSON.stringify({{name:name}})}});if(renamed.ok)location.reload();else rename.disabled=false;return}}
@@ -2864,6 +2924,8 @@ def create_app(
             return JSONResponse(
                 {"ok": False, "error": "請貼上有效的 Apify API token。"}, status_code=400
             )
+        estimate_time = time.time()
+        before = await run_in_threadpool(_contribution_estimate, now=estimate_time)
         try:
             code, item = register_apify_contribution(
                 store.path, user["id"], token, quota, name=name
@@ -2885,11 +2947,14 @@ def create_app(
             return JSONResponse(
                 {"ok": False, "error": f"每人最多 {MAX_ACCOUNTS_PER_USER} 個有效帳號。"}, status_code=429
             )
+        after = await run_in_threadpool(_contribution_estimate, now=estimate_time)
         return JSONResponse(
             {
                 "ok": True,
                 "code": code,
                 "contribution": item,
+                "crawlImpact": _contribution_impact(before, after, code),
+                "crawlHtml": _contribution_crawl_intro(after) if after else "",
                 "priorityBonus": apify_active_count(store.path, user["id"])
                 * PRIORITY_BONUS_PER_ACCOUNT,
             },

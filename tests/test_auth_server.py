@@ -304,6 +304,61 @@ class AuthServerTests(unittest.TestCase):
         self.assertIn("登入", page.text)
         self.assertNotIn("token_ciphertext", page.text)
 
+    def test_contribution_response_compares_before_and_after_registration(self):
+        self._login()
+        checkpoints = []
+
+        def estimate(**kwargs):
+            with closing(sqlite3.connect(self.db_path)) as conn:
+                count = conn.execute("SELECT count(*) FROM apify_contributions WHERE status='active'").fetchone()[0]
+            checkpoints.append((count, kwargs["now"]))
+            return {
+                "generatedAt": kwargs["now"], "usableApifyAccounts": count,
+                "instagramBatchSize": 14 + count * 3,
+                "sources": [{"kind": "facebook", "targetIntervalHours": (6.7 - count * 0.6) * 24}],
+            }
+
+        token = "apify_api_" + "impact" * 8
+        with mock.patch.object(auth_server, "crawl_schedule_snapshot", side_effect=estimate), \
+             mock.patch.object(auth_server, "verify_apify_token", return_value={"limitUsd":5,"remainingUsd":5}), \
+             mock.patch.object(apify_contributions, "encryption_secret", return_value="test-secret"):
+            response = self.client.post("/auth/apify-contributions", json={"token":token,"name":"Test impact"})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual([count for count, _ in checkpoints], [0, 1])
+        self.assertEqual(checkpoints[0][1], checkpoints[1][1])
+        impact = response.json()["crawlImpact"]
+        self.assertAlmostEqual(impact["before"]["averageDays"], 6.7)
+        self.assertAlmostEqual(impact["after"]["averageDays"], 6.1)
+        self.assertIn("由每 6.7 天變成每 6.1 天一次", impact["message"])
+        self.assertIn("由 14 個增加至 17 個", impact["message"])
+        self.assertIn("<strong>6.1 天</strong>", response.json()["crawlHtml"])
+        self.assertNotIn(token, response.text)
+
+    def test_contribution_feedback_reports_unchanged_or_updated_estimates_honestly(self):
+        before = {"averageDays":6.7,"instagramBatchSize":14,"usableApifyAccounts":3}
+        after = {**before,"instagramBatchSize":17,"usableApifyAccounts":4}
+        same = auth_server._contribution_impact(before, after, "created")["message"]
+        self.assertIn("仍推估為每 6.7 天一次", same)
+        self.assertIn("由 14 個增加至 17 個", same)
+        self.assertNotIn("天變成", same)
+        updated = auth_server._contribution_impact(before, {**after,"averageDays":6.1}, "updated")["message"]
+        self.assertIn("帳號資料已更新", updated)
+        self.assertNotIn("由每", updated)
+        slower = auth_server._contribution_impact(before, {**after,"averageDays":7}, "created")["message"]
+        self.assertIn("重置時間", slower)
+        self.assertIn("由每 6.7 天調整為每 7 天", slower)
+        self.assertNotIn("加速", slower)
+
+    def test_contribution_success_feedback_survives_dashboard_refresh_failure(self):
+        page = self.client.get("/contribute/")
+        script = re.search(r"document.addEventListener\('submit',async function\(event\)\{[\s\S]*?\n\}\);", page.text)
+        self.assertIsNotNone(script)
+        result = subprocess.run(
+            ["node", str(ROOT / "tests" / "contribute_success_ui.cjs")],
+            input=script.group(), text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_contribute_intro_averages_current_social_source_schedules(self):
         snapshot = {
             "generatedAt": "2026-09-05T09:32:58+00:00",
