@@ -1543,7 +1543,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .col-picker .caret svg { width: 14px; height: 14px; order: 1; }
 .col-picker[open] .caret { border-color: var(--color-action-primary); color: var(--color-action-primary); }
 .col-picker[open] .caret svg { transform: rotate(180deg); }
-.col-picker.fon .caret { background: var(--color-action-primary); border-color: var(--color-action-primary); color: var(--color-action-on-primary); }
+.col-picker.fon .caret { background: transparent; border-color: var(--color-action-primary); color: var(--color-action-primary); }
 .col-picker.fon .caret::after { content: "已篩選"; }
 .col-picker-menu {
   position: absolute; left: 0; top: calc(100% + 6px); z-index: 30;
