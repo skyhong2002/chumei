@@ -31,6 +31,10 @@
 
 ## 2. Event（抽取後的活動）
 
+建站時另附 `schedule_kind`（`period` / `scheduled`）：跨日且為全天或至少 24 小時的活動歸入期間活動；單晚跨午夜仍保留於定時議程。期間以起訖日期與所選日期範圍相交判斷，跨月每月列一次。
+
+人工核對同場後，在 `data/sources/event_merges.csv` 指定 `event_id` → `canonical_id`，更正欄位仍寫 `event_overrides.csv`。保留主活動 ID，合併來源於 `alt_posts` / `alt_sources`，舊 ID 記錄於 `merged_event_ids`；舊頁導向主活動。此表只收錄已核對的同場宣傳，不以名稱相近推定同場。每筆直接指向最終主活動，不串接合併鏈。
+
 `extract_events.py` 產出，`build_site.py` 合併。
 
 ```json

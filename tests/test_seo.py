@@ -19,6 +19,7 @@ class SEOParser(HTMLParser):
         self._h1 = None
         self.meta = {}
         self.canonicals = []
+        self.redirect = None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -27,6 +28,8 @@ class SEOParser(HTMLParser):
         elif tag == "h1":
             self._h1 = []
         elif tag == "meta":
+            if attrs.get("http-equiv", "").lower() == "refresh":
+                self.redirect = attrs.get("content")
             key = attrs.get("name") or attrs.get("property")
             if key:
                 self.meta[key] = attrs.get("content", "").strip()
@@ -145,6 +148,14 @@ class SEOOutputTests(unittest.TestCase):
         ):
             seen = defaultdict(list)
             for path, page in pages:
+                if page.redirect:
+                    # 合併舊頁的標題應與主活動一致；驗證確實轉向既存的主頁且不收錄舊頁。
+                    self.assertIn("noindex", page.meta.get("robots", ""))
+                    self.assertTrue(page.redirect.startswith("0;url=/event/"))
+                    target = page.redirect.split("0;url=", 1)[1]
+                    self.assertTrue((SITE / target.lstrip("/") / "index.html").exists())
+                    self.assertEqual(page.canonicals, [BASE_URL + target])
+                    continue
                 seen[getter(page)].append(str(path.relative_to(SITE)))
             duplicates = {value: paths for value, paths in seen.items() if len(paths) > 1}
             self.assertFalse(duplicates, f"duplicate {label}: {list(duplicates.items())[:8]}")

@@ -701,6 +701,10 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 
 /* ---------- compact event list ---------- */
 .event-rows { display: flex; flex-direction: column; border-top: 1px solid var(--color-border-subtle); }
+.event-section-title { grid-column: 1 / -1; font-size: 1rem; margin: 1.25rem 0 .5rem; }
+.period-events { margin-top: 1.25rem; padding-top: .75rem; border-top: 1px solid var(--color-border-subtle); min-width: 0; }
+.period-events h3 { font-size: 1rem; margin: 0 0 .5rem; }
+.period-events .agd-when { min-width: 6.5em; }
 .ev-row {
   display: flex; gap: 12px; align-items: center; padding: 9px 4px 9px 14px;
   border-bottom: 1px solid var(--color-border-subtle);

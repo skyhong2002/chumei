@@ -1986,6 +1986,12 @@
     return "進行中・至 " + (en.getMonth() + 1) + "/" + en.getDate() + "（" + "日一二三四五六"[en.getDay()] + "）";
   }
 
+  function isPeriodEvent(e) { return e.schedule_kind === "period"; }
+  function periodLabel(e) {
+    var s = (e.start_at || "").slice(0, 10).split("-"), en = (e.end_at || "").slice(0, 10).split("-");
+    return Number(s[1]) + "/" + Number(s[2]) + "–" + Number(en[1]) + "/" + Number(en[2]);
+  }
+
   // 活動列表依「下一個關鍵時間」排序：尚未開始看開始時間，進行中看截止時間。
   function eventSortTime(e, now) {
     var starts = new Date(e.start_at).getTime();
@@ -2076,7 +2082,7 @@
         var ends = e.end_at ? new Date(e.end_at) : starts;
         if (isNaN(starts.getTime())) return false;
         if (ends < rangeStart && !e.all_day) return false;
-        if (e.all_day && (e.start_at || "").slice(0, 10) < todayStr()) return false;
+        if (e.all_day && (e.end_at || e.start_at || "").slice(0, 10) < todayStr()) return false;
         if (timeRange !== "upcoming") {
           var rangeEnd = new Date(rangeStart);
           if (timeRange === "24h") rangeEnd.setHours(rangeEnd.getHours() + 24);
@@ -2143,7 +2149,7 @@
     function listRow(e) {
       var d = new Date(e.start_at);
       var wd = "日一二三四五六"[d.getDay()];
-      var when = ongoingLabel(e) || ((d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）" +
+      var when = (isPeriodEvent(e) ? periodLabel(e) : ongoingLabel(e)) || ((d.getMonth() + 1) + "/" + d.getDate() + "（" + wd + "）" +
         (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")));
       var where = [e.campus ? labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
       var thumb = e.poster_image
@@ -2182,7 +2188,7 @@
           '<div class="event-cover-content"><span class="event-cover-kicker">竹梅活動</span>' +
           '<strong>' + esc(e.category || "其他") + '</strong><span class="event-cover-note">示意封面</span></div></div>';
       var ongoing = ongoingLabel(e);
-      var when = ongoing || ((d.getMonth() + 1) + "/" + d.getDate() + (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")));
+      var when = (isPeriodEvent(e) ? periodLabel(e) : ongoing) || ((d.getMonth() + 1) + "/" + d.getDate() + (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")));
       var bd = ongoing ? new Date(e.end_at) : d;
       var badge = '<div class="date-badge"><span class="m">' + (ongoing ? "至" : "") + (bd.getMonth() + 1) + '月</span><span class="d">' + bd.getDate() + "</span></div>";
       var where = [e.campus ? bundle.labels.campus[e.campus] : null, e.venue].filter(Boolean).join(" ");
@@ -2410,7 +2416,11 @@
       if (listCount) listCount.textContent = list.length + " 場";
       listEl.className = displayMode === "list" ? "event-rows" : "grid";
       listEl.innerHTML = list.length
-        ? list.map(displayMode === "list" ? listRow : card).join("")
+        ? [["定時活動", list.filter(function (e) { return !isPeriodEvent(e); })],
+           ["期間活動", list.filter(isPeriodEvent)]].map(function (group) {
+            return group[1].length ? '<h2 class="event-section-title">' + group[0] + ' · ' + group[1].length + ' 場</h2>' +
+              group[1].map(displayMode === "list" ? listRow : card).join("") : "";
+          }).join("")
         : '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>';
       updateChipCounts();
       if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
@@ -2547,7 +2557,7 @@
       return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-01";
     })();
     function fromThisMonth(e) {
-      return (e.start_at || "").slice(0, 10) >= monthStartStr;
+      return ((isPeriodEvent(e) ? e.end_at : e.start_at) || "").slice(0, 10) >= monthStartStr;
     }
 
     function updateChipCounts() {
@@ -2570,10 +2580,11 @@
     var fullCurrentMonth = false; // 手機議程：當月是否已展開到 1 號
     var MAX_AHEAD = 12, MAX_BACK = 6;
 
-    var byDay = {};
+    var byDay = {}, periodEvents = [];
     function indexEvents() {
-      byDay = {};
+      byDay = {}; periodEvents = [];
       bundle.events.filter(function (e) { return matches(e); }).forEach(function (e) {
+        if (isPeriodEvent(e)) { periodEvents.push(e); return; }
         var day = (e.start_at || "").slice(0, 10);
         (byDay[day] = byDay[day] || []).push(e);
       });
@@ -2589,6 +2600,23 @@
         '<span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button>';
     }
 
+    function periodsInRange(start, end) {
+      return periodEvents.filter(function (e) { return e.start_at.slice(0, 10) <= end && e.end_at.slice(0, 10) >= start; });
+    }
+    function monthPeriods(m, startDay) {
+      var prefix = m.getFullYear() + "-" + String(m.getMonth() + 1).padStart(2, "0") + "-";
+      return periodsInRange(prefix + String(startDay || 1).padStart(2, "0"), prefix + new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate());
+    }
+    function periodSection(events) {
+      if (!events.length) return "";
+      return '<section class="period-events" aria-label="期間活動"><h3>期間活動<span class="cal-month-n">' + events.length + ' 場</span></h3>' +
+        events.map(function (e) {
+          return '<div class="agd-ev-row"><a class="agd-ev ev-' + esc(e.school) + '" href="/event/' + e.id + '/">' +
+            '<span class="agd-when">' + periodLabel(e) + '</span><span class="agd-main"><span class="agd-title">' + esc(e.title) +
+            '</span></span></a>' + goingBtn(e, 'agd-ev-going') + '</div>';
+        }).join('') + '</section>';
+    }
+
     function agendaMonthHtml(m) {
       // 手機：議程列表 — 只列有活動的日子
       var daysInMonth = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
@@ -2598,6 +2626,7 @@
       // 當月從今天開始列，過去的日子不佔版面；按「更早」會先展開當月完整月份
       var startDay = 1;
       if (!fullCurrentMonth && m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth()) startDay = now.getDate();
+      var periods = monthPeriods(m, startDay);
       for (var day = startDay; day <= daysInMonth; day++) {
         var key = m.getFullYear() + "-" + String(m.getMonth() + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
         var dayEvents = byDay[key] || [];
@@ -2620,12 +2649,13 @@
       }
       return '<section class="cal-month" id="cal-' + m.getFullYear() + "-" + (m.getMonth() + 1) + '">' +
         '<h2 class="cal-month-title">' + m.getFullYear() + " 年 " + (m.getMonth() + 1) + " 月" +
-        '<span class="cal-month-n">' + monthTotal + " 場</span></h2>" +
-        (body || '<p class="agd-empty">這個月（在目前篩選下）沒有活動。</p>') + "</section>";
+        '<span class="cal-month-n">' + (monthTotal + periods.length) + " 場</span></h2>" +
+        (body || (periods.length ? '' : '<p class="agd-empty">這個月（在目前篩選下）沒有活動。</p>')) + periodSection(periods) + "</section>";
     }
 
     function monthHtml(m) {
       if (window.innerWidth <= 700) return agendaMonthHtml(m);
+      var periods = monthPeriods(m);
       var startDow = m.getDay(); // 週日起始
       var first = new Date(m);
       first.setDate(1 - startDow);
@@ -2659,8 +2689,8 @@
       }
       return '<section class="cal-month" id="cal-' + m.getFullYear() + "-" + (m.getMonth() + 1) + '">' +
         '<h2 class="cal-month-title">' + m.getFullYear() + " 年 " + (m.getMonth() + 1) + " 月" +
-        '<span class="cal-month-n">' + monthTotal + " 場</span></h2>" +
-        '<div class="cal-grid">' + cells + "</div></section>";
+        '<span class="cal-month-n">' + (monthTotal + periods.length) + " 場</span></h2>" +
+        '<div class="cal-grid">' + cells + "</div>" + periodSection(periods) + "</section>";
     }
 
     var calendarOrgs = {};
@@ -2718,7 +2748,7 @@
             '</span><span><strong>' + esc(e.title) + '</strong><span data-cal-organizer="' + esc(e.id) + '">' + organizerHtml(e, false) + '</span><span class="cal-detail-meta">' + esc(where || "地點待確認") + '</span></span>' + thumb + '</summary>' +
             '<div class="cal-detail-body"><div data-cal-organizer="' + esc(e.id) + '" data-org-detail="true">' + organizerHtml(e, true) + '</div>' + poster +
             (e.summary ? '<p>' + esc(e.summary) + '</p>' : '') + '<a href="/event/' + esc(e.id) + '/">完整活動資訊 →</a>' + goingBtn(e, "cal-detail-going") + '</div></details>';
-        }).join("") : '<p class="cal-day-empty">這天沒有符合條件的活動。可以選其他日期或清除篩選。</p>');
+        }).join("") : '<p class="cal-day-empty">這天沒有符合條件的定時活動。</p>') + periodSection(periodsInRange(selectedDay, selectedDay));
     }
     calEl.addEventListener("click", function (event) {
       var button = event.target.closest("[data-cal-date]");

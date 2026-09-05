@@ -18,6 +18,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
+from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
 
 SITE = ROOT / "site"
 BASE_URL = "https://chumei.observe.tw"
@@ -173,6 +174,7 @@ def _post_norm_texts():
 
 
 def dedupe(events):
+    events = merge_reviewed_events(events)
     def score(e):
         plat = {"api": 3, "bulletin": 1}.get(e["source"]["platform"], 0)
         return plat + e["extraction"]["confidence"] + (1 if e.get("venue") else 0) + (0 if e.get("all_day") else 1)
@@ -190,6 +192,8 @@ def dedupe(events):
         keep.setdefault("alt_posts", []).append(dup_e["source"])
         keep["alt_posts"] += dup_e.get("alt_posts", [])
         keep["alt_sources"] = [p.get("url") for p in keep["alt_posts"] if p.get("url")]
+        if dup_e.get("merged_event_ids"):
+            keep["merged_event_ids"] = sorted(set(keep.get("merged_event_ids", []) + [dup_e["id"]] + dup_e["merged_event_ids"]))
         alt_titles.setdefault(keep["id"], []).append(dup_e["title"])
         alt_titles[keep["id"]] += alt_titles.pop(dup_e["id"], [])
 
@@ -2071,6 +2075,8 @@ def prerender_feed(posts, shown=30):
 
 
 def _ev_when(e, with_weekday=True):
+    if is_period_event(e):
+        return period_label(e)
     d = _iso_dt(e["start_at"]).astimezone(TZ_TAIPEI)
     wd = f"（{'日一二三四五六'[(d.weekday() + 1) % 7]}）" if with_weekday else ""
     return f"{d.month}/{d.day}{wd}" + ("" if e.get("all_day") else f" {d.hour:02d}:{d.minute:02d}")
@@ -2103,6 +2109,21 @@ def _ev_list_row(e):
             f'<span class="evr-meta">{esc(meta)}</span></span></a></div>')
 
 
+def period_label(e):
+    start, end = _iso_dt(e["start_at"]), _iso_dt(e["end_at"])
+    return f"{start.month}/{start.day}–{end.month}/{end.day}"
+
+
+def period_section(events):
+    if not events:
+        return ""
+    return ('<section class="period-events" aria-label="期間活動"><h3>期間活動'
+            f'<span class="cal-month-n">{len(events)} 場</span></h3>'
+            + ''.join(f'<a class="agd-ev ev-{esc(e.get("school") or "")}" href="/event/{e["id"]}/">'
+                      f'<span class="agd-when">{period_label(e)}</span><span class="agd-main">'
+                      f'<span class="agd-title">{esc(e["title"])}</span></span></a>' for e in events) + '</section>')
+
+
 def prerender_events(events):
     """/events/ SSR：預設篩選（未來 7 天）的列表列。JS 載入 events.json 後依裝置重繪。"""
     now = datetime.now(TZ_TAIPEI)
@@ -2114,7 +2135,7 @@ def prerender_events(events):
         if t is None:
             return False
         if e.get("all_day"):
-            return e["start_at"][:10] >= today and t <= range_end
+            return (e.get("end_at") or e["start_at"])[:10] >= today and t <= range_end
         end = _iso_dt(e.get("end_at")) or t
         return end >= now and t <= range_end
 
@@ -2126,7 +2147,10 @@ def prerender_events(events):
         return end if end is not None and start <= now <= end else start
 
     rows.sort(key=lambda e: (sort_time(e), e["start_at"], e["title"]))
-    body = "".join(_ev_list_row(e) for e in rows) or \
+    body = "".join('<h2 class="event-section-title">' + label + f' · {len(group)} 場</h2>'
+                   + "".join(_ev_list_row(e) for e in group)
+                   for label, group in (("定時活動", [e for e in rows if not is_period_event(e)]),
+                                        ("期間活動", [e for e in rows if is_period_event(e)])) if group) or \
         '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>'
     _inject_ssr(SITE / "events" / "index.html", "ssr-events", body)
     print(f"prerender: {len(rows)} events (7d) into events/index.html")
@@ -2140,7 +2164,8 @@ def prerender_calendar(events, months_ahead=2):
     today = now.strftime("%Y-%m-%d")
     by_day = {}
     for e in events:
-        by_day.setdefault((e.get("start_at") or "")[:10], []).append(e)
+        if not is_period_event(e):
+            by_day.setdefault((e.get("start_at") or "")[:10], []).append(e)
 
     out = []
     for off in range(0, months_ahead + 1):
@@ -2148,6 +2173,9 @@ def prerender_calendar(events, months_ahead=2):
         mo = (now.month - 1 + off) % 12 + 1
         days_in_month = ((date(y, mo, 1).replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)).day
         start_day = now.day if off == 0 else 1
+        periods = [e for e in events if is_period_event(e)
+                   and e["start_at"][:10] <= f"{y}-{mo:02d}-{days_in_month:02d}"
+                   and e["end_at"][:10] >= f"{y}-{mo:02d}-{start_day:02d}"]
         month_total, body = 0, ""
         for day in range(start_day, days_in_month + 1):
             key = f"{y}-{mo:02d}-{day:02d}"
@@ -2168,8 +2196,9 @@ def prerender_calendar(events, months_ahead=2):
             body += (f'<div class="agd-day{" today" if key == today else ""}">'
                      f'<span class="agd-date">{mo}/{day}（{wd}）</span>{items}</div>')
         out.append(f'<section class="cal-month" id="cal-{y}-{mo}">'
-                   f'<h2 class="cal-month-title">{y} 年 {mo} 月<span class="cal-month-n">{month_total} 場</span></h2>'
-                   + (body or '<p class="agd-empty">這個月（在目前篩選下）沒有活動。</p>') + "</section>")
+                   f'<h2 class="cal-month-title">{y} 年 {mo} 月<span class="cal-month-n">{month_total + len(periods)} 場</span></h2>'
+                   + (body or ('' if periods else '<p class="agd-empty">這個月（在目前篩選下）沒有活動。</p>'))
+                   + period_section(periods) + "</section>")
     _inject_ssr(SITE / "calendar" / "index.html", "ssr-cal", "".join(out))
     print(f"prerender: {months_ahead + 1} months into calendar/index.html")
 
@@ -2281,6 +2310,8 @@ def source_table_html(entries):
 def main():
     events = dedupe(apply_overrides(load_events()))
     events = [e for e in events if e.get("start_at")]
+    for e in events:
+        e["schedule_kind"] = "period" if is_period_event(e) else "scheduled"
     events.sort(key=lambda e: e["start_at"])
     cache_posters(events)
     from render_source_covers import attach_source_screenshots
@@ -2411,6 +2442,7 @@ def main():
             with_time=same_day_twins[(e["title"], (e.get("start_at") or "")[:10])] > 1))
 
     refresh_legacy_event_seo({e["id"] for e in events})
+    write_merged_event_pages(events, SITE, BASE_URL)
     org_ids = source_page(events, entries)
     prerender_feed(build_posts_data(events, sid_to_entry))
     prerender_events(events)
