@@ -1518,17 +1518,33 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .feed-col .feed-more { margin: 14px auto 20px; display: block; }
 
 /* 欄頭河道選單 */
-.col-picker { position: relative; min-width: 0; }
+.col-picker { position: relative; min-width: 0; flex: 1; }
 .col-picker summary {
   list-style: none; cursor: pointer;
-  display: flex; align-items: center; gap: 10px;
-  margin: -2px 0 -2px -8px; padding: 4px 8px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; gap: 10px; min-height: 44px;
+  margin: -2px 0; padding: 0; border-radius: var(--radius-sm);
 }
 .col-picker summary::-webkit-details-marker { display: none; }
 .col-picker summary:hover { background: var(--color-surface-soft); }
+.col-picker summary:focus-visible { outline: 2px solid var(--color-action-primary); outline-offset: 3px; }
 .col-picker h2 { margin: 0; font-size: 1.05rem; line-height: 1.3; }
-.col-picker .caret { display: inline-flex; color: var(--color-text-muted); }
-.col-picker .caret svg { width: 16px; height: 16px; }
+/* Always expose the filter action, including the initial server-rendered header. */
+.col-picker .caret {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; margin-left: auto;
+  min-height: 36px; padding: 0 9px; border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm); background: var(--color-surface-raised);
+  color: var(--color-text-primary); font-size: 0.8rem; font-weight: 600;
+}
+.col-picker .caret::before {
+  content: ""; width: 16px; height: 16px; background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 4h16l-6 7v8l-4-2v-6z' fill='none' stroke='black' stroke-width='1.75' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.col-picker .caret::after { content: "篩選"; }
+.col-picker .caret svg { width: 14px; height: 14px; order: 1; }
+.col-picker[open] .caret { border-color: var(--color-action-primary); color: var(--color-action-primary); }
+.col-picker[open] .caret svg { transform: rotate(180deg); }
+.col-picker.fon .caret { background: var(--color-action-primary); border-color: var(--color-action-primary); color: var(--color-action-on-primary); }
+.col-picker.fon .caret::after { content: "已篩選"; }
 .col-picker-menu {
   position: absolute; left: 0; top: calc(100% + 6px); z-index: 30;
   min-width: 180px; padding: 8px; display: flex; flex-direction: column; gap: 2px;
@@ -1557,13 +1573,6 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .col-menu-filters .filter-row .label { min-width: 2.6rem; }
 .col-menu-filters .fchip { min-height: 0; }
 .col-menu-filters .fchip[aria-pressed="true"] { color: var(--color-action-on-primary); }
-/* 欄有非預設篩選時，欄頭 caret 旁亮點提示 */
-.col-picker.fon > summary::after {
-  content: ""; position: absolute; top: 2px; right: -2px; width: 7px; height: 7px;
-  border-radius: 50%; background: var(--color-action-primary);
-}
-.col-picker > summary { position: relative; }
-
 /* 新增河道選單：桌機放在所有河道最右側；手機沿用分頁列的 ＋ */
 .addcol-menu {
   position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 50;
