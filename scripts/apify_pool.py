@@ -64,6 +64,8 @@ def token_accounts(env: dict | None = None) -> list[dict]:
             if account["token"] in seen:
                 configured = next(row for row in accounts if row["token"] == account["token"])
                 configured["contributionId"] = account["contributionId"]
+                if account.get("verifiedQuota"):
+                    configured["verifiedQuota"] = account["verifiedQuota"]
                 continue
             seen.add(account["token"])
             accounts.append(account)
@@ -135,7 +137,29 @@ def pool_status(*, refresh: bool = True, now: float | None = None) -> dict:
     cached = _read_json(CACHE_PATH)
     configured = token_accounts()
     if not refresh:
-        return cached
+        # Registration has already verified quota with Apify. Merge that result
+        # immediately, without another network request or waiting for a pipeline.
+        cached_by_label = {row.get("label"): row for row in cached.get("accounts", [])}
+        rows = []
+        for account in configured:
+            prior = cached_by_label.get(account["label"], {})
+            verified = account.get("verifiedQuota") or {}
+            if verified and float(verified.get("checkedAt") or 0) >= float(prior.get("checkedAt") or 0):
+                limit, _ = recurring_limit(account["label"], float(verified.get("limitUsd") or 0), community=True)
+                used = float(verified.get("usedUsd") or 0)
+                remaining = float(verified.get("remainingUsd") or 0)
+                row = {
+                    **verified, "label": account["label"], "community": True,
+                    "available": True, "limitUsd": limit,
+                    "temporaryCreditUsd": max(0.0, used + remaining - limit),
+                    "activeActorJobs": int(prior.get("activeActorJobs") or 0),
+                    "exhausted": remaining <= MIN_ACCOUNT_RESERVE_USD,
+                }
+            else:
+                row = {**prior, "label": account["label"], "community": bool(account.get("contributionId"))}
+            rows.append(row)
+        checked_at = max((float(row.get("checkedAt") or 0) for row in rows), default=0)
+        return _aggregate_status(rows, now=checked_at)
     if not configured:
         return cached or {"available": False, "checkedAt": now, "exhausted": True, "accounts": []}
 
@@ -165,6 +189,15 @@ def pool_status(*, refresh: bool = True, now: float | None = None) -> dict:
                     "activeActorJobs": 0, "exhausted": True,
                 })
 
+    result = _aggregate_status(rows, now=now)
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CACHE_PATH.with_suffix(CACHE_PATH.suffix + f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(CACHE_PATH)
+    return result
+
+
+def _aggregate_status(rows: list[dict], *, now: float) -> dict:
     available = [row for row in rows if row.get("available")]
     cycle_starts = [row.get("cycleStart") for row in available if row.get("cycleStart")]
     cycle_ends = [row.get("cycleEnd") for row in available if row.get("cycleEnd")]
@@ -189,10 +222,6 @@ def pool_status(*, refresh: bool = True, now: float | None = None) -> dict:
     }
     result["exhausted"] = result["usableAccountCount"] == 0
     result["stale"] = any(row.get("stale") for row in rows)
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = CACHE_PATH.with_suffix(CACHE_PATH.suffix + f".{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(CACHE_PATH)
     return result
 
 

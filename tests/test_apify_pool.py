@@ -121,6 +121,43 @@ class ApifyPoolTests(unittest.TestCase):
             interval = apify_pool.recommended_interval_hours(status, source_count=327, now=0)
         self.assertEqual(interval, 115.2)
 
+    def test_local_pool_immediately_includes_verified_registration_without_network(self):
+        cached = {"accounts": [{"label": "EXISTING", "available": True, "checkedAt": 100,
+                                "remainingUsd": 3, "limitUsd": 5, "exhausted": False}]}
+        accounts = [
+            {"label": "EXISTING", "token": "old-secret"},
+            {"label": "NEW", "token": "new-secret", "contributionId": "new-id",
+             "verifiedQuota": {"checkedAt": 200, "remainingUsd": 10, "limitUsd": 10, "usedUsd": 0,
+                               "cycleEnd": "1970-01-25T00:00:00Z"}},
+        ]
+        with patch.object(apify_pool, "_read_json", return_value=cached), \
+             patch.object(apify_pool, "token_accounts", return_value=accounts), \
+             patch.object(apify_pool, "_fetch_quota") as fetch:
+            status = apify_pool.pool_status(refresh=False)
+            self.assertEqual(status["accountCount"], 2)
+            self.assertEqual(status["usableAccountCount"], 2)
+            self.assertEqual(status["remainingUsd"], 13)
+            self.assertEqual(status["limitUsd"], 10)
+            self.assertEqual(status["temporaryCreditUsd"], 5)
+            self.assertNotIn("secret", repr(status))
+            fetch.assert_not_called()
+            accounts.pop()
+            self.assertEqual(apify_pool.pool_status(refresh=False)["remainingUsd"], 3)
+
+    def test_local_pool_keeps_newer_usage_and_excludes_removed_accounts(self):
+        cached = {"accounts": [
+            {"label": "ACTIVE", "available": True, "checkedAt": 300, "remainingUsd": 1, "limitUsd": 5},
+            {"label": "REMOVED", "available": True, "remainingUsd": 5, "limitUsd": 5},
+        ]}
+        accounts = [{"label": "ACTIVE", "contributionId": "active-id", "token": "secret",
+                     "verifiedQuota": {"checkedAt": 200, "remainingUsd": 5, "limitUsd": 5}}]
+        with patch.object(apify_pool, "_read_json", return_value=cached), \
+             patch.object(apify_pool, "token_accounts", return_value=accounts):
+            status = apify_pool.pool_status(refresh=False)
+        self.assertEqual(status["accountCount"], 1)
+        self.assertEqual(status["remainingUsd"], 1)
+        self.assertTrue(status["accounts"][0]["community"])
+
     def test_choose_token_uses_earliest_expiring_usable_account(self):
         accounts = [
             {"label": "LATER", "token": "secret-later"},

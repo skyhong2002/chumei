@@ -278,7 +278,8 @@ def active_tokens(path: Path | None = None) -> list[dict]:
     with closing(_connect(db_path)) as conn:
         try:
             rows = conn.execute(
-                "SELECT id,public_id,display_name,token_ciphertext FROM apify_contributions "
+                "SELECT id,public_id,display_name,token_ciphertext,limit_usd,used_usd,remaining_usd,"
+                "cycle_start,cycle_end,checked_at FROM apify_contributions "
                 "WHERE status='active' AND token_ciphertext<>'' ORDER BY created_at"
             ).fetchall()
         except sqlite3.OperationalError:
@@ -293,6 +294,11 @@ def active_tokens(path: Path | None = None) -> list[dict]:
             "label": _account_label(row["public_id"], row["display_name"]),
             "token": token,
             "contributionId": row["id"],
+            "verifiedQuota": {
+                "limitUsd": row["limit_usd"], "usedUsd": row["used_usd"],
+                "remainingUsd": row["remaining_usd"], "cycleStart": row["cycle_start"],
+                "cycleEnd": row["cycle_end"], "checkedAt": row["checked_at"],
+            },
         })
     return accounts
 

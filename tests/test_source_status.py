@@ -13,6 +13,33 @@ import source_status
 
 
 class SourceStatusTests(unittest.TestCase):
+    def test_live_schedule_estimate_uses_new_pool_and_current_instagram_intervals(self):
+        import apify_pool
+        sources = [
+            {"kind": "facebook", "targetIntervalHours": 168},
+            {"kind": "instagram_profile", "username": "test", "targetIntervalHours": 168},
+            {"kind": "instagram_story", "username": "test", "targetIntervalHours": 168},
+        ]
+        pool = {"usableAccountCount": 1, "accounts": [
+            {"available": True, "community": True, "remainingUsd": 5, "cycleEnd": "1970-01-25T00:00:00Z"}
+        ]}
+        with tempfile.TemporaryDirectory() as td, \
+             patch.object(apify_pool, "POOL_STATE_PATH", Path(td) / "pool.json"), \
+             patch.object(source_status, "source_registry", side_effect=lambda: [dict(s) for s in sources]), \
+             patch.object(source_status, "_read_json", return_value={"accounts": {"test": {"interval_hours": 48}}}), \
+             patch.object(source_status, "pool_status", return_value=pool) as status:
+            before = source_status.crawl_schedule_snapshot(now=0)
+            pool["accounts"].append(dict(pool["accounts"][0]))
+            pool["usableAccountCount"] = 2
+            after = source_status.crawl_schedule_snapshot(now=0)
+        status.assert_called_with(refresh=False, now=0)
+        self.assertLess(after["sources"][0]["targetIntervalHours"], before["sources"][0]["targetIntervalHours"])
+        self.assertEqual(after["sources"][1]["targetIntervalHours"], 48)
+        self.assertEqual(after["sources"][2]["targetIntervalHours"], 48)
+        self.assertEqual(before["instagramBatchSize"], 8)
+        self.assertEqual(after["instagramBatchSize"], 11)
+        self.assertEqual(after["usableApifyAccounts"], 2)
+
     def test_registry_has_independent_profile_story_and_backends(self):
         registry = {item["id"]: item for item in source_status.source_registry()}
         self.assertIn("instagram:nthu_official", registry)

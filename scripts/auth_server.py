@@ -80,11 +80,10 @@ from submissions import (
     classify_url,
     normalize_url,
 )
-from source_status import source_registry
+from source_status import crawl_schedule_snapshot, source_registry
 
 
 PORT = 8324
-CRAWL_STATUS_PATH = ROOT / "site" / "api" / "status.json"
 NYCU_AUTHORIZE_URL = "https://id.nycu.edu.tw/o/authorize/"
 NYCU_TOKEN_URL = "https://id.nycu.edu.tw/o/token/"
 NYCU_PROFILE_URL = "https://id.nycu.edu.tw/api/profile/"
@@ -1944,7 +1943,7 @@ def _contribution_crawl_intro() -> str:
     question = "想要抓資料快一點嗎？"
     fallback = f'<p class="contrib-crawl-hook">{question}</p>'
     try:
-        snapshot = json.loads(CRAWL_STATUS_PATH.read_text(encoding="utf-8"))
+        snapshot = crawl_schedule_snapshot()
     except (OSError, ValueError):
         return fallback
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("sources"), list):
@@ -1964,8 +1963,9 @@ def _contribution_crawl_intro() -> str:
     return (
         '<p class="contrib-crawl-hook">目前每個 FB / IG 來源平均每 '
         f'<strong>{days} 天</strong>取得一次。{question}</p>'
-        '<p class="contrib-crawl-basis">依目前排程估算，包含 FB 貼文、IG 貼文與限時動態；'
-        f'資料時間：{_contribution_time(snapshot.get("generatedAt"))}。'
+        '<p class="contrib-crawl-basis">依最新排程與已驗證額度即時估算，包含 FB 貼文、IG 貼文與限時動態；'
+        f'已納入 {int(snapshot.get("usableApifyAccounts") or 0)} 個可用 Apify 帳號，IG 貼文與限時動態每輪各最多處理 {int(snapshot.get("instagramBatchSize") or 0)} 個來源。'
+        f'估算時間：{_contribution_time(snapshot.get("generatedAt"))}。實際更新仍依排程與冷卻限制執行。'
         '<a href="/status/">查看來源更新頻率 →</a></p>'
     )
 
@@ -2072,7 +2072,7 @@ def _contribute_html(
 
     content = f"""
 <section class="contribute-page">
-  <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1>{_contribution_crawl_intro()}<p>替自己的 Apify Token 命名並把閒置免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。</p></section>
+  <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1><div id="contribution-crawl-summary" aria-live="polite">{_contribution_crawl_intro()}</div><p>替自己的 Apify Token 命名並把閒置免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。</p></section>
   <section class="contrib-totals" aria-label="社群貢獻總覽">
     <article><span>本期可用／有效貢獻</span><strong>{int(totals["accounts"])} / {int(totals["registeredAccounts"])}</strong></article>
     <article><span>貢獻者</span><strong>{int(totals["contributors"])}</strong></article>
@@ -2099,6 +2099,19 @@ def _contribute_html(
 .contribute-page{{padding-bottom:56px}}.contrib-hero p{{max-width:760px}}.contrib-totals{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}}.contrib-totals article,.contrib-panel,.contrib-explain article,.contrib-portal{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);background:var(--color-surface)}}.contrib-totals article{{padding:16px}}.contrib-totals span,.contrib-account span,.contrib-my-row span,.contrib-form p,.contrib-muted{{display:block;color:var(--color-text-muted);font-size:.78rem}}.contrib-totals strong{{display:block;margin-top:4px;font-size:clamp(1.55rem,3vw,2.3rem)}}.contrib-explain{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 12px}}.contrib-explain article{{padding:18px}}.contrib-explain article>strong{{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft)}}.contrib-explain h2{{font-size:1rem;margin:14px 0 6px}}.contrib-explain p{{margin:0;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal{{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px;margin-bottom:20px}}.contrib-portal .eyebrow{{margin:0}}.contrib-portal h2{{font-size:1.05rem;margin:4px 0 5px}}.contrib-portal p:not(.eyebrow){{margin:0;max-width:700px;color:var(--color-text-secondary);font-size:.84rem;line-height:1.55}}.contrib-portal-link{{flex:0 0 auto;text-align:center}}.contrib-grid{{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-top:12px}}.contrib-panel{{padding:18px;margin-top:12px}}.contrib-heading{{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}}.contrib-heading h2{{margin:2px 0 0;font-size:1.15rem}}.contrib-heading p{{margin:0}}.contrib-heading a,.contrib-rule{{font-size:.78rem;color:var(--color-text-secondary)}}.contrib-rule{{border:1px solid var(--color-border-subtle);border-radius:var(--radius-pill);padding:5px 9px}}.contrib-form{{padding:14px;border-radius:var(--radius-md);background:var(--color-surface-soft)}}.contrib-form label{{display:block;margin:10px 0 7px;font-size:.8rem;font-weight:650}}.contrib-form label:first-child{{margin-top:0}}.contrib-token-row{{display:flex;gap:8px}}.contrib-token-row input,#apify-name{{box-sizing:border-box;min-width:0;height:42px;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:0 12px;background:var(--color-canvas);color:var(--color-text-primary);font:inherit}}.contrib-token-row input{{flex:1}}#apify-name{{width:100%}}.contrib-form p{{margin:8px 0 0;line-height:1.5}}.contrib-form .contrib-message{{min-height:1.3em;color:var(--color-text-secondary)}}.contrib-my-list,.contrib-account-list{{display:grid;gap:8px;margin-top:12px}}.contrib-my-row,.contrib-account{{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px;border-top:1px solid var(--color-border-subtle)}}.contrib-account{{grid-template-columns:minmax(0,1fr) auto auto}}.contrib-account:first-child,.contrib-my-row:first-child{{border-top:0}}.contrib-account strong,.contrib-my-row strong{{display:block;font-size:.88rem}}.contrib-actions{{display:flex;gap:6px;align-items:center}}.contrib-disable{{font-size:.74rem}}.contrib-table-wrap{{overflow-x:auto}}.contrib-panel table{{width:100%;border-collapse:collapse;font-size:.82rem}}.contrib-panel th,.contrib-panel td{{padding:10px 8px;border-top:1px solid var(--color-border-subtle);text-align:left;white-space:nowrap}}.contrib-panel thead th{{border-top:0;color:var(--color-text-muted);font-size:.72rem}}.contrib-person{{display:inline-flex;align-items:center;gap:8px}}.profile-avatar.contrib-avatar{{width:28px;height:28px;font-size:.72rem}}.contrib-rank{{font-weight:700}}.contrib-empty{{padding:18px!important;color:var(--color-text-muted);text-align:center!important}}@media(max-width:800px){{.contrib-totals{{grid-template-columns:1fr 1fr}}.contrib-explain,.contrib-grid{{grid-template-columns:1fr}}.contrib-portal{{align-items:flex-start;flex-direction:column}}}}@media(max-width:560px){{.contrib-token-row{{display:grid}}.contrib-portal-link{{width:100%}}.contrib-my-row,.contrib-account{{grid-template-columns:1fr auto}}.contrib-actions{{grid-column:1/-1}}.contrib-my-row .contrib-disable{{width:100%}}}}
 </style>
 <script>
+(() => {{
+  let refreshing=false;
+  async function refreshCrawlSummary(){{
+    if(document.hidden||refreshing)return;
+    refreshing=true;
+    try{{
+      const response=await fetch('/auth/crawl-frequency',{{cache:'no-store'}});
+      if(response.ok){{const data=await response.json();document.querySelector('#contribution-crawl-summary').innerHTML=data.html;}}
+    }}catch{{}}finally{{refreshing=false;}}
+  }}
+  setInterval(refreshCrawlSummary,60000);
+  document.addEventListener('visibilitychange',()=>{{if(!document.hidden)refreshCrawlSummary();}});
+}})();
 document.addEventListener('submit',async function(event){{
   if(event.target.id!=='contribution-form')return;
   event.preventDefault();
@@ -2807,6 +2820,10 @@ def create_app(
             google_ok=config.google_configured,
         ))
 
+    async def crawl_frequency(request: Request):
+        intro = await run_in_threadpool(_contribution_crawl_intro)
+        return JSONResponse({"ok": True, "html": intro})
+
     async def apify_contributions(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         if request.method == "GET":
@@ -2935,6 +2952,7 @@ def create_app(
             Route("/auth/me", me, methods=["GET"]),
             Route("/auth/fetch-requests", fetch_requests, methods=["GET", "POST", "DELETE"]),
             Route("/auth/apify-contributions", apify_contributions, methods=["GET", "POST"]),
+            Route("/auth/crawl-frequency", crawl_frequency, methods=["GET"]),
             Route(
                 "/auth/apify-contributions/{public_id}",
                 apify_contribution_item,

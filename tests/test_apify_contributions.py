@@ -56,6 +56,7 @@ class ApifyContributionTests(unittest.TestCase):
         self.assertNotIn(raw_token, stored)
         self.assertEqual(contributions.active_tokens(self.path)[0]["token"], raw_token)
         self.assertEqual(contributions.active_tokens(self.path)[0]["label"], "學生會帳號")
+        self.assertEqual(contributions.active_tokens(self.path)[0]["verifiedQuota"], QUOTA)
 
         public = contributions.dashboard(self.path)
         self.assertEqual(public["totals"]["accounts"], 1)
@@ -66,6 +67,28 @@ class ApifyContributionTests(unittest.TestCase):
         self.assertEqual(public["scoreboard"][0]["name"], "竹梅同學")
         self.assertNotIn(raw_token, repr(public))
         self.assertEqual(public["accounts"][0]["accountLabel"], "學生會帳號")
+
+    def test_registered_and_disabled_account_changes_local_capacity_without_refresh(self):
+        import apify_pool
+        from run_pipeline import instagram_batch_size
+
+        with patch.object(apify_pool, "CACHE_PATH", Path(self.tempdir.name) / "absent-cache.json"), \
+             patch.object(apify_pool, "load_env", return_value={}), \
+             patch.object(apify_pool, "active_tokens", side_effect=lambda: contributions.active_tokens(self.path)), \
+             patch.object(apify_pool, "_fetch_quota") as fetch:
+            before = apify_pool.pool_status(refresh=False)
+            self.assertEqual(before["accountCount"], 0)
+            code, item = contributions.register(
+                self.path, "user_1", "apify_api_" + "n" * 40, QUOTA, name="New account"
+            )
+            self.assertEqual(code, "created")
+            after = apify_pool.pool_status(refresh=False)
+            self.assertEqual(after["usableAccountCount"], 1)
+            self.assertEqual(after["remainingUsd"], QUOTA["remainingUsd"])
+            self.assertEqual(instagram_batch_size(after), instagram_batch_size(before) + 3)
+            contributions.disable(self.path, "user_1", item["publicId"])
+            self.assertEqual(apify_pool.pool_status(refresh=False)["usableAccountCount"], 0)
+            fetch.assert_not_called()
 
     def test_owner_can_rename_an_account_without_resubmitting_the_token(self):
         raw_token = "apify_api_" + "n" * 40

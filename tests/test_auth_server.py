@@ -2,6 +2,7 @@ import importlib.util
 import json
 import re
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -68,6 +69,9 @@ class AuthServerTests(unittest.TestCase):
             database_path=self.db_path,
             cookie_secure=False,
         )
+        self.crawl_snapshot = mock.patch.object(auth_server, "crawl_schedule_snapshot", return_value={"sources": []})
+        self.crawl_snapshot.start()
+        self.addCleanup(self.crawl_snapshot.stop)
         self.http = FakeHTTP()
         self.store = auth_server.AuthStore(self.db_path, self.directory_path)
         app = auth_server.create_app(
@@ -301,7 +305,6 @@ class AuthServerTests(unittest.TestCase):
         self.assertNotIn("token_ciphertext", page.text)
 
     def test_contribute_intro_averages_current_social_source_schedules(self):
-        snapshot_path = Path(self.tempdir.name) / "status.json"
         snapshot = {
             "generatedAt": "2026-09-05T09:32:58+00:00",
             "sources": [
@@ -313,27 +316,35 @@ class AuthServerTests(unittest.TestCase):
                 {"kind": "instagram_story", "targetIntervalHours": 0},
             ],
         }
-        snapshot_path.write_text(json.dumps(snapshot))
-        with mock.patch.object(auth_server, "CRAWL_STATUS_PATH", snapshot_path):
+        with mock.patch.object(auth_server, "crawl_schedule_snapshot", return_value=snapshot):
             page = self.client.get("/contribute/").text
             self.assertIn("<strong>4 天</strong>取得一次。想要抓資料快一點嗎？", page)
-            self.assertIn("依目前排程估算", page)
+            self.assertIn("依最新排程與已驗證額度即時估算", page)
             self.assertIn("2026/9/5 17:32", page)
             self.assertLess(page.index("目前每個 FB / IG 來源"), page.index("替自己的 Apify Token 命名"))
             snapshot["sources"][0]["targetIntervalHours"] = 240
-            snapshot_path.write_text(json.dumps(snapshot))
             self.assertIn("<strong>5 天</strong>", self.client.get("/contribute/").text)
+            live = self.client.get("/auth/crawl-frequency")
+            self.assertEqual(live.status_code, 200)
+            self.assertIn("no-store", live.headers["cache-control"])
+            self.assertIn("<strong>5 天</strong>", live.json()["html"])
 
     def test_contribute_intro_does_not_invent_missing_frequency(self):
-        snapshot_path = Path(self.tempdir.name) / "status.json"
-        with mock.patch.object(auth_server, "CRAWL_STATUS_PATH", snapshot_path):
-            for content in (None, "broken", "[]", '{"sources":[]}', '{"sources":[{"kind":"facebook","targetIntervalHours":-1}]}'):
-                with self.subTest(content=content):
-                    if content is not None:
-                        snapshot_path.write_text(content)
-                    intro = auth_server._contribution_crawl_intro()
-                    self.assertIn("想要抓資料快一點嗎？", intro)
-                    self.assertNotIn("平均每", intro)
+        for snapshot in (None, [], {"sources": []}, {"sources": [{"kind": "facebook", "targetIntervalHours": -1}]}):
+            with self.subTest(snapshot=snapshot), mock.patch.object(auth_server, "crawl_schedule_snapshot", return_value=snapshot):
+                intro = auth_server._contribution_crawl_intro()
+                self.assertIn("想要抓資料快一點嗎？", intro)
+                self.assertNotIn("平均每", intro)
+
+    def test_contribution_frequency_refreshes_visible_page_and_recovers(self):
+        page = self.client.get("/contribute/")
+        script = re.search(r"\(\(\) => \{\n  let refreshing=false;[\s\S]*?\n\}\)\(\);", page.text)
+        self.assertIsNotNone(script)
+        result = subprocess.run(
+            ["node", str(ROOT / "tests" / "contribute_refresh_ui.cjs")],
+            input=script.group(), text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_repeat_login_reuses_identity(self):
         self._login()

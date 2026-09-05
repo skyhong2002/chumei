@@ -350,6 +350,33 @@ def apify_quota(refresh: bool = True) -> dict:
     return pool_status(refresh=refresh)
 
 
+def crawl_schedule_snapshot(*, now: float | None = None) -> dict:
+    """Estimate the next run from local schedules and already-verified pool quota."""
+    from run_pipeline import instagram_batch_size
+
+    now = time.time() if now is None else float(now)
+    apify = pool_status(refresh=False, now=now)
+    sources = source_registry()
+    facebook_count = sum(source["kind"] == "facebook" for source in sources)
+    facebook_interval = recommended_interval_hours(apify, source_count=facebook_count, now=now)
+    schedules = {
+        "instagram_profile": _read_json(ROOT / "state" / "instagram_public_profile_schedule.json"),
+        "instagram_story": _read_json(ROOT / "state" / "instagram_apify_stories_schedule.json"),
+    }
+    for source in sources:
+        if source["kind"] == "facebook":
+            source["targetIntervalHours"] = facebook_interval
+        elif source["kind"] in schedules:
+            account = (schedules[source["kind"]].get("accounts") or {}).get(source["username"], {})
+            if account.get("interval_hours"):
+                source["targetIntervalHours"] = float(account["interval_hours"])
+    return {
+        "generatedAt": now, "sources": sources,
+        "usableApifyAccounts": apify.get("usableAccountCount", 0),
+        "instagramBatchSize": instagram_batch_size(apify),
+    }
+
+
 def build_status_payload(*, refresh_apify: bool = True, now: float | None = None) -> dict:
     now = float(now or time.time())
     ledger = load_ledger()
