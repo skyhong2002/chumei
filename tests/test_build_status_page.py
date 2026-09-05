@@ -1,4 +1,5 @@
 import sys
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -32,13 +33,13 @@ class BuildStatusPageTests(unittest.TestCase):
         self.assertIn("含臨時贈額", build_status_page.SCRIPT)
         self.assertIn("本期已用盡", build_status_page.SCRIPT)
 
-    def test_priority_quota_stacks_source_weight_instead_of_disabling_button(self):
-        script = build_status_page.SCRIPT
-        self.assertIn("state.weights", script)
-        self.assertIn("權重已增加到", script)
-        self.assertIn("重複投入同一來源", script)
-        self.assertIn("button.disabled=false", script)
-        self.assertNotIn("這個來源已在優先佇列中", script)
+    def test_priority_controls_and_quota_updates(self):
+        result = subprocess.run(
+            ["node", str(ROOT / "tests" / "status_page_ui.cjs")],
+            input=build_status_page.SCRIPT.replace("<script>", "").replace("</script>", ""),
+            text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

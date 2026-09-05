@@ -158,6 +158,65 @@ class AuthServerTests(unittest.TestCase):
         )
         self.assertEqual(exhausted.status_code, 429)
 
+    def test_withdrawal_refunds_today_and_cannot_remove_another_users_weight(self):
+        source_id = "instagram:nthu_official"
+        body = {"sourceId": source_id}
+        self.assertEqual(self.client.request("DELETE", "/auth/fetch-requests", json=body).status_code, 401)
+        self._login()
+        other = self.store.get_or_create_user("google", "other-user", "other@example.test")
+        source = next(s for s in auth_server.source_registry() if s["id"] == source_id)
+        self.store.create_fetch_request(other["id"], source)
+        for _ in range(auth_server.FETCH_REQUEST_DAILY_LIMIT):
+            self.assertEqual(self.client.post("/auth/fetch-requests", json=body).status_code, 201)
+        self.assertEqual(self.client.get("/auth/fetch-requests").json()["remainingToday"], 0)
+        for count in range(auth_server.FETCH_REQUEST_DAILY_LIMIT - 1, -1, -1):
+            removed = self.client.request("DELETE", "/auth/fetch-requests", json=body)
+            self.assertEqual(removed.status_code, 200)
+            payload = removed.json()
+            self.assertEqual(payload["weights"][source_id], count + 1)
+            self.assertEqual(payload["myWeights"].get(source_id, 0), count)
+            self.assertEqual(payload["remainingToday"], auth_server.FETCH_REQUEST_DAILY_LIMIT - count)
+        self.assertEqual(self.client.request("DELETE", "/auth/fetch-requests", json=body).status_code, 409)
+        self.assertEqual(self.store.fetch_weight_snapshot()[source_id], 1)
+        self.client.cookies.clear()
+        public = self.client.get("/auth/fetch-requests").json()
+        self.assertEqual(public["weights"][source_id], 1)
+        self.assertEqual(public["myWeights"], {})
+        self.assertEqual(public["remainingToday"], 0)
+        self.assertNotIn("requests", public)
+
+    def test_withdrawal_uses_newest_point_and_old_points_do_not_refund_today(self):
+        self._login()
+        source_id = "instagram:nthu_official"
+        body = {"sourceId": source_id}
+        self.client.post("/auth/fetch-requests", json=body)
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute("UPDATE source_priority_allocations SET created_at=?", (auth_server._taipei_day_start() - 1,))
+        self.client.post("/auth/fetch-requests", json=body)
+        recent = self.client.request("DELETE", "/auth/fetch-requests", json=body).json()
+        self.assertEqual(recent["remainingToday"], auth_server.FETCH_REQUEST_DAILY_LIMIT)
+        self.assertEqual(recent["myWeights"][source_id], 1)
+        old = self.client.request("DELETE", "/auth/fetch-requests", json=body).json()
+        self.assertEqual(old["remainingToday"], auth_server.FETCH_REQUEST_DAILY_LIMIT)
+        self.assertEqual(old["request"]["sourceWeight"], 0)
+        self.assertNotIn(source_id, old["weights"])
+        self.assertEqual(old["myWeights"], {})
+        self.assertEqual(self.client.request("DELETE", "/auth/fetch-requests", json=body).status_code, 409)
+        self.assertEqual(self.client.post("/auth/fetch-requests", json=body).json()["request"]["sourceWeight"], 1)
+
+    def test_allocation_totals_are_not_limited_to_recent_history(self):
+        self._login()
+        user_id = self.client.get("/auth/me").json()["user"]["id"]
+        source_id = "instagram:nthu_official"
+        source = next(s for s in auth_server.source_registry() if s["id"] == source_id)
+        for _ in range(105):
+            self.store.create_fetch_request(user_id, source, daily_limit=110)
+        listing = self.client.get("/auth/fetch-requests").json()
+        self.assertEqual(len(listing["requests"]), 100)
+        self.assertEqual(listing["usedToday"], 105)
+        self.assertEqual(listing["myWeights"][source_id], 105)
+        self.assertEqual(listing["remainingToday"], 0)
+
     def test_pending_one_shot_request_migrates_to_weight_once(self):
         self._login()
         user_id = self.client.get("/auth/me").json()["user"]["id"]

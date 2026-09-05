@@ -903,6 +903,41 @@ class AuthStore:
             "createdAt": now, "updatedAt": now,
         }
 
+    def fetch_allocation_snapshot(self, user_id: str) -> dict:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT source_id,count(*) AS weight FROM source_priority_allocations "
+                "WHERE user_id=? GROUP BY source_id", (user_id,),
+            ).fetchall()
+            used_today = conn.execute(
+                "SELECT count(*) FROM source_priority_allocations "
+                "WHERE user_id=? AND created_at>=?", (user_id, _taipei_day_start()),
+            ).fetchone()[0]
+        return {
+            "myWeights": {row["source_id"]: int(row["weight"]) for row in rows},
+            "usedToday": used_today,
+        }
+
+    def withdraw_fetch_request(self, user_id: str, source_id: str) -> dict | None:
+        # Return today's most recent point first; older points do not replenish today's quota.
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            allocation = conn.execute(
+                "SELECT id FROM source_priority_allocations WHERE user_id=? AND source_id=? "
+                "ORDER BY created_at DESC,id DESC LIMIT 1", (user_id, source_id),
+            ).fetchone()
+            if allocation is None:
+                return None
+            conn.execute("DELETE FROM source_priority_allocations WHERE id=?", (allocation["id"],))
+            conn.execute(
+                "UPDATE source_priority_weights SET weight=MAX(0,weight-1),updated_at=? "
+                "WHERE source_id=?", (_now(), source_id),
+            )
+            row = conn.execute(
+                "SELECT weight FROM source_priority_weights WHERE source_id=?", (source_id,),
+            ).fetchone()
+        return {"sourceId": source_id, "sourceWeight": int(row["weight"]) if row else 0}
+
     def merge_user_follows(self, user_id: str, orgs: list[dict]) -> None:
         """Union browser-local follows into a user's durable follow list."""
         now = _now()
@@ -2403,25 +2438,35 @@ def create_app(
     async def fetch_requests(request: Request):
         user = store.session_user(request.cookies.get(SESSION_COOKIE))
         if not user:
+            if request.method == "GET":
+                return JSONResponse({
+                    "ok": True, "authenticated": False,
+                    "weights": store.fetch_weight_snapshot(), "myWeights": {},
+                    "remainingToday": 0,
+                })
             return JSONResponse(
                 {"ok": False, "error": "authentication required"}, status_code=401
             )
         contribution_count = apify_active_count(store.path, user["id"])
         priority_bonus = contribution_count * PRIORITY_BONUS_PER_ACCOUNT
         daily_limit = FETCH_REQUEST_DAILY_LIMIT + priority_bonus
-        if request.method == "GET":
-            requests = store.fetch_requests_for_user(user["id"], limit=100)
-            day_start = _taipei_day_start()
-            used_today = sum(int(row.get("createdAt") or 0) >= day_start for row in requests)
-            return JSONResponse({
-                "ok": True,
+
+        def quota_payload():
+            allocation = store.fetch_allocation_snapshot(user["id"])
+            return {
+                "ok": True, "authenticated": True,
                 "dailyLimit": daily_limit,
                 "baseDailyLimit": FETCH_REQUEST_DAILY_LIMIT,
                 "contributionBonus": priority_bonus,
-                "usedToday": used_today,
-                "remainingToday": max(0, daily_limit - used_today),
+                **allocation,
+                "remainingToday": max(0, daily_limit - allocation["usedToday"]),
                 "weights": store.fetch_weight_snapshot(),
-                "requests": requests,
+            }
+
+        if request.method == "GET":
+            return JSONResponse({
+                **quota_payload(),
+                "requests": store.fetch_requests_for_user(user["id"], limit=100),
             })
         try:
             body = await request.json()
@@ -2430,31 +2475,24 @@ def create_app(
         source_id = str(body.get("sourceId") or "") if isinstance(body, dict) else ""
         if len(source_id) > 180:
             source_id = ""
+        if request.method == "DELETE":
+            item = store.withdraw_fetch_request(user["id"], source_id)
+            if item is None:
+                return JSONResponse({
+                    **quota_payload(), "ok": False, "error": "no allocation to withdraw",
+                }, status_code=409)
+            return JSONResponse({**quota_payload(), "code": "withdrawn", "request": item})
         source = next((item for item in source_registry() if item["id"] == source_id), None)
         if not source:
             return JSONResponse({"ok": False, "error": "unknown source"}, status_code=400)
         code, item = store.create_fetch_request(user["id"], source, daily_limit=daily_limit)
         if code == "limit":
             return JSONResponse(
-                {"ok": False, "error": "daily request limit reached", "dailyLimit": daily_limit},
+                {**quota_payload(), "ok": False, "error": "daily request limit reached"},
                 status_code=429,
             )
         return JSONResponse(
-            {
-                "ok": True,
-                "code": code,
-                "request": item,
-                "dailyLimit": daily_limit,
-                "contributionBonus": priority_bonus,
-                "remainingToday": max(
-                    0,
-                    daily_limit - sum(
-                        int(row.get("createdAt") or 0) >= _taipei_day_start()
-                        for row in store.fetch_requests_for_user(user["id"], limit=100)
-                    ),
-                ),
-            },
-            status_code=201,
+            {**quota_payload(), "code": code, "request": item}, status_code=201,
         )
 
     def follow_payload(user: dict | None) -> dict:
@@ -2862,7 +2900,7 @@ def create_app(
             Route("/auth/{provider}/start", oauth_start, methods=["GET"]),
             Route("/auth/{provider}/callback", oauth_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
-            Route("/auth/fetch-requests", fetch_requests, methods=["GET", "POST"]),
+            Route("/auth/fetch-requests", fetch_requests, methods=["GET", "POST", "DELETE"]),
             Route("/auth/apify-contributions", apify_contributions, methods=["GET", "POST"]),
             Route(
                 "/auth/apify-contributions/{public_id}",
