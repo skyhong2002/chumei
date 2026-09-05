@@ -2429,6 +2429,24 @@
   // ---- 日曆 ----
   function initCalendar(bundle) {
     var labels = bundle.labels;
+    var selectedDay = todayStr();
+    var calendarMain = calEl.closest("main");
+    calendarMain.classList.add("calendar-explorer");
+    var intro = calendarMain.querySelector(".hero p");
+    if (intro && intro.firstChild) intro.firstChild.textContent = "選日期看當天活動；往下捲可看更遠的月份。";
+    var layout = document.createElement("div");
+    layout.className = "cal-layout";
+    calEl.parentNode.insertBefore(layout, calEl);
+    layout.appendChild(calEl);
+    var dayPanel = document.createElement("aside");
+    dayPanel.className = "cal-day-panel";
+    dayPanel.setAttribute("aria-label", "當日活動");
+    layout.appendChild(dayPanel);
+    var quick = document.createElement("div");
+    quick.className = "cal-quick-filters";
+    quick.setAttribute("aria-label", "常用篩選");
+    calendarMain.querySelector(".filters").appendChild(quick);
+    var quickSelects = {};
     var state = { going: "all", follow: "all", school: "all", campus: "all", cat: "all", org: "all", reg: "all", fee: "all", q: "" };
     function followedOrg(id) { return !!(id && window.chumeiFollow && window.chumeiFollow.isFollowed(id)); }
     var params = new URLSearchParams(location.search);
@@ -2467,6 +2485,30 @@
     buildChips("f-org", [["all", "全部主辦"], ["official", "校方"], ["department", "系所"], ["club", "社團"], ["external", "校外"]], "org");
     buildChips("f-reg", [["all", "全部"], ["required", "需報名"], ["free", "自由入場"]], "reg");
     buildChips("f-fee", [["all", "全部"], ["free", "免費"], ["paid", "付費"]], "fee");
+    [ ["campus", "校區"], ["cat", "類型"] ].forEach(function (item) {
+      var label = document.createElement("label");
+      label.textContent = item[1] + " ";
+      var select = document.createElement("select");
+      select.setAttribute("aria-label", item[1]);
+      chipGroups[item[0]].options.forEach(function (opt) {
+        var option = document.createElement("option");
+        option.value = opt[0]; option.textContent = opt[1]; select.appendChild(option);
+      });
+      select.addEventListener("change", function () { state[item[0]] = select.value; redraw(); });
+      quickSelects[item[0]] = select; label.appendChild(select); quick.appendChild(label);
+    });
+    var quickToggles = {};
+    [["follow", "已追蹤"], ["going", "我會去"]].forEach(function (item) {
+      var button = document.createElement("button"); button.className = "fchip"; button.textContent = item[1];
+      button.addEventListener("click", function () { state[item[0]] = state[item[0]] === "on" ? "all" : "on"; redraw(); });
+      quickToggles[item[0]] = button; quick.appendChild(button);
+    });
+    var clearFilters = document.createElement("button"); clearFilters.className = "fchip"; clearFilters.textContent = "清除篩選";
+    clearFilters.addEventListener("click", function () {
+      Object.keys(state).forEach(function (key) { state[key] = key === "q" ? "" : "all"; });
+      if (search) search.value = ""; redraw();
+    });
+    quick.appendChild(clearFilters);
     window.addEventListener("chumei-follow-change", function () { redraw(); });
     window.addEventListener("chumei-going-change", function () { if (state.going === "on") redraw(); });
 
@@ -2514,6 +2556,7 @@
           var b = chipGroups[key].buttons[opt[0]];
           if (!b) return;
           var n = bundle.events.filter(function (e) { return fromThisMonth(e) && matches(e, key, opt[0]); }).length;
+          b.setAttribute("aria-pressed", String(state[key] === opt[0]));
           b.querySelector(".fchip-count").textContent = String(n);
           b.setAttribute("aria-label", opt[1] + "，本月起 " + n + " 場活動");
         });
@@ -2533,6 +2576,9 @@
       bundle.events.filter(function (e) { return matches(e); }).forEach(function (e) {
         var day = (e.start_at || "").slice(0, 10);
         (byDay[day] = byDay[day] || []).push(e);
+      });
+      Object.keys(byDay).forEach(function (day) {
+        byDay[day].sort(function (a, b) { return (a.start_at || "").localeCompare(b.start_at || "") || a.title.localeCompare(b.title, "zh-Hant"); });
       });
     }
 
@@ -2600,20 +2646,54 @@
         var cls = "cal-cell" + (key === t ? " today" : "");
         var dayEvents = byDay[key] || [];
         monthTotal += dayEvents.length;
-        var evs = dayEvents.map(function (e) {
+        var evs = dayEvents.slice(0, 3).map(function (e) {
           var ed = new Date(e.start_at);
           var tt = e.all_day ? "" : String(ed.getHours()).padStart(2, "0") + ":" + String(ed.getMinutes()).padStart(2, "0");
-          return '<div class="cal-ev-row"><a class="cal-ev ev-' + esc(e.school) + '" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
-            (tt ? '<span class="cal-ev-t">' + tt + "</span>" : "") + esc(e.title) + "</a>" +
-            goingBtn(e, "cal-ev-going") + "</div>";
+          return '<button class="cal-preview ev-' + esc(e.school) + '" data-cal-date="' + key + '" data-cal-event="' + esc(e.id) + '" aria-label="' + esc((tt ? tt + " " : "") + e.title) + '">' +
+            (tt ? '<span class="cal-preview-time">' + tt + "</span>" : "") + '<span>' + esc(e.title) + "</span></button>";
         }).join("");
-        cells += '<div class="' + cls + '"><span class="cal-day">' + d.getDate() + "</span>" + evs + "</div>";
+        cells += '<div class="' + cls + (key === selectedDay ? " selected" : "") + '" data-day="' + key + '">' +
+          '<button class="cal-date-button" data-cal-date="' + key + '" aria-pressed="' + (key === selectedDay) + '" aria-label="' + key + '，' + dayEvents.length + ' 場活動">' + d.getDate() +
+          '<span>' + (dayEvents.length ? dayEvents.length + " 場" : "") + '</span></button>' + evs +
+          (dayEvents.length > 3 ? '<button class="cal-more" data-cal-date="' + key + '">＋' + (dayEvents.length - 3) + ' 場</button>' : "") + "</div>";
       }
       return '<section class="cal-month" id="cal-' + m.getFullYear() + "-" + (m.getMonth() + 1) + '">' +
         '<h2 class="cal-month-title">' + m.getFullYear() + " 年 " + (m.getMonth() + 1) + " 月" +
         '<span class="cal-month-n">' + monthTotal + " 場</span></h2>" +
         '<div class="cal-grid">' + cells + "</div></section>";
     }
+
+    function renderDay(eventId) {
+      var events = byDay[selectedDay] || [];
+      var date = new Date(selectedDay + "T12:00:00");
+      dayPanel.scrollTop = 0;
+      dayPanel.innerHTML = '<h2 tabindex="-1" aria-live="polite">' + (date.getMonth() + 1) + ' 月 ' + date.getDate() + ' 日（' + "日一二三四五六"[date.getDay()] + '）<span>' + events.length + ' 場</span></h2>' +
+        (events.length ? events.map(function (e) {
+          var d = new Date(e.start_at);
+          var time = e.all_day ? "全天" : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+          var where = [labels.campus[e.campus], e.venue].filter(Boolean).join(" · ");
+          return '<details class="cal-day-event ev-' + esc(e.school) + '" data-panel-event="' + esc(e.id) + '"' + (e.id === eventId ? ' open' : '') + '><summary><span class="cal-detail-time">' + time +
+            '</span><span><strong>' + esc(e.title) + '</strong><span class="cal-detail-meta">' + esc(where || "地點待確認") + '</span><span class="cal-detail-hint">查看詳情</span></span></summary>' +
+            '<div class="cal-detail-body">' + (e.organizer ? '<p>' + esc(e.organizer) + '</p>' : '') +
+            (e.summary ? '<p>' + esc(e.summary) + '</p>' : '') + '<a href="/event/' + esc(e.id) + '/">完整活動資訊 →</a>' + goingBtn(e, "cal-detail-going") + '</div></details>';
+        }).join("") : '<p class="cal-day-empty">這天沒有符合條件的活動。可以選其他日期或清除篩選。</p>');
+    }
+    calEl.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-cal-date]");
+      if (!button) return;
+      selectedDay = button.dataset.calDate;
+      calEl.querySelectorAll("[data-day]").forEach(function (cell) {
+        var selected = cell.dataset.day === selectedDay;
+        cell.classList.toggle("selected", selected);
+        cell.querySelector(".cal-date-button").setAttribute("aria-pressed", String(selected));
+      });
+      renderDay(button.dataset.calEvent);
+      if (button.dataset.calEvent) {
+        var opened = dayPanel.querySelector("details[open]");
+        if (opened) opened.scrollIntoView({block: "nearest"});
+      }
+      if (window.innerWidth < 1080) dayPanel.scrollIntoView({block: "start", behavior: "smooth"});
+    });
 
     function monthAt(offset) {
       return new Date(firstMonth.getFullYear(), firstMonth.getMonth() + offset, 1);
@@ -2622,10 +2702,14 @@
     function redraw() {
       indexEvents();
       updateChipCounts();
+      Object.keys(quickSelects).forEach(function (key) { quickSelects[key].value = state[key]; });
+      Object.keys(quickToggles).forEach(function (key) { quickToggles[key].setAttribute("aria-pressed", String(state[key] === "on")); });
+      clearFilters.hidden = !moreActive() && !state.q;
       if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
       var html = "";
       for (var i = -monthsBefore; i <= monthsAfter; i++) html += monthHtml(monthAt(i));
       calEl.innerHTML = html;
+      renderDay();
       var total = bundle.events.filter(function (e) { return fromThisMonth(e) && matches(e); }).length;
       var count = document.getElementById("cal-count");
       if (count) count.textContent = "目前篩選自本月起共 " + total + " 場活動。";
@@ -2648,6 +2732,7 @@
     });
     var todayBtn = document.getElementById("cal-today");
     if (todayBtn) todayBtn.addEventListener("click", function () {
+      selectedDay = todayStr(); redraw();
       var el = document.getElementById("cal-" + now.getFullYear() + "-" + (now.getMonth() + 1));
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     });
