@@ -261,8 +261,26 @@ def split_text(text, limit=2500):
 
 
 def rendered_length(value):
-    """Approximate Telegram's post-entity character count for HTML text."""
-    return len(html.unescape(re.sub(r"<[^>]+>", "", value)))
+    """Count rendered UTF-16 units, including both units of non-BMP emoji."""
+    text = html.unescape(re.sub(r"<[^>]+>", "", value))
+    return len(text.encode("utf-16-le")) // 2
+
+
+def full_post_link(event, label="完整資訊請見原始貼文"):
+    url = (event.get("source") or {}).get("url") or f"{BASE_URL}/event/{event['id']}/"
+    return f'<a href="{html.escape(url, quote=True)}">{label}</a>'
+
+
+def bounded_header(lines, limit, event):
+    """Drop complete optional lines, never cut through HTML tags or links."""
+    header = "\n".join(lines)
+    if rendered_length(header) <= limit:
+        return header
+    footer = full_post_link(event)
+    kept = list(lines)
+    while kept and rendered_length("\n".join(kept + ["", footer])) > limit:
+        kept.pop()
+    return "\n".join(kept + ["", footer]).strip()
 
 
 def event_photo_url(event):
@@ -321,7 +339,7 @@ def format_event_messages(event, first_limit=4096):
         lines.extend(["", summary])
     if (event.get("extraction") or {}).get("needs_review"):
         lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
-    return attach_original("\n".join(lines), event.get("original_text"), first_limit)
+    return attach_original(bounded_header(lines, first_limit, event), event.get("original_text"), first_limit)
 
 
 def format_event(event):
@@ -352,24 +370,40 @@ def format_post_messages(group, first_limit=4096):
     if source_line:
         lines.append(source_line)
     lines.append(f"這則貼文包含 <b>{len(group)}</b> 場活動：")
+    intro = list(lines)
+    blocks = []
     for event in group:
         title = html.escape(compact(event.get("title"), 120))
         url = html.escape(f"{BASE_URL}/event/{event['id']}/", quote=True)
         when = html.escape(format_datetime(event.get("start_at"), event.get("all_day")))
         loc = format_location(event)
-        lines.extend([
+        blocks.append([
             "",
             f'▸ <a href="{url}"><b>{title}</b></a>',
             f"　{format_school(event)}",
             f"　🗓 {when}",
             f"　{loc}",
         ])
+    for block in blocks:
+        lines.extend(block)
     rec_line = format_recurrings_line(lead)
     if rec_line:
         lines.extend(["", rec_line])
     if any((e.get("extraction") or {}).get("needs_review") for e in group):
         lines.extend(["", "⚠️ 資訊由公開貼文擷取，請以原始公告為準。"])
-    return attach_original("\n".join(lines), lead.get("original_text"), first_limit)
+    header = "\n".join(lines)
+    if rendered_length(header) > first_limit:
+        # A semester schedule can contain dozens of events. Keep complete event
+        # blocks and an explicit link to the omitted sessions in the same photo.
+        for count in range(len(blocks) - 1, -1, -1):
+            footer = full_post_link(lead, f"另有 {len(group) - count} 場活動，完整場次請見原始貼文")
+            candidate = intro + [line for block in blocks[:count] for line in block] + ["", footer]
+            header = "\n".join(candidate)
+            if rendered_length(header) <= first_limit:
+                break
+        else:
+            header = bounded_header(intro, first_limit, lead)
+    return attach_original(header, lead.get("original_text"), first_limit)
 
 
 def is_silent_hour(now=None):
@@ -420,6 +454,10 @@ class TelegramClient:
     def send_post(self, group, silent=False, start_part=0, on_sent=None):
         event = group[0]
         messages = format_post_messages(group, first_limit=TELEGRAM_CAPTION_LIMIT)
+        for index, text in enumerate(messages):
+            limit = TELEGRAM_CAPTION_LIMIT if index == 0 else 4096
+            if rendered_length(text) > limit:
+                raise TelegramError(f"formatted post exceeds {limit} UTF-16 units")
         results = []
         for index, text in enumerate(messages[start_part:], start=start_part):
             if index == 0:
@@ -520,7 +558,7 @@ def main():
         if args.dry_run:
             print(f"telegram dry-run: {len(pending)} pending events in {len(groups)} post group(s)")
             for group in groups[: args.max_messages]:
-                parts = len(format_post_messages(group))
+                parts = len(format_post_messages(group, first_limit=TELEGRAM_CAPTION_LIMIT))
                 titles = "；".join(compact(e.get("title"), 40) for e in group)
                 print(f"  [{len(group)} 場/{parts} part(s)] {group[0]['id']} {titles}")
             return 0

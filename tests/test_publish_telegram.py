@@ -191,6 +191,42 @@ class PublisherTests(unittest.TestCase):
         self.assertIn("　🏫 清大", text)
         self.assertIn("　🏫 陽明交大", text)
 
+    def test_25_event_schedule_fits_one_photo_and_links_omitted_sessions(self):
+        group = [event(f"evt_{i}", title=f"中文文化沙龍：第 {i} 堂課", venue="綜合一館 525 教室") for i in range(25)]
+        client = telegram.TelegramClient("token", "@channel")
+        calls, recorded = [], []
+        client.call = lambda method, payload, attempts=2: calls.append((method, payload)) or {"message_id": 317}
+        client.send_post(group, on_sent=lambda result, index, total: recorded.append((result['message_id'], index, total)))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "sendPhoto")
+        caption = calls[0][1]["caption"]
+        self.assertLessEqual(telegram.rendered_length(caption), 1024)
+        self.assertIn("<b>25</b> 場活動", caption)
+        self.assertIn("完整場次請見原始貼文", caption)
+        self.assertIn('href="https://example.com/source"', caption)
+        self.assertEqual(caption.count('<a '), caption.count('</a>'))
+        self.assertEqual(recorded, [(317, 0, 1)])
+
+    def test_emoji_length_counts_utf16_after_html_entities(self):
+        self.assertEqual(telegram.rendered_length('<b>😀 &amp; &#x1F600;</b>'), 7)
+        text = telegram.format_event_messages(event(original_text="😀" * 1500), first_limit=1024)[0]
+        self.assertLessEqual(telegram.rendered_length(text), 1024)
+        self.assertIn("全文請見原始貼文", text)
+
+    def test_oversized_single_event_header_also_fits_caption(self):
+        recs = [{"weekday": 1, "time": "19:00", "title": "社課" * 300, "venue": "教室"}] * 4
+        value = event(title="😀" * 180, summary="長摘要" * 200, post_recurrings=recs)
+        caption = telegram.format_event_messages(value, first_limit=1024)[0]
+        self.assertLessEqual(telegram.rendered_length(caption), 1024)
+        self.assertIn("完整資訊請見原始貼文", caption)
+
+    def test_resuming_delivered_photo_does_not_send_duplicate(self):
+        client = telegram.TelegramClient("token", "@channel")
+        calls = []
+        client.call = lambda *args, **kwargs: calls.append(args)
+        client.send_post([event(str(i)) for i in range(25)], start_part=1)
+        self.assertEqual(calls, [])
+
     def test_silent_hours(self):
         self.assertTrue(telegram.is_silent_hour(datetime(2026, 8, 21, 23, tzinfo=timezone.utc)))
         self.assertFalse(telegram.is_silent_hour(datetime(2026, 8, 21, 12, tzinfo=timezone.utc)))
