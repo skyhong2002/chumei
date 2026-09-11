@@ -1,6 +1,7 @@
 import collections
 import copy
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -377,6 +378,88 @@ class DedupeDistinctSessionTests(unittest.TestCase):
         ]
 
         self.assertEqual([e["id"] for e in self.dedupe(events)], ["evt_a"])
+
+
+class FeedPlatformBadgeTests(unittest.TestCase):
+    """河道貼文右上角：平台標誌，點了到來源帳號主頁。"""
+
+    ENTRY = {"id": 7, "name": "陽明游泳社",
+             "sids": ["ig_ymswim", "fb_ymswimmingclub"],
+             "links": [{"platform": "instagram", "url": "https://www.instagram.com/ymswim/"},
+                       {"platform": "facebook", "url": "https://www.facebook.com/YMswimmingclub"}]}
+
+    def test_profile_url_prefers_the_directory_link_for_that_source(self):
+        self.assertEqual(build_site.profile_url("fb_ymswimmingclub", "facebook", self.ENTRY),
+                         "https://www.facebook.com/YMswimmingclub")
+        self.assertEqual(build_site.profile_url("ig_ymswim", "instagram", self.ENTRY),
+                         "https://www.instagram.com/ymswim/")
+
+    def test_api_source_links_to_the_site_root_not_the_endpoint(self):
+        entry = {"sids": ["nycu_life_api"],
+                 "links": [{"platform": "bulletin", "url": "https://events.life.nycu.edu.tw/api/activities"}]}
+        self.assertEqual(build_site.profile_url("nycu_life_api", "api", entry), "https://events.life.nycu.edu.tw/")
+
+    def test_profile_url_falls_back_to_the_platform_handle(self):
+        self.assertEqual(build_site.profile_url("threads_nthu_sa", "threads", None),
+                         "https://www.threads.com/@nthu_sa")
+        self.assertIsNone(build_site.profile_url("infonews_lecture", "bulletin", None))
+
+    def test_row_shows_platform_logo_linking_to_the_profile(self):
+        post = {"source_id": "ig_ymswim", "post_id": "p1", "source_name": "陽明游泳社", "platform": "instagram",
+                "school": "nycu", "campus": "yangming", "url": "https://www.instagram.com/p/p1/",
+                "profile_url": "https://www.instagram.com/ymswim/", "posted_at": "2026-09-01T10:00:00+08:00",
+                "text": "社課", "image": None, "avatar": None, "org_id": 7, "events": []}
+        html = build_site._feed_row(post, build_site._iso_dt("2026-09-02T10:00:00+08:00"))
+        self.assertIn('<a class="feed-plat" href="https://www.instagram.com/ymswim/" target="_blank"', html)
+        self.assertIn('aria-label="陽明游泳社的 Instagram 主頁"', html)
+        self.assertIn(build_site.FEED_PLAT_ICON["instagram"], html)
+        self.assertNotIn("post-menu", html)
+
+    def test_bulletin_without_profile_shows_a_plain_badge(self):
+        post = {"source_id": "nthu_bulletin", "post_id": "b1", "source_name": "清大公告", "platform": "bulletin",
+                "school": "nthu", "campus": None, "url": None, "profile_url": None,
+                "posted_at": "2026-09-01T10:00:00+08:00", "text": "公告", "image": None, "avatar": None,
+                "org_id": 3, "events": []}
+        html = build_site._feed_row(post, build_site._iso_dt("2026-09-02T10:00:00+08:00"))
+        self.assertIn('<span class="feed-plat" title="公告頁">', html)
+        self.assertNotIn('<a class="feed-plat"', html)
+
+
+class FeedPrerenderTests(unittest.TestCase):
+    """首頁 SSR 的分欄要跟 app.js computeBuckets() 一樣，JS 接手時才不會跳版。"""
+
+    def post(self, pid, school, campus=None, name="", events=()):
+        return {"source_id": "ig_x", "post_id": pid, "source_name": name, "platform": "instagram",
+                "school": school, "campus": campus, "url": None, "posted_at": "2026-09-01T10:00:00+08:00",
+                "text": "t", "image": None, "avatar": None, "org_id": 1, "events": list(events)}
+
+    def test_school_buckets_split_by_campus_and_rotate_cross_school_posts(self):
+        posts = [self.post("a", "nycu", "guangfu"), self.post("b", "nthu"), self.post("c", "nycu", "yangming"),
+                 self.post("d", "both"), self.post("e", "both"), self.post("f", "nycu", None, name="陽明有氧社"),
+                 self.post("g", "nycu", None, name="不明單位")]
+        gf, nthu, ym = build_site.feed_school_buckets(posts)
+        ids = lambda b: [p["post_id"] for p in b]
+        self.assertEqual(ids(gf), ["a", "d", "g"])       # 交大欄：交大＋第一則跨校＋校區不明的交大貼文
+        self.assertEqual(ids(nthu), ["b", "e"])          # 清大欄：清大＋第二則跨校
+        self.assertEqual(ids(ym), ["c", "f", "g"])       # 陽明欄：陽明＋名稱判定＋校區不明的也放
+
+    def test_row_reserves_image_box_when_size_known(self):
+        p = self.post("a", "nthu"); p.update({"image": "/assets/posts/x.jpg", "image_w": 1200, "image_h": 800})
+        html = build_site._feed_row(p, build_site._iso_dt("2026-09-02T10:00:00+08:00"))
+        self.assertIn('<img class="feed-img" src="/assets/posts/x.jpg" alt="" width="1200" height="800" loading="lazy">', html)
+
+    def test_prerender_writes_deck_and_pager_variants(self):
+        posts = [self.post("a", "nycu", "guangfu"), self.post("b", "nthu"), self.post("c", "nycu", "yangming")]
+        index = Path(tempfile.mkdtemp()) / "index.html"
+        index.write_text('<div id="post-feed"><!-- ssr-feed --><!-- /ssr-feed --></div>')
+        with mock.patch.object(build_site, "SITE", index.parent):
+            build_site.prerender_feed(posts)
+        out = index.read_text()
+        self.assertIn('class="feed-cols ssr-deck has-deck-add" style="--ncols:3"', out)
+        self.assertIn('class="feed-cols ssr-pager" style="--ncols:1"', out)
+        self.assertEqual(out.count('<section class="feed-col"'), 4)
+        self.assertIn('<h2>交大</h2>', out)
+        self.assertIn('class="deck-add"', out)
 
 
 class DedupeDeterminismTests(unittest.TestCase):

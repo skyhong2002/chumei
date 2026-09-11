@@ -1766,6 +1766,19 @@ def post_campus(directory_entry, events):
     return inferred if inferred in {"guangfu", "yangming"} else None
 
 
+def local_image_size(image):
+    """本地圖片的 (寬, 高)：河道 <img> 帶 width/height，瀏覽器在圖片載入前就能預留版位，
+    慢速網路下不會等圖片一張張進來把貼文往下推。遠端或讀不到的回 None。"""
+    if not image or not image.startswith("/"):
+        return None
+    try:
+        from PIL import Image
+        with Image.open(SITE / image.lstrip("/")) as im:
+            return im.size
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def cache_post_image(sid, pid, url):
     """把貼文自己的圖存成本地副本（社群 CDN 網址會過期）。失敗記 .miss 不重試。"""
     if not url:
@@ -1883,6 +1896,10 @@ def build_posts_data(events, sid_to_entry=None):
             if not image:
                 own = (it.get("images") or [None])[0] or it.get("image_url")
                 image = cache_post_image(sid, pid, own)
+            elif image.startswith("http"):
+                # 活動海報還留在社群 CDN（會過期）：一樣存本地副本，順便量得到尺寸
+                image = cache_post_image(sid, pid, image) or image
+        image_size = local_image_size(image)
         # 保留段落換行；壓掉行內多餘空白與過多空行
         text = re.sub(r"[ \t]+", " ", it.get("text") or "")
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
@@ -1910,10 +1927,12 @@ def build_posts_data(events, sid_to_entry=None):
             "school": post_school,
             "campus": post_campus(directory_entry, evs) if post_school == "nycu" else None,
             "url": it.get("url"), "posted_at": posted, "fetched_at": discovered,
+            "profile_url": profile_url(sid, it.get("platform"), directory_entry),
             **({"late": True} if late else {}),
             "org_type": it.get("org_type") or lead.get("organizer_type"),
             "text": text[:FEED_TEXT_LIMIT] + ("…" if len(text) > FEED_TEXT_LIMIT else ""),
             "image": image, "avatar": avatar,
+            **({"image_w": image_size[0], "image_h": image_size[1]} if image_size else {}),
             "org_id": (sid_to_entry.get(sid) or {}).get("id") if sid_to_entry else None,
             "events": sorted(({"id": e["id"], "title": e["title"], "start_at": e["start_at"],
                                "all_day": e.get("all_day"), "campus": e.get("campus"),
@@ -1946,8 +1965,6 @@ def build_posts_data(events, sid_to_entry=None):
 FEED_SVG_OPEN = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
                  'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">')
 FEED_ICON = {
-    "dots": ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-             '<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>'),
     "cal": FEED_SVG_OPEN + '<path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M16 3l0 4"/><path d="M8 3l0 4"/><path d="M4 11l16 0"/><path d="M8 15h2v2h-2z"/></svg>',
     "send": FEED_SVG_OPEN + '<path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>',
     "ext": FEED_SVG_OPEN + '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>',
@@ -1963,6 +1980,34 @@ def heart_btn(org_id, org_name, extra_class=""):
             f'aria-pressed="false" aria-label="追蹤主辦：{esc(org_name)}" '
             f'title="追蹤主辦：{esc(org_name)}">{FEED_ICON["heart"]}</button>')
 FEED_PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "api": "官方"}
+# 貼文右上角的平台標誌（Simple Icons，CC0）。公告頁與官方 API 沒有品牌，用訂閱源符號。
+FEED_PLAT_ICON = {
+    "instagram": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077"/></svg>',
+    "facebook": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>',
+    "threads": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.263 11.097c-.03-3.486-1.92-5.586-5.111-5.586-2.13 0-3.922.963-4.863 2.499l2.062 1.438c.535-.843 1.272-1.543 2.628-1.543 1.528 0 2.318.85 2.544 2.431a15 15 0 0 0-2.236-.173c-4.125 0-6.068 1.867-6.068 4.336s1.943 3.99 4.804 3.99c3.139 0 5.013-2.115 5.781-4.735.798.361 1.348 1.204 1.348 2.47 0 3.387-3.907 5.232-7.22 5.232-4.885 0-8.077-3.207-8.077-8.424 0-6.392 4.223-10.487 9.9-10.487 3.808 0 5.69 1.671 6.97 3.914l2.108-1.475C21.44 2.078 18.331 0 13.663 0 6.227 0 1.168 5.277 1.168 12.934c0 7 4.953 11.066 10.856 11.066 4.878 0 9.809-2.846 9.809-7.716 0-2.545-1.46-4.231-3.569-5.187m-6.33 4.855c-1.077 0-2.026-.512-2.026-1.453 0-1.483 1.822-1.934 3.606-1.934.678 0 1.34.045 1.927.173-.422 1.927-1.671 3.215-3.508 3.214Z"/></svg>',
+    "x": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg>',
+    "bulletin": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.199 24C19.199 13.467 10.533 4.8 0 4.8V0c13.165 0 24 10.835 24 24h-4.801zM3.291 17.415c1.814 0 3.293 1.479 3.293 3.295 0 1.813-1.485 3.29-3.301 3.29C1.47 24 0 22.526 0 20.71s1.475-3.294 3.291-3.295zM15.909 24h-4.665c0-6.169-5.075-11.245-11.244-11.245V8.09c8.727 0 15.909 7.184 15.909 15.91z"/></svg>',
+}
+FEED_PLAT_ICON["api"] = FEED_PLAT_ICON["bulletin"]
+# 拉丁字前留一個空格：「陽明游泳社的 Instagram 主頁」
+FEED_PLAT_PAGE = {"instagram": " Instagram 主頁", "facebook": " Facebook 粉專", "threads": " Threads 主頁",
+                  "x": " X 主頁", "bulletin": "公告頁", "api": "官方網站"}
+PROFILE_URL = {"ig": "https://www.instagram.com/{u}/", "fb": "https://www.facebook.com/{u}",
+               "threads": "https://www.threads.com/@{u}", "x": "https://x.com/{u}"}
+
+
+def profile_url(sid, platform, entry):
+    """來源帳號的主頁：名錄裡對應 source_id 的連結（attach 時 links 與 sids 同步 append，
+    索引對齊）；名錄沒有的社群帳號從 source_id 推回。"""
+    for link_sid, link in zip((entry or {}).get("sids", []), (entry or {}).get("links", [])):
+        if link_sid == sid and link.get("url"):
+            if platform == "api":
+                u = urlparse(link["url"])  # 名錄記的是 API 端點，給人看的是站台首頁
+                return f"{u.scheme}://{u.netloc}/"
+            return link["url"]
+    prefix, _, handle = sid.partition("_")
+    tmpl = PROFILE_URL.get(prefix)
+    return tmpl.format(u=handle) if tmpl and handle else None
 
 
 def _iso_dt(s):
@@ -2013,6 +2058,29 @@ def _feed_school_label(post):
     return SCHOOL_LABEL.get(post.get("school") or "", "")
 
 
+def feed_img(p):
+    esc = html.escape
+    size = f' width="{p["image_w"]}" height="{p["image_h"]}"' if p.get("image_w") and p.get("image_h") else ""
+    return f'<img class="feed-img" src="{esc(p["image"])}" alt=""{size} loading="lazy">'
+
+
+def feed_plat_badge(p):
+    """右上角的平台標誌：一眼看出貼文來自 IG／FB／Threads／X 還是公告頁，點了到來源帳號主頁
+    （原文連結在下方動作列已經有了）。"""
+    esc = html.escape
+    plat = p.get("platform") or ""
+    icon = FEED_PLAT_ICON.get(plat)
+    if not icon:
+        return ""
+    page = FEED_PLAT_PAGE.get(plat, plat)
+    label = f'{p.get("source_name") or ""}的{page}'
+    href = p.get("profile_url")
+    if not href:
+        return f'<span class="feed-plat" title="{esc(page.strip())}">{icon}</span>'
+    return (f'<a class="feed-plat" href="{esc(href)}" target="_blank" rel="noopener" '
+            f'title="{esc(label)}" aria-label="{esc(label)}">{icon}</a>')
+
+
 def _feed_row(p, now):
     esc = html.escape
     if p.get("avatar"):
@@ -2024,11 +2092,7 @@ def _feed_row(p, now):
     avatar_el = (f'<a class="feed-org-link" href="{org_href}" aria-label="{esc(p.get("source_name") or "")} 的單位頁">{avatar}</a>'
                  if org_href else avatar)
     school_label = _feed_school_label(p)
-    plat = FEED_PLAT.get(p.get("platform"), p.get("platform"))
-    menu_items = ((f'<a href="{esc(p["url"])}" target="_blank" rel="noopener">查看原文（{esc(plat)}）↗</a>' if p.get("url") else "") +
-                  (f'<a href="{org_href}">單位頁面</a>' if org_href else ""))
-    menu = (f'<details class="post-menu"><summary aria-label="更多選項">{FEED_ICON["dots"]}</summary>'
-            f'<div class="post-menu-panel">{menu_items}</div></details>') if menu_items else ""
+    menu = feed_plat_badge(p)
     name = (f'<a class="feed-org-link" href="{org_href}">{esc(p.get("source_name") or "")}</a>'
             if org_href else esc(p.get("source_name") or ""))
     head = ('<div class="feed-head">'
@@ -2039,7 +2103,7 @@ def _feed_row(p, now):
     long_text = len(p.get("text") or "") > FEED_FOLD_CHARS
     body = ((f'<p class="feed-text{" is-long" if long_text else ""}">{esc(p["text"])}</p>' if p.get("text") else "") +
             ('<button class="feed-text-toggle" type="button">顯示全文</button>' if long_text else "") +
-            (f'<img class="feed-img" src="{esc(p["image"])}" alt="" loading="lazy">' if p.get("image") else ""))
+            (feed_img(p) if p.get("image") else ""))
     evs = ('<div class="feed-evs">' + "".join(_feed_ev_chip(e) for e in p["events"]) + "</div>") if p["events"] else ""
     ev0 = p["events"][0] if p["events"] else None
     share_url = f'{BASE_URL}/event/{ev0["id"]}/' if ev0 else (p.get("url") or BASE_URL)
@@ -2063,15 +2127,143 @@ def _inject_ssr(path, marker, body):
     path.write_text(head + start + body + end + tail)
 
 
-def prerender_feed(posts, shown=30):
-    """把河道前 shown 則靜態渲染進 site/index.html 的 ssr-feed 標記之間，
-    讓爬蟲與初載畫面直接拿到內容；app.js 抓到 posts.json 後原地重繪接手。"""
-    now = datetime.now(TZ_TAIPEI)
-    body = "".join(_feed_row(p, now) for p in posts[:shown]) or '<p class="empty">尚無貼文。</p>'
-    if len(posts) > shown:
+# ---- 首頁 SSR：與 app.js initFeed 的 render()/colHtml() 同構 ----
+# 慢速網路下 app.js 可能好幾秒後才跑；首屏就要長得跟 JS 畫完一樣，JS 接手時原地重繪、不跳版。
+FEED_SCHOOL_L = {"all": "全部", "nycu-guangfu": "交大", "nthu": "清大", "nycu-yangming": "陽明"}
+FEED_DEFAULT_COLS = ["nycu-guangfu", "nthu", "nycu-yangming"]
+FEED_KIND_OPTS = [("all", "全部貼文"), ("events", "僅活動貼文")]
+FEED_FOLLOW_OPTS = [("all", "所有單位"), ("on", "已追蹤單位")]
+FEED_SCHOOL_OPTS = [("all", "全部"), ("nycu-guangfu", "交大"), ("nthu", "清大"), ("nycu-yangming", "陽明")]
+FEED_PLAT_OPTS = [("all", "全部"), ("instagram", "IG"), ("facebook", "FB"), ("threads", "Threads"), ("bulletin", "公告")]
+FEED_ORG_OPTS = [("all", "全部主辦"), ("official", "校方"), ("department", "系所"), ("club", "社團"), ("external", "校外")]
+FEED_CARET = FEED_SVG_OPEN + '<path d="M6 9l6 6l6 -6"/></svg>'
+FEED_ADD_RIVER = (FEED_SVG_OPEN + '<path d="M4 5a2 2 0 0 1 2 -2h9a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2z"/>'
+                  '<path d="M9 3v18"/><path d="M14 12h6"/><path d="M17 9v6"/></svg>')
+
+
+def feed_post_school(p):
+    """app.js postSchool()：交大貼文依校區分到 nycu-guangfu／nycu-yangming，分不出的回 nycu。"""
+    if p.get("school") != "nycu":
+        return p.get("school")
+    if p.get("campus") in ("yangming", "guangfu"):
+        return f"nycu-{p['campus']}"
+    seen_ym = any(e.get("campus") == "nycu-yangming" for e in p.get("events") or [])
+    seen_gf = any(e.get("campus") in ("nycu-guangfu", "nycu-boai") for e in p.get("events") or [])
+    if seen_ym and not seen_gf:
+        return "nycu-yangming"
+    if seen_gf and not seen_ym:
+        return "nycu-guangfu"
+    name = p.get("source_name") or ""
+    if re.match(r"^陽明(?!交大)", name):
+        return "nycu-yangming"
+    if re.match(r"^交大|^NCTU", name, re.I):
+        return "nycu-guangfu"
+    return "nycu"
+
+
+def feed_school_buckets(posts, schools=FEED_DEFAULT_COLS):
+    """app.js computeBuckets()：校別欄各收自己校區的貼文；跨校（both）貼文輪流分配、只出現一次。"""
+    buckets = [[] for _ in schools]
+    rr = 0
+    for p in posts:
+        if p.get("school") == "both":
+            buckets[rr % len(schools)].append(p)
+            rr += 1
+            continue
+        ps = feed_post_school(p)
+        for i, school in enumerate(schools):
+            if ps == school or (ps == "nycu" and school.startswith("nycu-")):
+                buckets[i].append(p)
+    return buckets
+
+
+def _feed_menu_row(label, key, opts, cur="all"):
+    chips = "".join(f'<button class="fchip" data-ck="{key}" data-cv="{v}" aria-pressed="{"true" if v == cur else "false"}">'
+                    f'<span class="fchip-label">{html.escape(t)}</span></button>' for v, t in opts)
+    return f'<div class="filter-row"><span class="label">{label}</span><span class="fgroup">{chips}</span></div>'
+
+
+def _feed_col_menu(school, source_idx, cat_opts):
+    inner = ('<input class="cf-q" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋這一欄" value="">'
+             + _feed_menu_row("貼文", "kind", FEED_KIND_OPTS)
+             + _feed_menu_row("單位", "follow", FEED_FOLLOW_OPTS)
+             + (_feed_menu_row("學校", "school", FEED_SCHOOL_OPTS, school) if source_idx >= 0 else "")
+             + _feed_menu_row("平台", "platform", FEED_PLAT_OPTS)
+             + _feed_menu_row("類型", "cat", cat_opts)
+             + _feed_menu_row("主辦", "org", FEED_ORG_OPTS))
+    remove = '<button class="col-remove">移除這一欄</button>' if source_idx >= 0 else ""
+    return f'<div class="col-picker-menu col-menu-filters">{inner}{remove}</div>'
+
+
+def feed_col_html(i, school, rows, source_idx, cat_opts, more):
+    if school == "all":
+        label, dot = "貼文", "all"
+    else:
+        label, dot = FEED_SCHOOL_L[school], ("nycu" if school.startswith("nycu-") else school)
+    picker = (f'<details class="col-picker"><summary aria-label="這一欄的內容與篩選">'
+              f'<span class="feed-col-dot dot-{dot}"></span><h2>{label}</h2><span class="caret">{FEED_CARET}</span></summary>'
+              f'{_feed_col_menu(school, source_idx, cat_opts)}</details>')
+    body = "".join(rows) or '<p class="empty">沒有符合的貼文。</p>'
+    if more:
         body += '<button class="fchip feed-more">載入更多</button>'
-    _inject_ssr(SITE / "index.html", "ssr-feed", body)
-    print(f"prerender: {min(shown, len(posts))} posts into index.html")
+    return (f'<section class="feed-col" data-idx="{i}" data-source-idx="{source_idx}">'
+            f'<header class="feed-col-head">{picker}</header><div class="col-body">{body}</div></section>')
+
+
+def feed_deck_add_html():
+    return ('<details class="deck-add"><summary aria-label="新增河道">' + FEED_ADD_RIVER + '</summary>'
+            '<div class="addcol-menu"><div class="addcol-title">新增河道</div>'
+            '<button data-add="feed"><span class="feed-col-dot dot-all"></span>貼文</button>'
+            '<button data-add="events"><span class="feed-col-dot dot-events"></span>即將活動</button>'
+            '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div></details>')
+
+
+def prerender_feed(posts, shown=30, deck_shown=12):
+    """首頁 SSR：#post-feed 裡同時放桌機預設三欄 deck（.ssr-deck）與手機單欄（.ssr-pager），
+    由 index.html 內的行內腳本依視窗寬度決定 .feed-wide／.feed-pager，CSS 只顯示對應的一份。
+    欄是固定高度的捲動容器，SSR 每欄放 deck_shown 則就夠首屏；JS 載入 posts.json 後原地重繪接手。"""
+    now = datetime.now(TZ_TAIPEI)
+    cats = sorted({(e.get("category") or "其他") for p in posts for e in p["events"]})
+    cat_opts = [("all", "全部類型")] + [(c, c) for c in cats]
+    cols = []
+    for i, (school, bucket) in enumerate(zip(FEED_DEFAULT_COLS, feed_school_buckets(posts))):
+        rows = [_feed_row(p, now) for p in bucket[:deck_shown]]
+        cols.append(feed_col_html(i, school, rows, i, cat_opts, more=len(bucket) > shown))
+    deck = (f'<div class="feed-cols ssr-deck has-deck-add" style="--ncols:{len(cols)}">'
+            + "".join(cols) + feed_deck_add_html() + "</div>")
+    rows = [_feed_row(p, now) for p in posts[:shown]]
+    pager = ('<div class="feed-cols ssr-pager" style="--ncols:1">'
+             + feed_col_html(0, "all", rows, -1, cat_opts, more=len(posts) > shown) + "</div>")
+    if not posts:
+        deck = pager = '<p class="empty">尚無貼文。</p>'
+    _inject_ssr(SITE / "index.html", "ssr-feed", deck + pager)
+    print(f"prerender: {min(shown, len(posts))} posts + {len(cols)}-col deck into index.html")
+
+
+def prerender_story_strip():
+    """首頁限動列 SSR（app.js initStories 的 strip markup）。沒 SSR 的話它會在 stories.json
+    到了才冒出來，把整條河道往下推一截。"""
+    esc = html.escape
+    path = SITE / "data" / "stories.json"
+    stories = (json.loads(path.read_text()).get("stories") if path.exists() else None) or []
+    groups, order = {}, []
+    for st in stories:
+        if st["username"] not in groups:
+            groups[st["username"]] = []
+            order.append(st["username"])
+        groups[st["username"]].append(st)
+    items = []
+    for u in order:
+        g = groups[u]
+        items.append(f'<button class="story-item" data-user="{esc(u)}" aria-label="{esc(g[0]["name"])} 的限時動態">'
+                     f'<span class="story-ring ring-{esc(g[0]["school"])}"><img src="{esc(g[0]["media"])}" alt="">'
+                     + (f'<span class="story-count">{len(g)}</span>' if len(g) > 1 else "")
+                     + f'</span><span class="story-name">{esc(story_display_name(g[0]["name"]))}</span></button>')
+    hidden = "" if items else " hidden"
+    body = (f'<section id="story-strip" class="story-strip"{hidden} aria-label="社團限時動態">'
+            + "".join(items) + "</section>")
+    _inject_ssr(SITE / "index.html", "ssr-stories", body)
+    print(f"prerender: {len(items)} story accounts into index.html")
 
 
 def _ev_when(e, with_weekday=True):
@@ -2445,6 +2637,7 @@ def main():
     write_merged_event_pages(events, SITE, BASE_URL)
     org_ids = source_page(events, entries)
     prerender_feed(build_posts_data(events, sid_to_entry))
+    prerender_story_strip()
     prerender_events(events)
     prerender_calendar(events)
     prerender_stories()
