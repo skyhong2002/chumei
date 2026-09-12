@@ -3137,7 +3137,8 @@
       var rt = encodeURIComponent(location.pathname + location.search);
       if (window.chumeiToast) {
         window.chumeiToast('要先登入才能加入「我會去」：<a href="/auth/nycu/start?return_to=' + rt +
-          '">學校帳號</a>／<a href="/auth/google/start?return_to=' + rt + '">Google</a>');
+          '">陽明交大</a>／<a href="/auth/nthu/start?return_to=' + rt + '">清大</a>／' +
+          '<a href="/auth/google/start?return_to=' + rt + '">Google</a>');
       } else {
         location.href = "/account/";
       }

@@ -1,6 +1,8 @@
+import base64
 import importlib.util
 import json
 import re
+import time
 import sqlite3
 import subprocess
 import sys
@@ -11,6 +13,8 @@ from pathlib import Path
 from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from starlette.testclient import TestClient
 
 
@@ -21,6 +25,41 @@ auth_server = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = auth_server
 spec.loader.exec_module(auth_server)
 import apify_contributions
+
+
+# NTHUMods Auth 的 id_token 在測試裡用本機 RSA 金鑰簽；JWKS 端點回同一把公鑰（kid "1"）。
+_NTHU_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+_OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _nthu_jwks() -> dict:
+    nums = _NTHU_KEY.public_key().public_numbers()
+    return {"keys": [{
+        "kty": "RSA", "kid": "1", "use": "sig", "alg": "RS256",
+        "n": _b64url(nums.n.to_bytes((nums.n.bit_length() + 7) // 8, "big")),
+        "e": _b64url(nums.e.to_bytes((nums.e.bit_length() + 7) // 8, "big")),
+    }]}
+
+
+def _nthu_id_token(nonce: str, *, key=None, kid: str = "1", **overrides) -> str:
+    now = int(time.time())
+    claims = {
+        "iss": auth_server.NTHU_ISSUER, "aud": "chumei-observe", "sub": "113012345",
+        "name": "王小明", "name_en": "Wang Xiaoming", "inschool": True,
+        "email": "s113012345@gapp.nthu.edu.tw", "nonce": nonce,
+        "iat": now, "exp": now + 3600,
+    }
+    claims.update(overrides)
+    header = _b64url(json.dumps({"alg": "RS256", "kid": kid, "typ": "JWT"}).encode("ascii"))
+    payload = _b64url(json.dumps(claims, ensure_ascii=False).encode("utf-8"))
+    signature = (key or _NTHU_KEY).sign(
+        f"{header}.{payload}".encode("ascii"), padding.PKCS1v15(), hashes.SHA256()
+    )
+    return f"{header}.{payload}.{_b64url(signature)}"
 
 
 class FakeResponse:
@@ -38,13 +77,25 @@ class FakeHTTP:
     def __init__(self):
         self.token_calls = []
         self.profile_calls = []
+        self.nthu_token_overrides = {}
 
     def post(self, url, data, timeout):
         self.token_calls.append((url, data, timeout))
+        if url == auth_server.NTHU_TOKEN_URL:
+            overrides = dict(self.nthu_token_overrides)
+            nonce = overrides.pop("nonce", auth_server._oidc_nonce(data["code_verifier"]))
+            return FakeResponse({
+                "access_token": "nthu-opaque-token",
+                "id_token": _nthu_id_token(nonce, **overrides),
+                "token_type": "Bearer",
+                "expires_in": 1800,
+            })
         return FakeResponse({"access_token": "school-token"})
 
     def get(self, url, headers, timeout):
         self.profile_calls.append((url, headers, timeout))
+        if url == auth_server.NTHU_JWKS_URL:
+            return FakeResponse(_nthu_jwks())
         if "openidconnect" in url:
             return FakeResponse({
                 "sub": "115566778899",
@@ -79,6 +130,7 @@ class AuthServerTests(unittest.TestCase):
             store=self.store,
             oauth_client=auth_server.NYCUOAuthClient(self.http),
             google_oauth_client=auth_server.GoogleOAuthClient(self.http),
+            nthu_oauth_client=auth_server.NTHUOAuthClient(self.http),
         )
         self.client = TestClient(app)
 
@@ -604,10 +656,103 @@ class AuthServerTests(unittest.TestCase):
         self.assertEqual(n_users, 2)
         self.assertEqual(providers, ["google", "nycu"])
 
-    def test_account_page_offers_both_login_options(self):
+    def test_account_page_offers_all_login_options(self):
         page = self.client.get("/account/")
         self.assertIn("/auth/nycu/start", page.text)
+        self.assertIn("/auth/nthu/start", page.text)
         self.assertIn("/auth/google/start", page.text)
+        submit = self.client.get("/submit/")
+        self.assertIn("/auth/nthu/start?return_to=/submit/", submit.text)
+
+    def _nthu_login(self, return_to="/account/", callback_path="/auth/callback"):
+        start = self.client.get(
+            "/auth/nthu/start", params={"return_to": return_to}, follow_redirects=False
+        )
+        self.assertEqual(start.status_code, 302)
+        parsed = urlparse(start.headers["location"])
+        query = parse_qs(parsed.query)
+        self.assertEqual(parsed.geturl().split("?", 1)[0], auth_server.NTHU_AUTHORIZE_URL)
+        self.assertEqual(query["scope"], ["openid profile email"])
+        self.assertEqual(query["client_id"], ["chumei-observe"])
+        self.assertEqual(query["redirect_uri"], ["https://chumei.example/auth/callback"])
+        self.assertEqual(query["code_challenge_method"], ["S256"])
+        self.assertEqual(query["ui_locales"], ["zh"])
+        self.assertTrue(query["nonce"][0])
+        return self.client.get(
+            callback_path,
+            params={"code": "nthu-code", "state": query["state"][0]},
+            follow_redirects=False,
+        )
+
+    def test_nthu_login_verifies_id_token_and_creates_account(self):
+        callback = self._nthu_login("/events/")
+        self.assertEqual(callback.status_code, 303)
+        self.assertEqual(callback.headers["location"], "/events/")
+        me = self.client.get("/auth/me").json()
+        self.assertTrue(me["authenticated"])
+        self.assertEqual(me["user"]["provider"], "nthu")
+        self.assertEqual(me["user"]["displayName"], "王小明")
+        self.assertEqual(me["user"]["email"], "s113012345@gapp.nthu.edu.tw")
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute("SELECT provider, subject FROM oauth_identities").fetchone()
+        self.assertEqual(row, ("nthu", "113012345"))
+        token_url, data, _ = self.http.token_calls[-1]
+        self.assertEqual(token_url, auth_server.NTHU_TOKEN_URL)
+        self.assertEqual(data["client_id"], "chumei-observe")
+        self.assertEqual(data["redirect_uri"], "https://chumei.example/auth/callback")
+        self.assertNotIn("client_secret", data)
+        # 直接驗 id_token，不打 /userinfo；只抓一次 JWKS
+        self.assertEqual(
+            [u for u, _, _ in self.http.profile_calls], [auth_server.NTHU_JWKS_URL]
+        )
+        page = self.client.get("/account/").text
+        self.assertIn("以清大 NTHU 帳號登入", page)
+        self.assertIn("<dt>清大帳號</dt><dd>113012345", page)
+
+    def test_nthu_provider_callback_path_also_works(self):
+        callback = self._nthu_login(callback_path="/auth/nthu/callback")
+        self.assertEqual(callback.status_code, 303)
+        self.assertTrue(self.client.get("/auth/me").json()["authenticated"])
+
+    def test_nthu_id_token_is_rejected_when_tampered(self):
+        cases = {
+            "nonce": {"nonce": "someone-elses-nonce"},
+            "signature": {"key": _OTHER_KEY},
+            "audience": {"aud": "another-client"},
+            "issuer": {"iss": "https://evil.example"},
+            "expired": {"exp": int(time.time()) - 600},
+            "unknown-kid": {"kid": "2"},
+        }
+        for label, overrides in cases.items():
+            with self.subTest(label):
+                self.http.nthu_token_overrides = overrides
+                callback = self._nthu_login()
+                self.assertEqual(callback.status_code, 502)
+                self.assertFalse(self.client.get("/auth/me").json()["authenticated"])
+
+    def test_nthu_cancel_does_not_create_account(self):
+        start = self.client.get("/auth/nthu/start", follow_redirects=False)
+        state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+        callback = self.client.get(
+            "/auth/callback", params={"error": "access_denied", "state": state},
+            follow_redirects=False,
+        )
+        self.assertEqual(callback.status_code, 400)
+        self.assertIn("登入已取消", callback.text)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 0)
+
+    def test_nthu_can_be_linked_to_existing_google_account(self):
+        self._google_login()
+        link = self._link("nthu")
+        self.assertEqual(link.headers["location"], "/account/?link=ok")
+        me = self.client.get("/auth/me").json()["user"]
+        self.assertEqual(sorted(me["providers"]), ["google", "nthu"])
+        page = self.client.get("/account/").text
+        self.assertIn("已綁定清大、Google 帳號", page)
+
+    def test_health_reports_nthu(self):
+        self.assertTrue(self.client.get("/auth/health").json()["nthuConfigured"])
 
     def test_account_dashboard_lists_follows_and_going(self):
         self._login()
@@ -707,8 +852,8 @@ class AuthServerTests(unittest.TestCase):
                 })
             },
         )()
-        subject, email, avatar = auth_server.GoogleOAuthClient(unsafe_http).profile("token")
-        self.assertEqual((subject, email, avatar), ("1", "friend@gmail.com", None))
+        identity = auth_server.GoogleOAuthClient(unsafe_http).profile("token")
+        self.assertEqual(tuple(identity)[:3], ("1", "friend@gmail.com", None))
 
     def test_profile_is_public_unless_disabled(self):
         self._login()
@@ -746,7 +891,7 @@ class AuthServerTests(unittest.TestCase):
         )
         self.assertEqual(start.status_code, 302)
         query = parse_qs(urlparse(start.headers["location"]).query)
-        code = "google-code" if provider == "google" else "authorization-code"
+        code = {"google": "google-code", "nthu": "nthu-code"}.get(provider, "authorization-code")
         return self.client.get(
             f"/auth/{provider}/callback",
             params={"code": code, "state": query["state"][0]},
@@ -766,7 +911,7 @@ class AuthServerTests(unittest.TestCase):
                 conn.execute("SELECT count(*) FROM oauth_identities").fetchone()[0], 2
             )
         page = self.client.get("/account/").text
-        self.assertIn("已綁定學校與 Google 帳號", page)
+        self.assertIn("已綁定陽明交大、Google 帳號", page)
         self.assertIn("解除綁定", page)
 
     def test_link_merges_existing_account_data(self):
