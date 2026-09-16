@@ -6,8 +6,9 @@ most 10 items and 10 scanned profiles per run. Each pipeline invocation
 therefore rotates through the token pool: every run takes a fresh batch of due
 profiles on the account with the most allowance left today, spread across the
 day so live Stories are caught before they expire. Runs still charge the
-account's monthly credit, so the collector stops while a protected Apify
-credit reserve remains for the existing Facebook collector.
+account's monthly credit, so each account's daily Story spend is capped at
+half of its evenly paced remaining credit; the Facebook collector's own
+pacing takes the rest.
 """
 
 from __future__ import annotations
@@ -40,7 +41,6 @@ from source_status import record_api_call, record_fetch
 
 ACTOR_ID = "intropix/instagram-stories-scraper"
 SCHEDULE_STATE = ROOT / "state" / "instagram_apify_stories_schedule.json"
-DEFAULT_RESERVE_USD = 10.0
 PIPELINE_RUNS_PER_DAY = 8  # launchd pipeline cadence is every 3 hours
 TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"}
 
@@ -191,7 +191,6 @@ def main() -> int:
     parser.add_argument("--max-results", type=int, default=STORY_RUN_RESULT_LIMIT)
     parser.add_argument("--max-runs", type=int, default=0,
                         help="actor runs this invocation (0 = spread today's pool allowance over the day)")
-    parser.add_argument("--reserve-usd", type=float, default=DEFAULT_RESERVE_USD)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
     if args.max_accounts < 1 or not 1 <= args.max_results <= STORY_RUN_RESULT_LIMIT or args.max_runs < 0:
@@ -200,11 +199,6 @@ def main() -> int:
     batch = min(args.max_accounts, STORY_RUN_TARGET_LIMIT)
 
     quota = pool_status(refresh=True)
-    if float(quota.get("remainingUsd") or 0) <= args.reserve_usd:
-        refresh_story_output()
-        print(f"stories (Apify): skipped; protected reserve US${args.reserve_usd:.2f}")
-        return 0
-
     rows = [
         row for row in read_sources_csv("ig_accounts.csv")
         if row.get("active", "true").lower() not in {"false", "link"}
@@ -298,8 +292,8 @@ def main() -> int:
         attempted.update(selected)
         save_schedule(SCHEDULE_STATE, schedule)
         delivered = len(items) if items else int(outcome.get("delivered") or 0)
-        budget = record_story_run(label, delivered=delivered)
         cost = usage_usd(run)
+        budget = record_story_run(label, delivered=delivered, cost_usd=cost)
         total_cost += cost or 0.0
         record_run(label, cost_usd=cost, source_count=len(scanned_now), ok=True)
         record_api_call("Apify", operation="instagram story actor", source_count=len(scanned_now),
@@ -308,7 +302,7 @@ def main() -> int:
         runs_done += 1
         print(f"stories (Apify): run {runs_done}/{max_runs} on {label}: delivered={delivered}, "
               f"scanned={len(scanned_now)}/{len(selected)}, cost={cost if cost is not None else 'unreported'}, "
-              f"allowance today {budget['results']}/{STORY_DAILY_RESULT_LIMIT}")
+              f"today {budget['results']}/{STORY_DAILY_RESULT_LIMIT} items, US${budget['costUsd']:.3f}")
 
     live, expired, _ = refresh_story_output(state)
     suffix = f"; stopped: {stop_reason}" if stop_reason and runs_done < max_runs else ""

@@ -38,8 +38,11 @@ checked first. Story media is downloaded immediately because CDN URLs expire.
 
 Runs are not free: each charges the account's monthly credit (US$0.005 per
 run start, US$0.002 per scanned profile, US$0.0025 per delivered item, about
-US$0.03–0.05 per run), so the collector still stops at the same US$10
-aggregate reserve as the Facebook collector.
+US$0.03–0.05 per run). Stories and the Facebook collector share that credit
+evenly: per account and per UTC day, Stories may spend at most half of the
+remaining credit divided by the days left in the billing cycle
+(`apify_pool.story_daily_credit_usd`); the Facebook collector's own pacing
+adapts to whatever remains.
 
 The old `fetch_stories.py` and the authenticated backends in
 `fetch_instagram.py` remain only as diagnostic/migration code. They are not
@@ -56,6 +59,6 @@ private or personal accounts are outside this collector's scope.
 - Profile batches default to five accounts; Story runs scan at most ten
   profiles and deliver at most ten items, and each Apify account gets at most
   40 Story items per day.
-- Both Apify Instagram collectors stop when aggregate remaining credit reaches
-  US$10.
+- Story runs spend at most half of each account's evenly paced remaining
+  credit per day, leaving the other half to the Facebook collector.
 - Fetch telemetry records the backend, batch size, and reported run cost.

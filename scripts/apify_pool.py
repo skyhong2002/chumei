@@ -33,6 +33,11 @@ STORY_DAILY_RESULT_LIMIT = 40
 STORY_RUN_RESULT_LIMIT = 10
 STORY_RUN_TARGET_LIMIT = 10
 STORY_DENIAL_COOLDOWN_HOURS = 1.0
+# Stories and the Facebook collector share each account's monthly credit
+# evenly: per day, Stories may spend at most this share of the account's
+# remaining credit divided by the days left in its billing cycle.
+STORY_CREDIT_SHARE = 0.5
+STORY_RUN_COST_ESTIMATE_USD = 0.045
 # These free accounts can receive a one-cycle US$5 social-account promotion on
 # top of their recurring US$5 allowance. Keep temporary credit spendable, but
 # do not present it as a permanent plan upgrade.
@@ -305,10 +310,30 @@ def story_budget(entry: dict | None, *, now: float) -> dict:
         budget = {"day": _story_day(now), "results": 0, "runs": 0}
     budget.setdefault("results", 0)
     budget.setdefault("runs", 0)
+    budget.setdefault("costUsd", 0.0)
     if float(budget.get("deniedUntil") or 0) <= now:
         budget.pop("deniedUntil", None)
         budget.pop("deniedReason", None)
     return budget
+
+
+def story_daily_credit_usd(row: dict, budget: dict, *, now: float) -> float:
+    """Today's fair Story spending cap for one account (half of its even pacing)."""
+    remaining_at_day_start = (float(row.get("remainingUsd") or 0) - MIN_ACCOUNT_RESERVE_USD
+                              + float(budget.get("costUsd") or 0))
+    cycle_end = _timestamp(row.get("cycleEnd"))
+    days_left = 1.0 if not math.isfinite(cycle_end) else max(1.0, math.ceil((cycle_end - now) / 86400))
+    return max(0.0, STORY_CREDIT_SHARE * remaining_at_day_start / days_left)
+
+
+def story_runs_left(row: dict, budget: dict, *, now: float) -> int:
+    """Runs this account can still start today under both allowance and credit pacing."""
+    if budget.get("deniedUntil"):
+        return 0
+    by_allowance = math.ceil((STORY_DAILY_RESULT_LIMIT - int(budget["results"])) / STORY_RUN_RESULT_LIMIT)
+    credit_left = story_daily_credit_usd(row, budget, now=now) - float(budget.get("costUsd") or 0)
+    by_credit = math.floor(credit_left / STORY_RUN_COST_ESTIMATE_USD + 1e-9)
+    return max(0, min(by_allowance, by_credit))
 
 
 def choose_story_token(*, refresh: bool = False, exclude: set[str] | None = None,
@@ -333,11 +358,11 @@ def choose_story_token(*, refresh: bool = False, exclude: set[str] | None = None
             continue
         budget = story_budget(account_state.get(label), now=now)
         left = STORY_DAILY_RESULT_LIMIT - int(budget["results"])
-        if budget.get("deniedUntil") or left <= 0:
+        if story_runs_left(row, budget, now=now) <= 0:
             continue
         candidates.append((row, budget, left))
     if not candidates:
-        raise RuntimeError("Apify token pool has no account with Story allowance left today")
+        raise RuntimeError("Apify token pool has no account with Story allowance or credit left today")
     candidates.sort(key=lambda item: (
         int(item[0].get("activeActorJobs") or 0) > 0,
         int(item[1]["runs"]) > 0,
@@ -355,7 +380,7 @@ def choose_story_token(*, refresh: bool = False, exclude: set[str] | None = None
 
 
 def record_story_run(label: str, *, delivered: int, denied_reason: str | None = None,
-                     now: float | None = None) -> dict:
+                     cost_usd: float | None = None, now: float | None = None) -> dict:
     """Charge a Story run against the account's daily allowance."""
     now = time.time() if now is None else float(now)
     with _locked_state() as state:
@@ -371,6 +396,8 @@ def record_story_run(label: str, *, delivered: int, denied_reason: str | None = 
         else:
             budget["results"] = int(budget["results"]) + max(0, int(delivered))
             budget["runs"] = int(budget["runs"]) + 1
+            budget["costUsd"] = round(float(budget.get("costUsd") or 0)
+                                      + float(STORY_RUN_COST_ESTIMATE_USD if cost_usd is None else cost_usd), 6)
         entry["story"] = budget
         return dict(budget)
 
@@ -385,9 +412,7 @@ def story_runs_available(status: dict, *, now: float | None = None) -> int:
                 or float(row.get("remainingUsd") or 0) <= MIN_ACCOUNT_RESERVE_USD):
             continue
         budget = story_budget(account_state.get(row.get("label")), now=now)
-        if budget.get("deniedUntil"):
-            continue
-        total += math.ceil((STORY_DAILY_RESULT_LIMIT - int(budget["results"])) / STORY_RUN_RESULT_LIMIT)
+        total += story_runs_left(row, budget, now=now)
     return max(0, total)
 
 
