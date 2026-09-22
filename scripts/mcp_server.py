@@ -10,6 +10,8 @@
   npx @modelcontextprotocol/inspector 或 claude mcp add --transport http chumei http://127.0.0.1:8321/mcp
 """
 
+from site_paths import published_site_dir
+
 import json
 from datetime import datetime, timedelta
 
@@ -18,8 +20,8 @@ from mcp.server.mcpserver import MCPServer
 from chumei_lib import ROOT, TZ_TAIPEI
 
 BASE_URL = "https://chumei.observe.tw"
-EVENTS_PATH = ROOT / "site" / "api" / "events.json"
-SOURCES_PATH = ROOT / "site" / "data" / "sources.json"
+EVENTS_PATH = published_site_dir() / "api" / "events.json"
+SOURCES_PATH = published_site_dir() / "data" / "sources.json"
 PORT = 8321
 
 CAT_SLUG = {"演講": "talk", "工作坊": "workshop", "表演": "show", "展覽": "expo",

@@ -15,7 +15,9 @@ from urllib.parse import urlparse
 from chumei_lib import ROOT, load_env
 
 
-OUTPUT_DIR = ROOT / "site" / "assets" / "source-screenshots"
+from site_paths import build_site_dir
+
+OUTPUT_DIR = build_site_dir() / "assets" / "source-screenshots"
 DOMAIN_SELECTORS = {
     "infonews.nycu.edu.tw": "#changeWidh",
 }

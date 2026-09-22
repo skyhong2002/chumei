@@ -17,6 +17,8 @@ from __future__ import annotations
 import argparse
 import csv
 import html as html_lib
+from site_paths import published_site_dir
+
 import json
 import re
 import subprocess
@@ -32,7 +34,7 @@ from chumei_lib import ROOT, TZ_TAIPEI, append_inbox, iter_inbox, load_env, now_
 from submissions import MAX_ATTEMPTS, SubmissionStore, classify_url, normalize_url
 
 SOURCE_ID = "user_submission"
-EVENTS_JSON = ROOT / "site" / "api" / "events.json"
+EVENTS_JSON = published_site_dir() / "api" / "events.json"
 STATE_DIR = ROOT / "state" / "submissions"
 MANUAL_REVIEW = STATE_DIR / "manual_review.jsonl"
 EXTRACT_CACHE = ROOT / "state" / "extraction" / f"{SOURCE_ID}.json"
@@ -131,7 +133,7 @@ def load_tracked_handles():
 
 def load_org_index():
     """source_id → 名錄 id（site/data/sources.json 的 sids），帳號類回報用來回單位頁連結。"""
-    path = ROOT / "site" / "data" / "sources.json"
+    path = published_site_dir() / "data" / "sources.json"
     if not path.exists():
         return {}
     out = {}

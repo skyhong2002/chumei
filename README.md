@@ -79,9 +79,10 @@ flowchart LR
 | `scripts/publish_push.py` | 依偏好滴灌新活動與「我會去」提醒 |
 | `scripts/publish_telegram.py` | 以原始貼文為單位發布 Telegram 訊息 |
 | `scripts/bot_core.py` | Telegram／LINE 共用的自然語句活動查詢核心 |
-| `scripts/mcp_server.py` | 唯讀 MCP server，資料源為 `site/` 建站產物 |
+| `scripts/mcp_server.py` | 唯讀 MCP server，資料源為目前已發布版本 |
 | `scripts/run_pipeline.py` | 定期抓取、抽取、建站與發布的 orchestrator |
-| `site/` | Caddy 直接提供的靜態網站產物與品牌資產 |
+| `site/` | 網站範本、品牌資產及本機建站／抓取快取 |
+| `published/current` | Caddy 提供的已驗證正式版本（原子 symlink 切換） |
 | `deploy/` | macOS launchd 服務定義 |
 | `docs/SCHEMA.md` | Inbox 與抽取資料格式 |
 
@@ -106,6 +107,8 @@ python3 -m http.server -d site 8899
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
 ```
+
+正式發布使用 `.venv/bin/python scripts/publish_site.py`，離線重建加 `--offline`。首次啟用需調整 Caddy root 並重啟讀取服務，操作與回復步驟見 [原子發布文件](docs/atomic-publication.md)。
 
 正式環境的密鑰只存在被 Git 忽略的 `.env` 或 macOS Keychain；請勿把 OAuth secret、Telegram token、社群 cookie 或 `state/` 內的使用者資料提交到 repository。
 

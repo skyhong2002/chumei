@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from site_paths import build_site_dir
+
 ROOT = Path(__file__).resolve().parent.parent
 INBOX_DIR = ROOT / "data" / "feeds" / "inbox"
 SEEN_DIR = ROOT / "state" / "seen"
@@ -88,7 +90,7 @@ def append_inbox(raw_source, items):
     return n
 
 
-AVATAR_DIR = ROOT / "site" / "assets" / "avatars"
+AVATAR_DIR = build_site_dir() / "assets" / "avatars"
 
 
 def save_avatar(key, url, max_age_days=7):
@@ -98,6 +100,8 @@ def save_avatar(key, url, max_age_days=7):
     try:
         AVATAR_DIR.mkdir(parents=True, exist_ok=True)
         dest = AVATAR_DIR / f"{key}.jpg"
+        if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+            return dest.exists()
         if dest.exists() and time.time() - dest.stat().st_mtime < max_age_days * 86400:
             return True
         import requests
