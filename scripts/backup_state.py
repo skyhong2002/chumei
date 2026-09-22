@@ -111,7 +111,7 @@ def snapshot(root, destination, *, database=None, keep=168):
                 elif path.is_dir():
                     path.chmod(0o700)
             manifest = dict(version=1, created_at=datetime.now(timezone.utc).isoformat(), git_revision=revision, files=files,
-                            keychain_included=False, offsite_copy=False)
+                            keychain_included=False, credential_storage="env_files", offsite_copy=False)
             private_json(staging / 'manifest.json', manifest)
             name = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ') + '-' + uuid.uuid4().hex[:8]
             final = destination / name

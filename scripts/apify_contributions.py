@@ -12,7 +12,6 @@ import hashlib
 import re
 import secrets
 import sqlite3
-import subprocess
 import time
 from contextlib import closing
 from pathlib import Path
@@ -36,28 +35,12 @@ def database_path() -> Path:
     return Path(load_env().get("CHUMEI_AUTH_DATABASE", DEFAULT_DB))
 
 
-def _keychain_value(service: str) -> str:
-    try:
-        result = subprocess.run(
-            ["security", "find-generic-password", "-a", "chumei", "-s", service, "-w"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return result.stdout.strip()
-    except (FileNotFoundError, subprocess.SubprocessError):
-        return ""
-
-
 def encryption_secret() -> str:
     """Use a dedicated key when configured, with the existing OAuth secret as a stable fallback."""
     env = load_env()
     return (
         env.get("CHUMEI_APIFY_CONTRIBUTION_KEY", "").strip()
-        or _keychain_value("tw.observe.chumei.apify-contribution-key")
         or env.get("CHUMEI_NYCU_OAUTH_CLIENT_SECRET", "").strip()
-        or _keychain_value("tw.observe.chumei.nycu-oauth-secret")
     )
 
 
