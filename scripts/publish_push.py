@@ -124,12 +124,16 @@ def reminders_for(subs, events, going, state, today=None):
     today = today or date.today()
     tomorrow = today + timedelta(days=1)
     by_id = {e["id"]: e for e in events if e.get("id")}
+    for event in events:
+        for old_id in event.get("merged_event_ids", []):
+            by_id.setdefault(old_id, event)
     by_user = {}
     for key, record in subs.items():
         if record.get("user_id"):
             by_user.setdefault(record["user_id"], []).append((key, record))
     done = state.setdefault("reminders", {})
     plan = []
+    scheduled = set()
     for user_id, event_ids in going.items():
         devices = by_user.get(user_id)
         if not devices:
@@ -145,9 +149,12 @@ def reminders_for(subs, events, going, state, today=None):
                 when = "今天"
             else:
                 continue
-            if f"{user_id}:{event_id}" in done:
+            canonical_id = event["id"]
+            aliases = [canonical_id, *event.get("merged_event_ids", [])]
+            if (user_id, canonical_id) in scheduled or any(f"{user_id}:{eid}" in done for eid in aliases):
                 continue
-            plan.append((user_id, event_id, devices, reminder_payload(event, when)))
+            scheduled.add((user_id, canonical_id))
+            plan.append((user_id, canonical_id, devices, reminder_payload(event, when)))
     return plan
 
 

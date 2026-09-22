@@ -116,7 +116,7 @@ def apply_overrides(events):
             value = None
         if field == "status" and value == "rejected":
             ev["status"] = "rejected"
-        elif field in ev or field in ("start_at", "end_at", "campus", "venue", "title", "category", "school"):
+        elif field in ev or field in ("start_at", "end_at", "campus", "venue", "title", "category", "school", "source_timezone"):
             ev[field] = value
             if ev.get("status") == "review":
                 ev["status"] = "published"
@@ -678,6 +678,8 @@ def fmt_dt(iso, all_day=False):
         return ""
     try:
         d = datetime.fromisoformat(iso)
+        if not all_day and d.tzinfo is not None:
+            d = d.astimezone(TZ_TAIPEI)
     except ValueError:
         return iso
     wd = "一二三四五六日"[d.weekday()]
@@ -751,10 +753,16 @@ def event_ics(e):
             except ValueError:
                 pass
     else:
+        if st.tzinfo is None:
+            st = st.replace(tzinfo=TZ_TAIPEI)  # Legacy local records; new extraction validates the source zone.
+        st = st.astimezone(TZ_TAIPEI)
         lines.append(f"DTSTART;TZID=Asia/Taipei:{st:%Y%m%dT%H%M%S}")
         if e.get("end_at"):
             try:
                 en = datetime.fromisoformat(e["end_at"])
+                if en.tzinfo is None:
+                    en = en.replace(tzinfo=TZ_TAIPEI)
+                en = en.astimezone(TZ_TAIPEI)
                 lines.append(f"DTEND;TZID=Asia/Taipei:{en:%Y%m%dT%H%M%S}")
             except ValueError:
                 pass
@@ -1077,6 +1085,14 @@ def related_events(event, events, limit=8):
 
 def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_time=False):
     st, en = e.get("start_at"), e.get("end_at")
+    if not e.get("all_day"):
+        def local_time(value):
+            try:
+                dt = datetime.fromisoformat(value)
+                return dt.astimezone(TZ_TAIPEI).isoformat() if dt.tzinfo else value
+            except (TypeError, ValueError):
+                return value
+        st, en = local_time(st), local_time(en)
     loc = join_loc(e)
     gcal = ""
     try:
@@ -1088,6 +1104,11 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
         else:
             # 沒有結束時間就預設 1 小時，零長度的行程在日曆上很難讀
             d2 = datetime.fromisoformat(en) if en else d1 + timedelta(hours=1)
+            if d1.tzinfo is None:
+                d1 = d1.replace(tzinfo=TZ_TAIPEI)
+            if d2.tzinfo is None:
+                d2 = d2.replace(tzinfo=TZ_TAIPEI)
+            d1, d2 = d1.astimezone(TZ_TAIPEI), d2.astimezone(TZ_TAIPEI)
             dates = f"{d1:%Y%m%dT%H%M%S}/{d2:%Y%m%dT%H%M%S}"
         gcal = ("https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + requests.utils.quote(e["title"])
                 + f"&dates={dates}&ctz=Asia/Taipei&location=" + requests.utils.quote(calendar_location(e))
