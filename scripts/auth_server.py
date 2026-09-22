@@ -382,6 +382,7 @@ class AuthStore:
                     id TEXT PRIMARY KEY,
                     display_name TEXT NOT NULL,
                     email TEXT,
+                    profile_public INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
@@ -496,7 +497,10 @@ class AuthStore:
                     "CREATE UNIQUE INDEX IF NOT EXISTS users_calendar_token ON users(calendar_token)"
                 )
             if "profile_public" not in user_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN profile_public INTEGER NOT NULL DEFAULT 1")
+                # Pre-visibility accounts were publicly visible. Preserve their existing
+                # behavior; all newly created accounts explicitly opt out below.
+                conn.execute("ALTER TABLE users ADD COLUMN profile_public INTEGER NOT NULL DEFAULT 0")
+                conn.execute("UPDATE users SET profile_public = 1")
             identity_cols = {r[1] for r in conn.execute("PRAGMA table_info(oauth_identities)")}
             if "avatar_url" not in identity_cols:
                 conn.execute("ALTER TABLE oauth_identities ADD COLUMN avatar_url TEXT")
@@ -668,8 +672,8 @@ class AuthStore:
 
             user_id = str(uuid.uuid4())
             conn.execute(
-                "INSERT INTO users(id, display_name, email, handle, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO users(id, display_name, email, handle, profile_public, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 0, ?, ?)",
                 (user_id, display_name, email, self._free_handle(conn, email or subject), now, now),
             )
             conn.execute(
@@ -1853,6 +1857,8 @@ def _profile_html(
     private_note = ""
     if owner and not profile.get("profile_public"):
         private_note = '<p class="account-hint">這個個人頁目前設為不公開，只有你看得到。可在<a href="/account/">帳號設定</a>改。</p>'
+    if owner and profile.get("profile_public"):
+        private_note = '<p class="account-hint">這個個人頁目前公開，任何人都能看到你的名稱、頭像、追蹤單位與即將參加的活動。可在<a href="/account/">帳號設定</a>改為不公開。</p>'
     going_block = (_going_html(going_ids) if owner
                    else _going_html([eid for eid in going_ids
                                      if eid in byid and str(byid[eid].get("start_at") or "")[:10] >= today]))
@@ -1902,7 +1908,7 @@ def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/
         {nycu_btn}
         {nthu_btn}
         {google_btn}
-        <p class="privacy-note">登入只取得穩定的帳號識別與 Email，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。</p>
+        <p class="privacy-note">登入取得帳號識別、Email 與登入服務提供的名稱或頭像，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。新帳號的個人頁預設不公開；只有你在帳號設定勾選公開並儲存後，其他人才可看到名稱、頭像、追蹤單位與即將參加的活動。追蹤與參加總人數仍會匿名計入。</p>
         </section>"""
     return """<section class="account-card">
         <p class="eyebrow">OAuth-only account</p>
@@ -1933,10 +1939,11 @@ def _account_html(
     if user:
         handle = html.escape(user.get("handle") or "")
         name = html.escape(user.get("display_name") or "竹梅使用者")
-        public = bool(user.get("profile_public", 1))
+        public = bool(user.get("profile_public", 0))
         # ---- 個人檔案
         sections.append(f"""<section class="account-card account-section">
         <h2>個人檔案</h2>
+        <p class="account-hint" role="status">目前個人頁：<strong>{'公開，任何人都能查看' if public else '不公開，只有你能查看'}</strong>。你可以隨時在下方調整並儲存。</p>
         <div class="profile-row">{_avatar_html(user)}<div><strong>{name}</strong><span class="profile-handle">@{handle}</span></div>
           <a class="account-bind" href="/@{handle}">查看個人頁 →</a></div>
         <form method="post" action="/auth/profile" class="account-profile-form">
@@ -1946,7 +1953,7 @@ def _account_html(
             spellcheck="false" value="{handle}"></span></label>
           <p class="account-hint">代號限小寫英數與底線，3–20 字，全站唯一；個人頁網址是 chumei.observe.tw/@代號。</p>
           <label class="account-check"><input type="checkbox" name="public" value="1"{' checked' if public else ''}>
-            <span>公開個人頁<small>其他人能看到你追蹤的單位與即將參加的活動；關掉後只有你自己看得到。</small></span></label>
+            <span>我同意公開個人頁<small>任何人都能看到你的名稱、代號、頭像、追蹤單位與即將參加的活動，包括之後新增的追蹤與參加標記；Email 不會公開。取消勾選並儲存後，個人頁與頭像只有你自己看得到。追蹤與參加總人數仍會匿名計入。</small></span></label>
           <button class="btn btn-primary account-action" type="submit">儲存</button>
         </form>
         </section>""")
@@ -2001,8 +2008,7 @@ def _account_html(
             status_line = "以清大 NTHU 帳號登入"
         else:
             status_line = "以陽明交大 OAuth 登入"
-        bind_hint = ("" if can_unlink else
-                     '<p class="account-hint">綁定另一種登入方式後，用哪個帳號登入都會回到同一份追蹤與回報。</p>')
+        bind_hint = ('<p class="account-hint">綁定另一種登入方式後，用哪個帳號登入都會回到同一份追蹤與回報。若另一個帳號已有資料，會合併進目前帳號並沿用目前的公開設定；目前設為公開時，合併的追蹤與即將參加活動也會公開。</p>')
         sections.append(f"""<section class="account-card account-section">
         <h2>登入方式</h2>
         <div class="account-status"><span class="account-dot"></span>{status_line}</div>
@@ -2736,7 +2742,7 @@ def create_app(
                     "email": user["email"],
                     "handle": user.get("handle"),
                     "profileUrl": f"/@{user['handle']}" if user.get("handle") else None,
-                    "profilePublic": bool(user.get("profile_public", 1)),
+                    "profilePublic": bool(user.get("profile_public", 0)),
                     "avatarUrl": (
                         f"/auth/avatar/{quote(str(user['handle']), safe='')}"
                         if user.get("avatar_url") and user.get("handle") else None

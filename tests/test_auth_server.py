@@ -331,7 +331,10 @@ class AuthServerTests(unittest.TestCase):
             self.assertEqual(listing.json()["mine"][0]["accountLabel"], "社團備用")
             contribution_page = self.client.get("/contribute/").text
             self.assertIn('class="profile-avatar contrib-avatar"', contribution_page)
-            self.assertIn('src="/auth/avatar/student123"', contribution_page)
+            self.assertNotIn('src="/auth/avatar/student123"', contribution_page)
+            self.assertIn("匿名貢獻者", contribution_page)
+            self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "student123", "public": "1"})
+            self.assertIn('src="/auth/avatar/student123"', self.client.get("/contribute/").text)
             self.assertEqual(
                 listing.json()["dailyPriorityLimit"],
                 auth_server.FETCH_REQUEST_DAILY_LIMIT + 3,
@@ -855,18 +858,87 @@ class AuthServerTests(unittest.TestCase):
         identity = auth_server.GoogleOAuthClient(unsafe_http).profile("token")
         self.assertEqual(tuple(identity)[:3], ("1", "friend@gmail.com", None))
 
-    def test_profile_is_public_unless_disabled(self):
+    def test_all_oauth_providers_create_private_profiles(self):
+        for login in (self._login, self._google_login, self._nthu_login):
+            with self.subTest(provider=login.__name__):
+                self.client.cookies.clear()
+                login()
+                user = self.client.get("/auth/me").json()["user"]
+                self.assertFalse(user["profilePublic"])
+                page = self.client.get("/account/").text
+                self.assertIn("不公開，只有你能查看", page)
+                self.assertNotIn('name="public" value="1" checked', page)
+                self.assertIn("包括之後新增的追蹤與參加標記", page)
+                with TestClient(self.client.app) as anon:
+                    self.assertEqual(anon.get(user["profileUrl"]).status_code, 404)
+                    self.assertEqual(anon.get(user["avatarUrl"]).status_code, 404)
+
+    def test_profile_requires_explicit_public_choice_and_can_be_disabled(self):
         self._login()
         self.assertEqual(self.client.get("/auth/me").json()["user"]["handle"], "student123")
-        anon = TestClient(self.client.app)
-        self.assertEqual(anon.get("/@student123").status_code, 200)
-        self.assertNotIn("編輯個人檔案", anon.get("/@student123").text)
-        self.assertEqual(anon.get("/@Student123", follow_redirects=False).status_code, 301)
-        self.assertEqual(anon.get("/@nobody").status_code, 404)
-        self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "student123"})
-        self.assertEqual(anon.get("/@student123").status_code, 404)
-        self.assertEqual(self.client.get("/@student123").status_code, 200)
-        self.assertIn("不公開", self.client.get("/@student123").text)
+        with TestClient(self.client.app) as anon:
+            self.assertEqual(anon.get("/@student123").status_code, 404)
+            self.assertEqual(anon.get("/@Student123", follow_redirects=False).status_code, 404)
+            self.assertEqual(anon.get("/@nobody").status_code, 404)
+            self.assertEqual(self.client.get("/@student123").status_code, 200)
+            self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "student123", "public": "1"})
+            self.assertTrue(self.client.get("/auth/me").json()["user"]["profilePublic"])
+            self.assertEqual(anon.get("/@student123").status_code, 200)
+            self.assertNotIn("編輯個人檔案", anon.get("/@student123").text)
+            self.assertEqual(anon.get("/@Student123", follow_redirects=False).status_code, 301)
+            self.assertIn("公開，任何人都能查看", self.client.get("/account/").text)
+            self.client.post("/auth/profile", data={"display_name": "Sky", "handle": "student123"})
+            self.assertEqual(anon.get("/@student123").status_code, 404)
+            self.assertIn("不公開", self.client.get("/@student123").text)
+
+    def test_private_avatar_cache_never_bypasses_owner_check(self):
+        self._login()
+        upstream = mock.Mock(content=b"owner-avatar", headers={"content-type": "image/png"})
+        upstream.raise_for_status.return_value = None
+        with mock.patch.object(auth_server.requests, "get", return_value=upstream) as get:
+            self.assertEqual(self.client.get("/auth/avatar/student123").status_code, 200)
+            self.client.cookies.clear()
+            self.assertEqual(self.client.get("/auth/avatar/student123").status_code, 404)
+            self._google_login()
+            self.assertEqual(self.client.get("/@student123").status_code, 404)
+            self.assertEqual(self.client.get("/auth/avatar/student123").status_code, 404)
+            self.assertEqual(get.call_count, 1)
+
+    def test_visibility_migration_preserves_existing_choices_and_new_users_are_private(self):
+        for schema in ("missing", "legacy_public_default"):
+            with self.subTest(schema=schema):
+                db = Path(self.tempdir.name) / f"{schema}.sqlite3"
+                visibility = ", profile_public INTEGER NOT NULL DEFAULT 1" if schema == "legacy_public_default" else ""
+                with closing(sqlite3.connect(db)) as conn:
+                    conn.execute("CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, "
+                                 "email TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL" + visibility + ")")
+                    conn.execute("INSERT INTO users(id,display_name,email,created_at,updated_at) VALUES ('old','Old','old@example.test',1,1)")
+                    if visibility:
+                        conn.execute("INSERT INTO users(id,display_name,email,created_at,updated_at,profile_public) VALUES ('private','Private','private@example.test',1,1,0)")
+                    conn.commit()
+                store = auth_server.AuthStore(db, self.directory_path)
+                # Reinitialization is idempotent and does not rewrite choices.
+                store = auth_server.AuthStore(db, self.directory_path)
+                self.assertEqual(store.user_by_handle("old")["profile_public"], 1)
+                if visibility:
+                    self.assertEqual(store.user_by_handle("private")["profile_public"], 0)
+                for provider in ("nycu", "google", "nthu"):
+                    store.get_or_create_user(provider, "new", f"{provider}@example.test")
+                    self.assertEqual(store.user_by_handle(provider)["profile_public"], 0)
+                    store.update_profile(store.user_by_handle(provider)["id"], "Public", provider, True)
+                    store.get_or_create_user(provider, "new", f"{provider}@example.test")
+                    self.assertEqual(store.user_by_handle(provider)["profile_public"], 1)
+
+    def test_account_merge_preserves_destination_visibility(self):
+        for destination_public in (False, True):
+            with self.subTest(destination_public=destination_public):
+                suffix = str(int(destination_public))
+                dest = self.store.get_or_create_user("nycu", "dest" + suffix, "dest" + suffix + "@example.test")
+                source = self.store.get_or_create_user("google", "source" + suffix, "source" + suffix + "@example.test")
+                self.store.update_profile(dest["id"], "Destination", "dest" + suffix, destination_public)
+                self.store.update_profile(source["id"], "Source", "source" + suffix, not destination_public)
+                self.assertEqual(self.store.link_identity(dest["id"], "google", "source" + suffix, "source@example.test"), "merged")
+                self.assertEqual(bool(self.store.user_by_handle("dest" + suffix)["profile_public"]), destination_public)
 
     def test_handles_are_auto_assigned_and_unique(self):
         self._login()
