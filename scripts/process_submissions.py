@@ -177,15 +177,8 @@ def _meta(html, prop):
 
 
 def _http_get(url):
-    headers = {"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"}
-    try:
-        return requests.get(url, timeout=25, headers=headers, allow_redirects=True)
-    except requests.exceptions.SSLError:
-        # 兩校不少站的憑證缺 Subject Key Identifier（同 fetch_infonews），放寬 strict flag 再試
-        from fetch_infonews import _RelaxedAdapter
-        session = requests.Session()
-        session.mount("https://", _RelaxedAdapter())
-        return session.get(url, timeout=25, headers=headers, allow_redirects=True)
+    from safe_outbound import get
+    return get(url, timeout=25, headers={"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"})
 
 
 def fetch_generic(url):
@@ -242,9 +235,11 @@ def screenshot(url, dest_dir):
     out = Path(dest_dir) / "page.jpg"
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(executable_path=chrome, headless=True)
-            ctx = browser.new_context(viewport={"width": 1000, "height": 1400}, locale="zh-TW",
-                                      user_agent=UA, ignore_https_errors=True)
+            browser = pw.chromium.launch(executable_path=chrome, headless=True,
+                                         args=["--disable-background-networking", "--disable-component-update"])
+            from safe_outbound import secure_browser_context
+            ctx = secure_browser_context(browser,viewport={"width": 1000, "height": 1400}, locale="zh-TW",
+                                      user_agent=UA)
             page = ctx.new_page()
             page.set_default_navigation_timeout(30_000)
             page.goto(url, wait_until="domcontentloaded")

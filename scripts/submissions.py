@@ -68,6 +68,11 @@ def normalize_url(raw: str | None) -> str | None:
         parts = urlsplit(value)
     except ValueError:
         return None
+    from safe_outbound import parse_public_url, UnsafeURL
+    try:
+        parse_public_url(value)
+    except UnsafeURL:
+        return None
     host = (parts.hostname or "").lower()
     if not host or "." not in host or any(ch.isspace() for ch in value):
         return None
