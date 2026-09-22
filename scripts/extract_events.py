@@ -35,7 +35,7 @@ Event 欄位：
 - title: 活動名稱（精簡，不含 emoji 與 hashtag）
 - summary: ≤60 字摘要
 - description: 整理後的活動說明（保留報名方式、費用、對象等重點；不要逐字貼原文）
-- source_timezone: 原文時間使用的 IANA 時區（如 Asia/Taipei、America/Los_Angeles）或明示的 UTC offset（如 -07:00）；臺灣校園實體活動可用 Asia/Taipei。海外／線上活動沒有明示時區時填 null，禁止依主辦帳號在臺灣就猜 +08:00；PST/PDT 等模糊縮寫無法確認時也填 null。
+- source_timezone: 原文時間使用的 IANA 時區（如 Asia/Taipei、America/Los_Angeles）或明示的 UTC offset（如 -07:00）；臺灣校園實體活動，或臺灣學校／社團主辦且沒有其他時區提示的線上活動，可用 Asia/Taipei。海外實體／跨國且主辦時區不明的線上活動沒有明示時區時填 null，禁止依主辦帳號在臺灣就猜 +08:00；PST/PDT 等模糊縮寫無法確認時也填 null。
 - start_at / end_at: ISO8601 含來源當地的正確 UTC offset，保留該日期的夏令時間。例：加州 2026/9/25 16:00 是 2026-09-25T16:00:00-07:00，等於臺灣 9/26 07:00，絕不可直接把 -07:00 改成 +08:00。source_timezone 不明時時間填 null，不猜測。年份未寫時，依「貼文日期」推論最近的未來場次（活動宣傳都是預告未來）。只知日期不知時間 → all_day: true 且時間用 00:00。end_at 未知填 null。
 - all_day: bool
 - campus: 下列之一或 null（判斷不了就 null）：
@@ -74,7 +74,7 @@ Event 欄位：
 WEEKDAY_RE = None  # lazily compiled in check_start_at
 
 
-def check_source_timezone(ev):
+def check_source_timezone(ev, item=None):
     """Require an explicit source zone and verify offsets, including DST transitions."""
     import re
     from datetime import datetime, timedelta, timezone
@@ -85,8 +85,24 @@ def check_source_timezone(ev):
         "nthu-main", "nthu-nanda", "nycu-guangfu", "nycu-boai", "nycu-yangming"
     } and ev.get("venue"):
         # A concrete Taiwan campus venue supplies a safe local default. Account
-        # nationality, foreign speakers, and generic online venues do not.
+        # nationality and foreign speakers alone do not.
         name = ev["source_timezone"] = "Asia/Taipei"
+        ev["timezone_basis"] = "taiwan-campus-venue"
+    if not name and ev.get("campus") == "online" and item:
+        # Local institutional online schedules normally use Taiwan time. Explicit
+        # foreign timezone language defeats this fallback; speaker origin does not.
+        context = " ".join(str(v or "") for v in (item.get("text"), ev.get("venue")))
+        foreign_zone = re.search(
+            r"\b(?:PST|PDT|EST|EDT|CST|CDT|MST|MDT|CET|CEST|JST|BST)\b"
+            r"|(?:UTC|GMT)\s*[+-]\s*(?!0?8(?::00)?(?:\D|$))\d"
+            r"|(?:美[東西]|太平洋|紐約|加州|倫敦|日本|東京).{0,2}時間"
+            r"|(?:Pacific|Eastern|Central|Mountain)\s+(?:Standard\s+|Daylight\s+)?Time",
+            context, re.I)
+        if (item.get("school") in {"nthu", "nycu", "both"}
+                and item.get("org_type") in {"official", "department", "club"}
+                and not foreign_zone):
+            name = ev["source_timezone"] = "Asia/Taipei"
+            ev["timezone_basis"] = "taiwan-school-online-source"
     if not name:
         return "source timezone unknown; manual review required"
     try:
@@ -301,7 +317,7 @@ def process_item(env, item, lock, caches):
         conf = float(ev.get("confidence") or 0.5)
         if ev.get("registration_url") and ev["registration_url"].rstrip("/") == (item.get("url") or "").rstrip("/"):
             ev["registration_url"] = None  # 禁止自我指涉的報名連結
-        timezone_reason = check_source_timezone(ev)
+        timezone_reason = check_source_timezone(ev, item)
         review_reason = timezone_reason or check_start_at(ev, item)
         unverified_times = None
         if timezone_reason:
@@ -339,6 +355,7 @@ def process_item(env, item, lock, caches):
                 "needs_review": needs_review, "prompt_version": PROMPT_VERSION,
                 **({"review_reason": review_reason} if review_reason else {}),
                 **({"unverified_times": unverified_times} if unverified_times else {}),
+                **({"timezone_basis": ev["timezone_basis"]} if ev.get("timezone_basis") else {}),
             },
             "status": "review" if needs_review else "published",
         })

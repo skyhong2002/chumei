@@ -67,6 +67,23 @@ class TimezoneTests(unittest.TestCase):
                                  start_at='2026-09-25T16:00:00+08:00', end_at=None))
         self.assertEqual(out['status'], 'published')
 
+    def test_taiwan_institutional_online_default_records_provenance(self):
+        out = self.process(event(campus='online', venue='Zoom', source_timezone=None,
+                                 start_at='2026-09-25T16:00:00+08:00', end_at=None))
+        self.assertEqual(out['status'], 'published')
+        self.assertEqual(out['source_timezone'], 'Asia/Taipei')
+        self.assertEqual(out['extraction']['timezone_basis'], 'taiwan-school-online-source')
+
+    def test_foreign_zone_hint_blocks_online_fallback_but_foreign_speaker_does_not(self):
+        item = {'school': 'nycu', 'org_type': 'department', 'text': '美國教授 Zoom 線上演講'}
+        ev = event(campus='online', venue='Zoom', source_timezone=None,
+                   start_at='2026-09-25T16:00:00+08:00', end_at=None)
+        self.assertIsNone(x.check_source_timezone(dict(ev), item))
+        for text in ['09:00 PDT', '09:00 美國加州時間', '09:00 UTC-7', '09:00 Pacific Time']:
+            with self.subTest(text=text):
+                self.assertIsNotNone(x.check_source_timezone(dict(ev), {**item, 'text': text}))
+        self.assertIsNotNone(x.check_source_timezone(dict(ev), {**item, 'school': 'external'}))
+
     def test_dst_offsets_and_nonexistent_local_time(self):
         for iso, valid in [('2026-09-25T16:00:00-07:00', True),
                            ('2026-01-25T16:00:00-08:00', True),
