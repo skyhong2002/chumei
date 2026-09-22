@@ -1,4 +1,6 @@
-# 竹梅 chumei — 開發計畫（2026-08-21 深夜衝刺）
+# 竹梅 chumei — 歷史開發紀錄（2026-08-21）
+
+> **已封存，不是目前待辦或部署指南。** 下文保留當時架構、進度與想法；RSSHub／cookie 路徑、服務狀態及未完成項目均可能已過時。FB／Apify 抓取和站內投稿表單現在已有實作。最新維護入口是 [README](README.md) 與 [目前架構與維運](docs/operations.md)；實際待辦以 [GitHub Issues](https://github.com/skyhong2002/chumei/issues) 為準。
 
 清大＋交大校園活動聚合站。名稱「竹梅」＝竹（交大，凌竹銘）＋梅（清大，梅貽琦），倒過來致敬梅竹賽。
 
