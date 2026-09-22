@@ -155,6 +155,128 @@ class AuthServerTests(unittest.TestCase):
         )
         return callback
 
+    def _deletion_form(self):
+        page = self.client.get("/account/")
+        token = re.search(r'name="deletion_token" value="([a-f0-9]+)"', page.text).group(1)
+        return {"deletion_token": token, "confirmation": "刪除我的帳號"}
+
+    def _isolate_push(self):
+        pc = auth_server.push_common
+        directory = Path(self.tempdir.name) / "push"
+        for key, value in (("PUSH_DIR", directory), ("SUBS_PATH", directory / "subs.json"),
+                           ("LOCK_PATH", directory / "subs.lock")):
+            patch = mock.patch.object(pc, key, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+        patch = mock.patch.object(pc, "_auth_db_path", return_value=self.db_path)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return pc
+
+    def test_account_deletion_invalidates_credentials_and_only_removes_owner_data(self):
+        pc = self._isolate_push()
+        self._login()
+        user = self.client.get("/auth/me").json()["user"]
+        uid = user["id"]
+        session = self.client.cookies.get(auth_server.SESSION_COOKIE)
+        other = self.store.get_or_create_user("google", "other", "other@example.test")
+        other_session = self.store.create_session(other["id"])
+        calendar = self.store.calendar_token(uid)
+        self.store.set_user_follow(uid, 47, "club", True)
+        self.store.set_user_event(uid, "evt_abcdef", True)
+        self.store.put_oauth_state("link-state", "verifier", "/account/", link_user_id=uid)
+        feed = self.client.post("/auth/saved-feeds", json={"name": "feed", "rule": {}}).json()["feed"]
+        submissions = auth_server.SubmissionStore(self.db_path)
+        submissions.create(uid, "https://example.test/public-event", "private note")
+        submissions.create(other["id"], "https://example.test/other-event", "other note")
+        source = {"id": "source-one", "name": "Source", "kind": "web"}
+        self.store.create_fetch_request(uid, source)
+        self.store.create_fetch_request(other["id"], source)
+        with mock.patch.object(apify_contributions, "encryption_secret", return_value="test-secret"):
+            apify_contributions.register(self.db_path, uid, "apify_api_" + "a" * 30, {"limitUsd": 5, "remainingUsd": 5})
+            self.assertEqual(len(apify_contributions.active_tokens(self.db_path)), 1)
+        pc.upsert_sub({"endpoint": "https://push.example/one"}, user_id=uid)
+        pc.upsert_sub({"endpoint": "https://push.example/two"}, user_id=other["id"])
+        form = {**self._deletion_form(), "user_id": other["id"]}
+        deleted = self.client.post("/auth/account/delete", data=form, headers={"Origin": self.config.public_base_url})
+        self.assertEqual(deleted.status_code, 200)
+        self.assertIn("帳號已永久刪除", deleted.text)
+        self.assertEqual(deleted.headers["Clear-Site-Data"], '"storage"')
+        self.assertIsNone(self.store.session_user(session))
+        with self.assertRaises(sqlite3.IntegrityError):
+            submissions.create(uid, "https://example.test/late-report", "late request")
+        self.assertIsNotNone(self.store.session_user(other_session))
+        self.assertEqual(self.client.get(f"/auth/calendar/{calendar}.ics").status_code, 404)
+        self.assertEqual(self.client.get(urlparse(feed["ics"]).path).status_code, 404)
+        self.assertEqual(self.client.get(urlparse(feed["rss"]).path).status_code, 404)
+        self.assertIsNone(pc.get_sub("https://push.example/one"))
+        self.assertIsNotNone(pc.get_sub("https://push.example/two"))
+        # A pending browser push request cannot recreate the deleted subscription.
+        self.assertIsNone(pc.upsert_sub({"endpoint": "https://push.example/one"}, session_token=session))
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            for table in ("oauth_identities", "sessions", "user_org_follows", "user_event_going",
+                          "source_priority_allocations", "source_fetch_requests", "user_saved_feeds",
+                          "apify_contributions", "submissions"):
+                self.assertEqual(conn.execute(f"SELECT count(*) FROM {table} WHERE user_id=?", (uid,)).fetchone()[0], 0, table)
+            self.assertEqual(conn.execute("SELECT count(*) FROM oauth_states WHERE link_user_id=?", (uid,)).fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT weight FROM source_priority_weights WHERE source_id='source-one'").fetchone()[0], 1)
+            self.assertEqual(conn.execute("SELECT count(*) FROM submissions").fetchone()[0], 1)
+            self.assertIsNotNone(conn.execute("SELECT deleted_at FROM account_deletions WHERE user_id=?", (uid,)).fetchone())
+        with mock.patch.object(apify_contributions, "encryption_secret", return_value="test-secret"):
+            self.assertEqual(apify_contributions.active_tokens(self.db_path), [])
+        self._login()
+        self.assertNotEqual(self.client.get("/auth/me").json()["user"]["id"], uid)
+
+    def test_account_deletion_requires_origin_session_token_and_explicit_confirmation(self):
+        self._isolate_push()
+        self.assertEqual(self.client.post("/auth/account/delete").status_code, 401)
+        self._login()
+        form = self._deletion_form()
+        headers = {"Origin": self.config.public_base_url}
+        for origin in (None, "null", "https://attacker.example", self.config.public_base_url + ".attacker.example"):
+            self.assertEqual(self.client.post("/auth/account/delete", data=form, headers={"Origin": origin} if origin else {}).status_code, 403)
+        for invalid in ("wrong", "無效"):
+            self.assertEqual(self.client.post("/auth/account/delete", data={**form, "deletion_token": invalid}, headers=headers).status_code, 403)
+        self.assertEqual(self.client.post("/auth/account/delete", data={**form, "confirmation": "yes"}, headers=headers).status_code, 400)
+        self.assertEqual(self.client.get("/auth/account/delete").status_code, 405)
+        self.assertTrue(self.client.get("/auth/me").json()["authenticated"])
+        other = self.store.get_or_create_user("google", "other", "other@example.test")
+        self.client.cookies.set(auth_server.SESSION_COOKIE, self.store.create_session(other["id"]))
+        self.assertEqual(self.client.post("/auth/account/delete", data=form, headers=headers).status_code, 403)
+
+    def test_account_deletion_rolls_back_database_on_push_write_failure(self):
+        pc = self._isolate_push()
+        self._login()
+        uid = self.client.get("/auth/me").json()["user"]["id"]
+        pc.upsert_sub({"endpoint": "https://push.example/one"}, user_id=uid)
+        form = self._deletion_form()
+        with mock.patch.object(pc, "save_subs", side_effect=OSError("disk full")):
+            result = self.client.post("/auth/account/delete", data=form, headers={"Origin": self.config.public_base_url})
+        self.assertEqual(result.status_code, 503)
+        self.assertTrue(self.client.get("/auth/me").json()["authenticated"])
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM account_deletions").fetchone()[0], 0)
+
+    def test_account_deletion_tombstones_reapply_idempotently(self):
+        self._isolate_push()
+        self._login()
+        uid = self.client.get("/auth/me").json()["user"]["id"]
+        records = [{"user_id": uid, "deleted_at": 12345}]
+        restored_path = Path(self.tempdir.name) / "restored.sqlite3"
+        with closing(sqlite3.connect(self.db_path)) as live, closing(sqlite3.connect(restored_path)) as backup:
+            live.backup(backup)
+        old_session = self.client.cookies.get(auth_server.SESSION_COOKIE)
+        self.store.reapply_account_deletions(records)
+        self.store.reapply_account_deletions(records)
+        self.assertFalse(self.client.get("/auth/me").json()["authenticated"])
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            self.assertEqual(conn.execute("SELECT user_id,deleted_at FROM account_deletions").fetchall(), [(uid, 12345)])
+        restored = auth_server.AuthStore(restored_path)
+        self.assertIsNotNone(restored.session_user(old_session))
+        restored.reapply_account_deletions(records)
+        self.assertIsNone(restored.session_user(old_session))
+        self.assertEqual(self.client.get("/account/privacy").status_code, 200)
+
     def test_complete_login_creates_account_and_session(self):
         callback = self._login("/events/")
         self.assertEqual(callback.status_code, 303)

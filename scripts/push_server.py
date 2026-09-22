@@ -113,8 +113,10 @@ async def subscribe(request):
         prefs=prefs,
         migrate_from=body.get("migrate_from"),
         ua=request.headers.get("user-agent", ""),
-        user_id=pc.session_user_id(request.cookies.get(pc.SESSION_COOKIE)) or "",
+        session_token=request.cookies.get(pc.SESSION_COOKIE) or "",
     )
+    if record is None:
+        return JSONResponse({"ok": False, "error": "登入已失效，請重新載入"}, status_code=401)
     if not existed and not body.get("migrate_from"):
         try:
             pc.send_push(record, WELCOME, ttl=300)
@@ -150,7 +152,9 @@ async def status(request):
         return JSONResponse({"ok": True, "subscribed": False})
     user_id = pc.session_user_id(request.cookies.get(pc.SESSION_COOKIE)) or ""
     if (record.get("user_id") or "") != user_id:
-        record = pc.upsert_sub(record["sub"], user_id=user_id)
+        record = pc.upsert_sub(record["sub"], session_token=request.cookies.get(pc.SESSION_COOKIE) or "")
+        if record is None:
+            return JSONResponse({"ok": True, "subscribed": False})
     return JSONResponse({"ok": True, "subscribed": True, "prefs": record["prefs"],
                          "linked": bool(record.get("user_id"))})
 

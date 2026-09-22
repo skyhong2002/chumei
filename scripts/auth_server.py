@@ -46,6 +46,7 @@ from typing import NamedTuple
 from urllib.parse import parse_qsl, quote, urlencode, urlparse
 
 import requests
+import push_common
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -379,6 +380,10 @@ class AuthStore:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS account_deletions (
+                    user_id TEXT PRIMARY KEY,
+                    deleted_at INTEGER NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     display_name TEXT NOT NULL,
@@ -877,6 +882,47 @@ class AuthStore:
                 return None
             user = self._attach_avatar(conn, dict(row))
         return user
+
+    def reapply_account_deletions(self, records: list[dict]) -> None:
+        """Restore tool supplies freshest tombstones before serving an old backup."""
+        for record in records:
+            self.delete_account(str(record["user_id"]), deleted_at=int(record["deleted_at"]))
+
+    def delete_account(self, user_id: str, *, deleted_at: int | None = None) -> bool:
+        """Remove live account data atomically; stop linked push before DB commit.
+
+        Both writers take the push lock before resolving sessions, preventing a
+        concurrent subscription from recreating a deleted account's device row.
+        If file cleanup fails, SQLite rolls back and the caller can retry.
+        """
+        with push_common.subs_lock(), self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "INSERT INTO account_deletions(user_id,deleted_at) VALUES (?,?) "
+                "ON CONFLICT(user_id) DO UPDATE SET deleted_at=max(deleted_at,excluded.deleted_at)",
+                (user_id, deleted_at if deleted_at is not None else _now()),
+            )
+            existed = bool(conn.execute("SELECT 1 FROM users WHERE id=?", (user_id,)).fetchone())
+            for row in conn.execute(
+                "SELECT source_id, count(*) AS count FROM source_priority_allocations "
+                "WHERE user_id=? GROUP BY source_id", (user_id,)
+            ).fetchall():
+                conn.execute(
+                    "UPDATE source_priority_weights SET weight=max(0, weight-?), updated_at=? "
+                    "WHERE source_id=?", (row["count"], _now(), row["source_id"])
+                )
+            # Reports are account data, separate from already published events.
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='submissions'").fetchone():
+                conn.execute("DELETE FROM submissions WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM oauth_states WHERE link_user_id=?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+            data = push_common.load_subs()
+            linked = [key for key, row in data["subs"].items() if row.get("user_id") == user_id]
+            for key in linked:
+                del data["subs"][key]
+            if linked:
+                push_common.save_subs(data)
+        return existed
 
     def delete_session(self, raw_token: str | None) -> None:
         if not raw_token:
@@ -1909,7 +1955,7 @@ def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/
         {nycu_btn}
         {nthu_btn}
         {google_btn}
-        <p class="privacy-note">登入取得帳號識別、Email 與登入服務提供的名稱或頭像，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。新帳號的個人頁預設不公開；只有你在帳號設定勾選公開並儲存後，其他人才可看到名稱、頭像、追蹤單位與即將參加的活動。追蹤與參加總人數仍會匿名計入。</p>
+        <p class="privacy-note"><a href="/account/privacy">隱私與資料保留說明</a>。登入取得帳號識別、Email 與登入服務提供的名稱或頭像，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。新帳號的個人頁預設不公開；只有你在帳號設定勾選公開並儲存後，其他人才可看到名稱、頭像、追蹤單位與即將參加的活動。追蹤與參加總人數仍會匿名計入。</p>
         </section>"""
     return """<section class="account-card">
         <p class="eyebrow">OAuth-only account</p>
@@ -1932,6 +1978,7 @@ def _account_html(
     calendar_token: str | None = None,
     saved_feeds: list[dict] | None = None,
     saved_feeds_configured: bool = False,
+    deletion_token: str = "",
     return_to: str = "/account/",
     message_ok: bool = False,
 ) -> str:
@@ -2067,6 +2114,16 @@ def _account_html(
         <p class="account-links"><a href="/submit/">回報新連結 →</a></p>
         </section>""")
 
+        sections.append(f"""<section class="account-card account-section">
+        <h2>刪除帳號</h2>
+        <p>此操作無法復原。所有登入方式、工作階段、追蹤、參加標記、私人行事曆與自訂訂閱、回報紀錄、優先權重分配、Apify 貢獻憑證，以及綁定帳號的推播訂閱都會刪除。已公開收錄的活動仍保留。</p>
+        <p>舊訂閱網址立即失效；再次登入會建立新帳號。本瀏覽器的網站儲存資料也會清除。<a href="/account/privacy">隱私與資料保留說明</a></p>
+        <form method="post" action="/auth/account/delete" class="account-profile-form">
+          <input type="hidden" name="deletion_token" value="{html.escape(deletion_token)}">
+          <label><span>確認刪除：請輸入「刪除我的帳號」</span><input name="confirmation" required autocomplete="off" pattern="刪除我的帳號"></label>
+          <button class="btn account-action" type="submit">永久刪除我的帳號</button>
+        </form>
+        </section>""")
     else:
         sections.append(_login_card_html(nycu_ok, google_ok, return_to, nthu_ok=nthu_ok))
 
@@ -2541,6 +2598,7 @@ def create_app(
                 "calendar_token": store.calendar_token(user["id"]),
                 "saved_feeds": saved,
                 "saved_feeds_configured": bool(config.feed_signing_key),
+                "deletion_token": deletion_token(request.cookies.get(SESSION_COOKIE), user["id"]),
                 "message": (LINK_MESSAGES.get(request.query_params.get("link") or "")
                             or PROFILE_MESSAGES.get(request.query_params.get("profile") or "")
                             or PROFILE_MESSAGES.get(request.query_params.get("feeds") or "")),
@@ -2628,7 +2686,10 @@ def create_app(
             return reply("dup", existing)
         if submissions.count_today(user["id"]) >= DAILY_LIMIT:
             return reply("limit", status_code=429)
-        item = submissions.create(user["id"], url, str(body.get("note") or ""))
+        try:
+            item = submissions.create(user["id"], url, str(body.get("note") or ""))
+        except sqlite3.IntegrityError:
+            return reply("authentication_required", status_code=401)
         return reply("ok", item, status_code=201)
 
     async def oauth_start(request: Request):
@@ -3029,6 +3090,58 @@ def create_app(
         store.set_user_follow(user["id"], orgs[0]["id"], "", False)
         return JSONResponse(follow_payload(user))
 
+    def deletion_token(session: str, user_id: str) -> str:
+        return hmac.new(session.encode(), ("delete-account:" + user_id).encode(), hashlib.sha256).hexdigest()
+
+    async def privacy_page(request: Request):
+        return HTMLResponse(page_shell(
+            "隱私與資料保留｜竹梅活動觀測站", "帳號資料、公開設定與刪除方式。",
+            """<section class="account-page"><h1>隱私與資料保留</h1>
+            <section class="account-card"><h2>我們儲存什麼</h2>
+            <p>登入服務提供的識別碼、Email、名稱與頭像網址，以及你的追蹤、參加標記、活動訂閱、回報、來源優先權重與登入工作階段。竹梅不會取得你的學校或 Google 密碼。Apify 貢獻 token 加密儲存，僅用於活動來源抓取。</p>
+            <h2>公開與私密</h2><p>新帳號預設不公開，可在帳號設定自行選擇。公開個人頁會顯示名稱、代號、頭像、追蹤與即將參加活動；Email 不公開。總人數匿名計算。連結回報的網址與處理結果公開，備註僅本人可見。私人行事曆與自訂訂閱網址等同存取權，可隨時換新使舊網址失效。</p>
+            <h2>刪除與保留</h2><p>在<a href="/account/">帳號設定</a>輸入確認文字即可永久刪除帳號。線上資料庫會移除登入識別、所有工作階段、追蹤、參加標記、訂閱與私密網址、回報紀錄及備註、來源權重分配、Apify 加密憑證；綁定帳號的推播訂閱也會移除。已收錄的公共活動、公開來源及不含帳號識別的統計仍保留。</p>
+            <p>刪除不會撤銷 Google、學校、Apify 等外部服務本身的帳號或授權；你可到提供者設定撤銷授權或 token。已在執行的外部抓取或推播工作可能完成。已下載的行事曆、他人保存的公開內容與其他裝置的本機偏好無法遠端收回；請自行移除。</p>
+            <p>線上帳號資料保留至你刪除為止；過期工作階段會清理。備份與伺服器存取紀錄不會因刪除立即逐筆抹除，依管理者的實際保留設定輪替；目前不承諾固定清除天數。為防止舊備份還原已刪除帳號，系統保留隨機帳號識別碼與刪除時間的最小刪除紀錄，不保留 Email 或憑證。若需處理備份中的資料，請透過網站的原始碼專案聯絡維護者。還原備份前須重新套用其後的刪除要求。</p>
+            </section></section>""",
+            canonical=config.public_base_url.rstrip("/") + "/account/privacy",
+        ))
+
+    async def delete_account(request: Request):
+        session = request.cookies.get(SESSION_COOKIE)
+        user = store.session_user(session)
+        if not user:
+            return _error_page("請先登入", "刪除帳號需要有效的登入狀態。", 401)
+        # Destructive requests fail closed when Origin is missing or mismatched.
+        if request.headers.get("origin") != config.public_base_url.rstrip("/"):
+            return _error_page("無法確認請求來源", "請從帳號設定重新操作。", 403)
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 4096:
+                return _error_page("請求過大", "請從帳號設定重新操作。", 400)
+        form = dict(parse_qsl(raw.decode("utf-8", "replace"), keep_blank_values=True))
+        if not hmac.compare_digest(form.get("deletion_token", "").encode(), deletion_token(session, user["id"]).encode()):
+            return _error_page("確認已失效", "請重新開啟帳號設定後確認刪除。", 403)
+        if form.get("confirmation") != "刪除我的帳號":
+            return _error_page("尚未確認刪除", "請輸入完整的「刪除我的帳號」。", 400)
+        try:
+            deleted = await run_in_threadpool(store.delete_account, user["id"])
+        except (OSError, sqlite3.Error, ValueError):
+            return _error_page("尚未完成刪除", "資料清理失敗，帳號資料已保留，請稍後重試。", 503)
+        if not deleted:
+            return _error_page("帳號已不存在", "請回到登入頁。", 401)
+        avatar_cache.clear()
+        avatar_failures.clear()
+        response = HTMLResponse(page_shell(
+            "帳號已刪除｜竹梅活動觀測站", "帳號已永久刪除。",
+            '<section class="account-page"><h1>帳號已永久刪除</h1><p>舊登入與訂閱連結已失效。已收錄的公共活動仍保留。</p><a href="/">回首頁</a></section>',
+        ))
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
+        response.headers["Clear-Site-Data"] = '"storage"'
+        return response
+
     async def logout(request: Request):
         raw_session = request.cookies.get(SESSION_COOKIE)
         store.delete_session(raw_session)
@@ -3224,6 +3337,8 @@ def create_app(
         routes=[
             Route("/@{handle}", profile_page, methods=["GET"]),
             Route("/auth/avatar/{handle}", avatar_image, methods=["GET"]),
+            Route("/account/privacy", privacy_page, methods=["GET"]),
+            Route("/auth/account/delete", delete_account, methods=["POST"]),
             Route("/account", account, methods=["GET"]),
             Route("/account/", account, methods=["GET"]),
             Route("/submit", submit_page, methods=["GET"]),
