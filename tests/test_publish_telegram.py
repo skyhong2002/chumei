@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -226,6 +227,90 @@ class PublisherTests(unittest.TestCase):
         client.call = lambda *args, **kwargs: calls.append(args)
         client.send_post([event(str(i)) for i in range(25)], start_part=1)
         self.assertEqual(calls, [])
+
+    def test_rejected_photo_uses_identical_silent_html_and_one_checkpoint(self):
+        client = telegram.TelegramClient("token", "@channel")
+        recorded = []
+        client.call = Mock(side_effect=[
+            telegram.TelegramError("photo rejected", 400, "Bad Request: failed to get HTTP URL content"),
+            {"message_id": 17},
+        ])
+        results = client.send_event(event(original_text="😀 & <字>" * 1000), silent=True,
+            on_sent=lambda message, index, total: recorded.append((message["message_id"], index, total)))
+        photo, text = client.call.call_args_list
+        self.assertEqual(photo.args[0], "sendPhoto")
+        self.assertEqual(text.args[0], "sendMessage")
+        self.assertEqual(text.args[1]["text"], photo.args[1]["caption"])
+        self.assertLessEqual(telegram.rendered_length(text.args[1]["text"]), 1024)
+        self.assertEqual(text.args[1]["parse_mode"], "HTML")
+        self.assertTrue(text.args[1]["disable_notification"])
+        self.assertEqual(text.args[1]["link_preview_options"], {"is_disabled": True})
+        self.assertEqual(recorded, [(17, 0, 1)])
+        self.assertEqual(results, [{"message_id": 17}])
+        self.assertTrue(all(call.kwargs["attempts"] == 1 for call in client.call.call_args_list))
+
+    def test_photo_fallback_preserves_multipart_resume(self):
+        client = telegram.TelegramClient("token", "@channel")
+        recorded = []
+        client.call = Mock(side_effect=[
+            telegram.TelegramError("photo rejected", 400, "Bad Request: failed to get HTTP URL content"),
+            {"message_id": 17},
+            telegram.TelegramError("rate limited", 429, "Too Many Requests"),
+        ])
+        callback = lambda message, index, total: recorded.append((message["message_id"], index, total))
+        with patch.object(telegram, "format_post_messages", return_value=["<b>First</b>", "Second"]), patch.object(telegram.time, "sleep"):
+            with self.assertRaises(telegram.TelegramError):
+                client.send_event(event(), on_sent=callback)
+            self.assertEqual(recorded, [(17, 0, 2)])
+            client.call.reset_mock(side_effect=True)
+            client.call.return_value = {"message_id": 18}
+            client.send_event(event(), start_part=1, on_sent=callback)
+        self.assertEqual(client.call.call_args.args[0], "sendMessage")
+        self.assertEqual(client.call.call_args.args[1]["text"], "Second")
+        self.assertEqual(client.call.call_count, 1)
+        self.assertEqual(recorded, [(17, 0, 2), (18, 1, 2)])
+
+    def test_other_api_errors_never_fallback_or_checkpoint(self):
+        for code, description in [
+            (400, "Bad Request: can't parse entities"),
+            (401, "Unauthorized"), (403, "Forbidden"),
+            (429, "Too Many Requests"), (500, "Internal Server Error"),
+            (None, "network/response error"),
+        ]:
+            with self.subTest(code=code):
+                client = telegram.TelegramClient("token", "@channel")
+                error = telegram.TelegramError("rejected", code, description)
+                client.call = Mock(side_effect=error)
+                callback = Mock()
+                with self.assertRaises(telegram.TelegramError) as caught:
+                    client.send_event(event(), on_sent=callback)
+                self.assertIs(caught.exception, error)
+                self.assertEqual(client.call.call_count, 1)
+                callback.assert_not_called()
+
+    def test_photo_timeout_is_not_retried_or_converted_to_text(self):
+        session = Mock()
+        session.post.side_effect = telegram.requests.Timeout("ambiguous delivery")
+        client = telegram.TelegramClient("token", "@channel", session=session)
+        with self.assertRaises(telegram.TelegramError):
+            client.send_event(event())
+        self.assertEqual(session.post.call_count, 1)
+        self.assertTrue(session.post.call_args.args[0].endswith("/sendPhoto"))
+
+    def test_fallback_failure_does_not_checkpoint(self):
+        session = Mock()
+        rejection = Mock()
+        rejection.json.return_value = {
+            "ok": False, "error_code": 400,
+            "description": "Bad Request: failed to get HTTP URL content",
+        }
+        session.post.side_effect = [rejection, telegram.requests.Timeout("ambiguous delivery")]
+        client = telegram.TelegramClient("token", "@channel", session=session)
+        callback = Mock()
+        with self.assertRaises(telegram.TelegramError):
+            client.send_event(event(), on_sent=callback)
+        self.assertEqual(session.post.call_count, 2)
+        callback.assert_not_called()
 
     def test_silent_hours(self):
         self.assertTrue(telegram.is_silent_hour(datetime(2026, 8, 21, 23, tzinfo=timezone.utc)))
