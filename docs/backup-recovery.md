@@ -18,8 +18,9 @@ The private manifest records hashes and the Git revision, never credential
 values. Directories are mode 0700 and files 0600. Copies contain personal data and
 plaintext configured secrets: restrict their destination and encrypt any external
 copy. The tool does not fetch from providers, send notifications, or export
-Keychain entries; runtime credentials now come only from environment files or
-process variables. Any process-only secret must also be preserved in a protected
+Keychain entries; OAuth, feed-signing, and Apify contribution encryption
+settings now come only from environment files or process variables. The Web Push
+VAPID private key remains in the protected `state/push/` files described above. Any process-only secret must also be preserved in a protected
 credential file or separate encrypted custody. SQLite integrity and foreign keys are checked before a snapshot
 becomes visible; incomplete snapshots are not considered backups.
 

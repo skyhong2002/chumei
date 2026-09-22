@@ -18,7 +18,7 @@
 
 `site/` 同時容納追蹤中的範本／資產與可變圖片快取。`publish_site.py` 複製到同磁碟 staging，建站、建立狀態快照並驗證；成功後切換 `published/current`，失敗保留前一版。Caddy 和動態服務讀取已發布版本。跨多個 HTTP 請求不保證同一快照，詳見發布指南。
 
-使用者帳號、登入狀態、追蹤、私人訂閱與貢獻資料位於 `state/auth.sqlite3`；推播訂閱和發送狀態位於 `state/push/`。金鑰由受限權限的 `.env`／`.env.apify` 與程序環境變數提供，不屬於公開網站；程式不再讀取 Keychain，舊機部署前須先完成 [一次性遷移](credential-migration.md)。新帳號個人頁預設不公開；刪除帳號會留下最小刪除紀錄，讓舊備份還原時重套刪除，見 [個人頁隱私](profile-privacy.md) 與 [帳號刪除](account-deletion.md)。
+使用者帳號、登入狀態、追蹤、私人訂閱與貢獻資料位於 `state/auth.sqlite3`；推播訂閱和發送狀態位於 `state/push/`。登入、訂閱簽章與 Apify 貢獻加密設定由受限權限的 `.env`／`.env.apify` 與程序環境變數提供，Web Push VAPID 私鑰則保存在受保護的 `state/push/`，均不屬於公開網站；程式不再讀取 Keychain，舊機部署前須先完成 [一次性遷移](credential-migration.md)。新帳號個人頁預設不公開；刪除帳號會留下最小刪除紀錄，讓舊備份還原時重套刪除，見 [個人頁隱私](profile-privacy.md) 與 [帳號刪除](account-deletion.md)。
 
 ## 服務清單
 

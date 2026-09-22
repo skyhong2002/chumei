@@ -96,7 +96,7 @@ flowchart LR
 
 `PLAN.md` 是 2026-08-21 的歷史紀錄；不再用作待辦清單。進行中的工作以 [Issues](https://github.com/skyhong2002/chumei/issues) 為準。
 
-正式環境的密鑰只存在被 Git 忽略的 `.env`／`.env.apify`（權限 `0600`）或程序環境變數；網站不再讀取 macOS Keychain；請勿把 OAuth secret、Telegram token、社群 cookie 或 `state/` 內的使用者資料提交到 repository。完整 pipeline 會存取外部供應商並可能消耗額度；日常程式驗證使用上述隔離 CI 流程。
+登入、訂閱簽章與 Apify 貢獻加密設定由被 Git 忽略的 `.env`／`.env.apify`（權限 `0600`）或程序環境變數提供；網站不再讀取 macOS Keychain。Web Push VAPID 私鑰仍保存在受保護的 `state/push/`，隨推播狀態備份。請勿把 OAuth secret、Telegram token、社群 cookie 或 `state/` 內的使用者資料提交到 repository。完整 pipeline 會存取外部供應商並可能消耗額度；日常程式驗證使用上述隔離 CI 流程。
 
 ## 帳號與自訂訂閱
 
@@ -136,7 +136,7 @@ CHUMEI_FEED_SIGNING_KEY=
 CHUMEI_APIFY_CONTRIBUTION_KEY=
 ```
 
-網站憑證只由環境檔與程序環境變數提供。`.env.apify` 會覆蓋 `.env` 同名項目，程序中的 `CHUMEI_*` 設定再覆蓋檔案；環境檔與備份均須限制權限。舊機的 Keychain 值需要在部署前一次性移入 `.env`，並保留實際生效的訂閱簽章與 Apify 加密金鑰，詳見 [停用 Keychain 與金鑰遷移](docs/credential-migration.md)。舊 Keychain 項目可保留但程式不會再使用。
+上述登入、訂閱簽章與 Apify 貢獻加密設定只由環境檔與程序環境變數提供。`.env.apify` 會覆蓋 `.env` 同名項目，程序中的 `CHUMEI_*` 設定再覆蓋檔案；環境檔與備份均須限制權限。舊機的 Keychain 值需要在部署前一次性移入 `.env`，並保留實際生效的訂閱簽章與 Apify 加密金鑰，詳見 [停用 Keychain 與金鑰遷移](docs/credential-migration.md)。舊 Keychain 項目可保留但程式不會再使用。
 
 三種登入可在帳號頁互相綁定。若該身分已有帳號，系統會把追蹤、參加標記、回報、已儲存訂閱與 Session 合併到目前帳號；解除綁定時至少保留一種登入方式。
 
