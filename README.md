@@ -31,7 +31,7 @@
 
 - **活動與貼文河道**：首頁貼文河道，以及地圖、列表、日曆三種活動檢視；活動地點可對應校園建築座標。
 - **470+ 單位名錄**：[/source/](https://chumei.observe.tw/source/) 收錄校方、系所、社團與校外主辦，每個單位有自己的活動、貼文與例行時段頁面。
-- **帳號系統**：支援陽明交大 OAuth 與 Google 登入，可互相綁定；提供公開個人頁、追蹤單位、「我會去」、回報紀錄與跨裝置同步。
+- **帳號系統**：支援陽明交大 OAuth、清大 NTHUMods Auth 與 Google 登入，可互相綁定；提供公開個人頁、追蹤單位、「我會去」、回報紀錄與跨裝置同步。
 - **自訂行事曆與 RSS**：依學校、類型、校區、主辦自由組合。登入後可儲存最多 10 組具名訂閱，加入「只看我追蹤的單位」，並管理、換發私密網址。
 - **Web Push／PWA**：網站可安裝成 App，依學校、類型、追蹤單位與關鍵字推送；「我會去」活動可在前一天提醒。
 - **Telegram 與查詢 Bot**：[Telegram 頻道](https://t.me/chumei_events) 發布新活動；私訊 [@chumei_events_bot](https://t.me/chumei_events_bot) 可用「這週末 清大」「熱舞社」等自然語句搜尋。
@@ -125,6 +125,14 @@ Google OAuth 2.0 Web application 的 callback：
 https://chumei.observe.tw/auth/google/callback
 ```
 
+清大登入走 [NTHUMods Auth](https://auth.nthumods.com)（OpenID Connect，public client `chumei-observe`，PKCE S256，沒有 client secret）。NTHUMods 登記的 redirect URI 不帶 provider 段：
+
+```text
+https://chumei.observe.tw/auth/callback
+```
+
+服務會用 JWKS 驗 `id_token` 的簽章、`iss`、`aud`、`exp` 與 `nonce`，帳號以 `sub`（學號）為鍵，顯示名稱取 `name`。若之後 NTHUMods 另外登記 `/auth/nthu/callback`，設定 `CHUMEI_NTHU_OAUTH_REDIRECT_PATH` 即可切換；`CHUMEI_NTHU_OAUTH_CLIENT_ID` 留空可關閉清大登入。
+
 開發環境可在 `.env` 設定：
 
 ```sh
@@ -132,6 +140,8 @@ CHUMEI_NYCU_OAUTH_CLIENT_ID=
 CHUMEI_NYCU_OAUTH_CLIENT_SECRET=
 CHUMEI_GOOGLE_OAUTH_CLIENT_ID=
 CHUMEI_GOOGLE_OAUTH_CLIENT_SECRET=
+CHUMEI_NTHU_OAUTH_CLIENT_ID=chumei-observe
+CHUMEI_NTHU_OAUTH_REDIRECT_PATH=/auth/callback
 CHUMEI_AUTH_PUBLIC_BASE_URL=https://chumei.observe.tw
 CHUMEI_FEED_SIGNING_KEY=
 ```
@@ -147,7 +157,7 @@ CHUMEI_FEED_SIGNING_KEY=
 | 自訂訂閱簽章金鑰 | `tw.observe.chumei.feed-signing-key` |
 | Apify 貢獻 token 加密金鑰 | `tw.observe.chumei.apify-contribution-key` |
 
-兩種登入可在帳號頁互相綁定。若該身分已有帳號，系統會把追蹤、參加標記、回報、已儲存訂閱與 Session 合併到目前帳號；解除綁定時至少保留一種登入方式。
+三種登入可在帳號頁互相綁定。若該身分已有帳號，系統會把追蹤、參加標記、回報、已儲存訂閱與 Session 合併到目前帳號；解除綁定時至少保留一種登入方式。
 
 ### 頁面與 Feed
 

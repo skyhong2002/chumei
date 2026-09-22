@@ -443,6 +443,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
 }
 
 /* ---------- IG 限時動態 ---------- */
+.story-strip[hidden] { display: none; }
 .story-strip {
   display: flex; gap: 14px; width: 100%; min-width: 0; box-sizing: border-box;
   overflow-x: auto; padding: 10px 2px 14px;
@@ -1374,6 +1375,8 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 }
 
 .post-feed { display: flex; flex-direction: column; margin-top: 4px; }
+/* 首頁 SSR 同時帶桌機 deck 與手機單欄兩份；行內腳本依視窗定好 .feed-wide／.feed-pager 後只留一份 */
+.post-feed.feed-wide > .feed-cols.ssr-pager, .post-feed.feed-pager > .feed-cols.ssr-deck { display: none !important; }
 .feed-post {
   display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 0 12px;
   padding: 14px 0 8px; border-bottom: 1px solid var(--color-border-subtle);
@@ -1391,36 +1394,25 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
 .feed-time { color: var(--color-text-muted); font-size: 0.88rem; white-space: nowrap; }
 /* 發文很久後才收錄、因收錄序排在前面的貼文標示 */
 .feed-late { font-size: 0.78rem; color: var(--chumei-bamboo-text); font-weight: 600; }
-.post-menu { position: relative; margin-left: auto; }
-.post-menu summary {
-  list-style: none; cursor: pointer; position: relative;
-  display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; margin: -6px -6px -6px 0; border-radius: 50%;
-  color: var(--color-text-muted);
+/* 右上角平台標誌：連到來源帳號主頁 */
+.feed-plat {
+  position: relative; margin-left: auto; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; margin-top: -6px; margin-bottom: -6px; margin-right: -6px;
+  border-radius: 50%; color: var(--color-text-muted);
+  transition: background var(--motion-fast, 140ms), color var(--motion-fast, 140ms);
 }
-.post-menu summary::before { content: ""; position: absolute; inset: -6px; }
-.post-menu summary::-webkit-details-marker { display: none; }
-.post-menu summary:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
-.post-menu summary svg { width: 20px; height: 20px; }
-.post-menu-panel {
-  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
-  min-width: 190px; padding: 8px; display: flex; flex-direction: column; gap: 2px;
-  background: var(--color-surface-raised); border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
-}
-.post-menu-panel a {
-  display: flex; align-items: center; min-height: 44px; padding: 8px 14px;
-  border-radius: var(--radius-md); color: var(--color-text-primary);
-  font-size: 0.9rem; font-weight: 600; white-space: nowrap;
-}
-.post-menu-panel a:hover { background: var(--color-surface-soft); text-decoration: none; }
+.feed-plat::before { content: ""; position: absolute; inset: -6px; }
+a.feed-plat:hover { background: var(--color-surface-soft); color: var(--color-text-primary); text-decoration: none; }
+.feed-plat svg { width: 17px; height: 17px; }
 .feed-text {
   margin: 3px 0 0; font-size: 0.95rem; line-height: 1.6; white-space: pre-line;
   display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
   overflow-wrap: anywhere;
 }
 .feed-img {
-  display: block; margin-top: 10px; max-width: 100%; max-height: 380px;
+  /* 帶 width/height 屬性時 height:auto 讓瀏覽器照長寬比預留高度，圖片載入不推版 */
+  display: block; margin-top: 10px; max-width: 100%; height: auto; max-height: 380px;
   border-radius: var(--radius-md); object-fit: cover;
   border: 1px solid var(--color-border-subtle);
 }

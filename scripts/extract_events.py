@@ -174,9 +174,8 @@ def call_llm_codex(env, item, retry_note=None):
     with tempfile.TemporaryDirectory(prefix="chumei-ext-") as td:
         cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
                "--output-schema", schema, "-o", f"{td}/out.json"]
-        model = env.get("CHUMEI_CODEX_MODEL")
-        if model:
-            cmd += ["-m", model]
+        model = env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna"
+        cmd += ["-m", model]
         for idx, img_url in enumerate((item.get("images") or [])[:2]):
             p = fetch_image_file(img_url, td, idx)
             if p:
@@ -200,7 +199,7 @@ def call_llm(env, item, retry_note=None):
         if b64:
             content.append({"type": "image_url", "image_url": {"url": b64}})
     payload = {
-        "model": env.get("CHUMEI_LLM_MODEL", "gpt-5.4-mini"),
+        "model": (env.get("CHUMEI_LLM_MODEL") or "gpt-5.6-luna"),
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": content},
@@ -226,8 +225,8 @@ def call_llm(env, item, retry_note=None):
 
 def model_name(env):
     if env.get("CHUMEI_LLM_BACKEND") == "codex":
-        return "codex/" + (env.get("CHUMEI_CODEX_MODEL") or "default")
-    return env.get("CHUMEI_LLM_MODEL")
+        return "codex/" + (env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna")
+    return env.get("CHUMEI_LLM_MODEL") or "gpt-5.6-luna"
 
 
 def process_item(env, item, lock, caches):

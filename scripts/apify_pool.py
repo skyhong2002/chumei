@@ -8,7 +8,7 @@ import math
 import os
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -24,6 +24,20 @@ DEFAULT_COST_PER_SOURCE_USD = 0.015
 MIN_ACCOUNT_RESERVE_USD = 0.02
 MIN_INTERVAL_HOURS = 24.0
 MAX_INTERVAL_HOURS = 168.0
+# intropix/instagram-stories-scraper free-plan guard: per Apify account it
+# grants 40 result items per day, at most 10 result items and 10 scanned
+# profiles per run, and always lets the first run of the day through even
+# when the shared free pool is busy. Every run still charges the account's
+# own monthly credit (actor start + scanned profiles + delivered items).
+STORY_DAILY_RESULT_LIMIT = 40
+STORY_RUN_RESULT_LIMIT = 10
+STORY_RUN_TARGET_LIMIT = 10
+STORY_DENIAL_COOLDOWN_HOURS = 1.0
+# Stories and the Facebook collector share each account's monthly credit
+# evenly: per day, Stories may spend at most this share of the account's
+# remaining credit divided by the days left in its billing cycle.
+STORY_CREDIT_SHARE = 0.5
+STORY_RUN_COST_ESTIMATE_USD = 0.045
 # These free accounts can receive a one-cycle US$5 social-account promotion on
 # top of their recurring US$5 allowance. Keep temporary credit spendable, but
 # do not present it as a permanent plan upgrade.
@@ -85,7 +99,8 @@ def _read_json(path: Path) -> dict:
 
 
 @contextmanager
-def _locked_state(path: Path = POOL_STATE_PATH):
+def _locked_state(path: Path | None = None):
+    path = POOL_STATE_PATH if path is None else path
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_suffix(path.suffix + ".lock")
     with lock_path.open("a+") as lock:
@@ -277,6 +292,128 @@ def record_run(label: str, *, cost_usd: float | None, source_count: int, ok: boo
             previous = state.get("fullBatchCostPerSourceEmaUsd")
             unit = float(cost_usd) / source_count
             state["fullBatchCostPerSourceEmaUsd"] = unit if previous is None else 0.35 * unit + 0.65 * float(previous)
+
+
+def _story_day(now: float) -> str:
+    return datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d")
+
+
+def _next_story_day(now: float) -> float:
+    today = datetime.fromtimestamp(now, tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (today + timedelta(days=1)).timestamp()
+
+
+def story_budget(entry: dict | None, *, now: float) -> dict:
+    """Return the account's Story allowance for the current UTC day."""
+    budget = dict((entry or {}).get("story") or {})
+    if budget.get("day") != _story_day(now):
+        budget = {"day": _story_day(now), "results": 0, "runs": 0}
+    budget.setdefault("results", 0)
+    budget.setdefault("runs", 0)
+    budget.setdefault("costUsd", 0.0)
+    if float(budget.get("deniedUntil") or 0) <= now:
+        budget.pop("deniedUntil", None)
+        budget.pop("deniedReason", None)
+    return budget
+
+
+def story_daily_credit_usd(row: dict, budget: dict, *, now: float) -> float:
+    """Today's fair Story spending cap for one account (half of its even pacing)."""
+    remaining_at_day_start = (float(row.get("remainingUsd") or 0) - MIN_ACCOUNT_RESERVE_USD
+                              + float(budget.get("costUsd") or 0))
+    cycle_end = _timestamp(row.get("cycleEnd"))
+    days_left = 1.0 if not math.isfinite(cycle_end) else max(1.0, math.ceil((cycle_end - now) / 86400))
+    return max(0.0, STORY_CREDIT_SHARE * remaining_at_day_start / days_left)
+
+
+def story_runs_left(row: dict, budget: dict, *, now: float) -> int:
+    """Runs this account can still start today under both allowance and credit pacing."""
+    if budget.get("deniedUntil"):
+        return 0
+    by_allowance = math.ceil((STORY_DAILY_RESULT_LIMIT - int(budget["results"])) / STORY_RUN_RESULT_LIMIT)
+    credit_left = story_daily_credit_usd(row, budget, now=now) - float(budget.get("costUsd") or 0)
+    by_credit = math.floor(credit_left / STORY_RUN_COST_ESTIMATE_USD + 1e-9)
+    return max(0, min(by_allowance, by_credit))
+
+
+def choose_story_token(*, refresh: bool = False, exclude: set[str] | None = None,
+                       now: float | None = None) -> tuple[str, str, dict, int]:
+    """Choose the account with the most unused Story allowance today.
+
+    Returns (label, token, status_row, result_items_left_today). Accounts that
+    have not run today go first so their guaranteed first run is never wasted;
+    accounts denied earlier today wait out their cooldown.
+    """
+    now = time.time() if now is None else float(now)
+    accounts = {row["label"]: row for row in token_accounts()}
+    status = pool_status(refresh=refresh)
+    excluded = exclude or set()
+    state = _read_json(POOL_STATE_PATH)
+    account_state = state.get("accounts") or {}
+    candidates = []
+    for row in status.get("accounts", []):
+        label = row.get("label")
+        if (label not in accounts or label in excluded or not row.get("available")
+                or row.get("exhausted") or float(row.get("remainingUsd") or 0) <= MIN_ACCOUNT_RESERVE_USD):
+            continue
+        budget = story_budget(account_state.get(label), now=now)
+        left = STORY_DAILY_RESULT_LIMIT - int(budget["results"])
+        if story_runs_left(row, budget, now=now) <= 0:
+            continue
+        candidates.append((row, budget, left))
+    if not candidates:
+        raise RuntimeError("Apify token pool has no account with Story allowance or credit left today")
+    candidates.sort(key=lambda item: (
+        int(item[0].get("activeActorJobs") or 0) > 0,
+        int(item[1]["runs"]) > 0,
+        -item[2],
+        float(item[0].get("usedUsd") or 0) / max(float(item[0].get("limitUsd") or 0), 0.001),
+        float((account_state.get(item[0]["label"]) or {}).get("lastSelectedAt") or 0),
+        item[0]["label"],
+    ))
+    selected, _, left = candidates[0]
+    with _locked_state() as current:
+        entry = current.setdefault("accounts", {}).setdefault(selected["label"], {})
+        entry["lastSelectedAt"] = now
+        entry["selectionCount"] = int(entry.get("selectionCount") or 0) + 1
+    return selected["label"], accounts[selected["label"]]["token"], selected, min(left, STORY_RUN_RESULT_LIMIT)
+
+
+def record_story_run(label: str, *, delivered: int, denied_reason: str | None = None,
+                     cost_usd: float | None = None, now: float | None = None) -> dict:
+    """Charge a Story run against the account's daily allowance."""
+    now = time.time() if now is None else float(now)
+    with _locked_state() as state:
+        entry = state.setdefault("accounts", {}).setdefault(label, {})
+        budget = story_budget(entry, now=now)
+        if denied_reason:
+            budget["deniedReason"] = denied_reason
+            if denied_reason == "user_daily_exhausted":
+                budget["results"] = STORY_DAILY_RESULT_LIMIT
+                budget["deniedUntil"] = _next_story_day(now)
+            else:
+                budget["deniedUntil"] = now + STORY_DENIAL_COOLDOWN_HOURS * 3600
+        else:
+            budget["results"] = int(budget["results"]) + max(0, int(delivered))
+            budget["runs"] = int(budget["runs"]) + 1
+            budget["costUsd"] = round(float(budget.get("costUsd") or 0)
+                                      + float(STORY_RUN_COST_ESTIMATE_USD if cost_usd is None else cost_usd), 6)
+        entry["story"] = budget
+        return dict(budget)
+
+
+def story_runs_available(status: dict, *, now: float | None = None) -> int:
+    """Count Story runs the pool can still start today (money and allowance)."""
+    now = time.time() if now is None else float(now)
+    account_state = _read_json(POOL_STATE_PATH).get("accounts") or {}
+    total = 0
+    for row in status.get("accounts", []):
+        if (not row.get("available") or row.get("exhausted")
+                or float(row.get("remainingUsd") or 0) <= MIN_ACCOUNT_RESERVE_USD):
+            continue
+        budget = story_budget(account_state.get(row.get("label")), now=now)
+        total += story_runs_left(row, budget, now=now)
+    return max(0, total)
 
 
 def recommended_interval_hours(status: dict, *, source_count: int, now: float | None = None) -> float:

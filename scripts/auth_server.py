@@ -1,13 +1,15 @@
 """OAuth-only account service for Chumei.
 
-NYCU handles credentials and consent. Chumei stores only a local user mapping
-and opaque browser sessions; it never receives or stores a school password.
+NYCU, NTHUMods and Google handle credentials and consent. Chumei stores only a
+local user mapping and opaque browser sessions; it never receives or stores a
+school password.
 
 Public routes (Caddy proxies /auth/*, /account*, /submit*, /@* to this service):
   GET  /@{handle}             public profile (display name, follows, going events)
   GET  /account/              account settings / login page
-  GET  /auth/{provider}/start     begin Authorization Code + PKCE flow (nycu / google)
+  GET  /auth/{provider}/start     begin Authorization Code + PKCE flow (nycu / nthu / google)
   GET  /auth/{provider}/callback  exchange code and create/login local account
+  GET  /auth/callback             NTHUMods callback (registered without the provider segment)
   GET  /auth/me               current session
   GET  /auth/follows          public counts plus current user's follows
   POST /auth/follows/sync     merge browser-local follows after login
@@ -40,9 +42,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import parse_qsl, quote, urlencode, urlparse
 
 import requests
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -90,6 +96,16 @@ NYCU_PROFILE_URL = "https://id.nycu.edu.tw/api/profile/"
 GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+# NTHUMods Auth：清大 OIDC provider（public client，PKCE S256 必要，無 client secret）
+NTHU_ISSUER = "https://auth.nthumods.com"
+NTHU_AUTHORIZE_URL = f"{NTHU_ISSUER}/authorize"
+NTHU_TOKEN_URL = f"{NTHU_ISSUER}/token"
+NTHU_JWKS_URL = f"{NTHU_ISSUER}/.well-known/jwks.json"
+NTHU_DEFAULT_CLIENT_ID = "chumei-observe"
+# NTHUMods 登記的 redirect URI 不帶 provider 段；若之後加上 /auth/nthu/callback 可用環境變數切換
+NTHU_DEFAULT_REDIRECT_PATH = "/auth/callback"
+NTHU_JWKS_CACHE_SECONDS = 6 * 60 * 60
+ID_TOKEN_LEEWAY_SECONDS = 60
 SESSION_COOKIE = "chumei_session"
 # 活動 ID 除了歷史的 hex digest，也包含官方來源命名空間（例如 evt_nyculife_xxx）。
 # 僅允許小寫英數與底線，總長度最多 64 字元。
@@ -140,6 +156,16 @@ def _hash_token(value: str) -> str:
 def _pkce_challenge(verifier: str) -> str:
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _oidc_nonce(verifier: str) -> str:
+    """OIDC nonce 由 PKCE verifier 衍生：不必另存欄位，callback 時仍能核對 id_token。"""
+    return hashlib.sha256(("chumei-oidc-nonce\0" + verifier).encode("ascii")).hexdigest()
+
+
+def _b64url_decode(value: str) -> bytes:
+    value = value.strip()
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
 def _safe_return_to(value: str | None) -> str:
@@ -209,6 +235,8 @@ class AuthConfig:
     client_secret: str
     google_client_id: str = ""
     google_client_secret: str = ""
+    nthu_client_id: str = NTHU_DEFAULT_CLIENT_ID
+    nthu_redirect_path: str = NTHU_DEFAULT_REDIRECT_PATH
     feed_signing_key: str = ""
     public_base_url: str = "https://chumei.observe.tw"
     database_path: Path = ROOT / "state" / "auth.sqlite3"
@@ -229,6 +257,12 @@ class AuthConfig:
             google_client_id = _keychain_value("tw.observe.chumei.google-oauth-client-id")
         if not google_client_secret:
             google_client_secret = _keychain_value("tw.observe.chumei.google-oauth-secret")
+        # NTHUMods 的 client 是 public client（沒有 secret），client_id 本身不是機密。
+        # 設成空字串可關閉清大登入。
+        nthu_client_id = env.get("CHUMEI_NTHU_OAUTH_CLIENT_ID", NTHU_DEFAULT_CLIENT_ID).strip()
+        nthu_redirect_path = env.get(
+            "CHUMEI_NTHU_OAUTH_REDIRECT_PATH", NTHU_DEFAULT_REDIRECT_PATH
+        ).strip() or NTHU_DEFAULT_REDIRECT_PATH
         feed_signing_key = env.get("CHUMEI_FEED_SIGNING_KEY", "").strip()
         if not feed_signing_key:
             feed_signing_key = _keychain_value("tw.observe.chumei.feed-signing-key")
@@ -243,6 +277,8 @@ class AuthConfig:
             client_secret=client_secret,
             google_client_id=google_client_id,
             google_client_secret=google_client_secret,
+            nthu_client_id=nthu_client_id,
+            nthu_redirect_path=nthu_redirect_path,
             feed_signing_key=feed_signing_key,
             public_base_url=env.get(
                 "CHUMEI_AUTH_PUBLIC_BASE_URL", "https://chumei.observe.tw"
@@ -269,6 +305,14 @@ class AuthConfig:
     @property
     def google_redirect_uri(self) -> str:
         return f"{self.public_base_url}/auth/google/callback"
+
+    @property
+    def nthu_configured(self) -> bool:
+        return bool(self.nthu_client_id)
+
+    @property
+    def nthu_redirect_uri(self) -> str:
+        return f"{self.public_base_url}{self.nthu_redirect_path}"
 
 
 def _keychain_value(service: str) -> str:
@@ -559,13 +603,14 @@ class AuthStore:
                 seen.add(url)
 
         google = [i for i in identities if i["provider"] == "google"]
-        nycu = [i for i in identities if i["provider"] == "nycu"]
         for identity in google:
             add(_safe_avatar_url(identity["avatar_url"]), "google")
         for identity in google:
             add(_gravatar_url(identity["email"]), "google_gravatar")
-        for identity in nycu:
-            add(_gravatar_url(identity["email"]), "nycu_gravatar")
+        for provider in ("nycu", "nthu"):
+            for identity in identities:
+                if identity["provider"] == provider:
+                    add(_gravatar_url(identity["email"]), f"{provider}_gravatar")
         if not identities:
             add(_gravatar_url(fallback_email), "gravatar")
         return candidates
@@ -588,9 +633,14 @@ class AuthStore:
         subject: str,
         email: str | None,
         avatar_url: str | None = None,
+        display_name: str | None = None,
     ) -> dict:
         now = _now()
-        display_name = (email or subject).split("@", 1)[0][:80] or "竹梅使用者"
+        display_name = (
+            (display_name or "").strip()[:80]
+            or (email or subject).split("@", 1)[0][:80]
+            or "竹梅使用者"
+        )
         avatar_url = _safe_avatar_url(avatar_url) if provider == "google" else None
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -1162,6 +1212,15 @@ class AuthStore:
         return self._saved_feed_row(row) if row else None
 
 
+class Identity(NamedTuple):
+    """OAuth provider 回傳的最小身分：穩定 subject、Email、頭貼與（若有）顯示名稱。"""
+
+    subject: str
+    email: str | None
+    avatar_url: str | None = None
+    display_name: str | None = None
+
+
 class NYCUOAuthClient:
     def __init__(self, http=requests):
         self.http = http
@@ -1186,7 +1245,7 @@ class NYCUOAuthClient:
             raise ValueError("NYCU token response did not contain access_token")
         return access_token
 
-    def profile(self, access_token: str) -> tuple[str, str | None, str | None]:
+    def profile(self, access_token: str) -> Identity:
         response = self.http.get(
             NYCU_PROFILE_URL,
             headers={"Authorization": f"Bearer {access_token}"},
@@ -1200,7 +1259,7 @@ class NYCUOAuthClient:
             raise ValueError("NYCU profile response did not contain username")
         if not isinstance(email, str) or "@" not in email:
             email = None
-        return subject.strip(), email, None
+        return Identity(subject.strip(), email)
 
 
 class GoogleOAuthClient:
@@ -1229,7 +1288,7 @@ class GoogleOAuthClient:
             raise ValueError("Google token response did not contain access_token")
         return access_token
 
-    def profile(self, access_token: str) -> tuple[str, str | None, str | None]:
+    def profile(self, access_token: str) -> Identity:
         response = self.http.get(
             GOOGLE_USERINFO_URL,
             headers={"Authorization": f"Bearer {access_token}"},
@@ -1244,7 +1303,111 @@ class GoogleOAuthClient:
             raise ValueError("Google userinfo response did not contain sub")
         if not isinstance(email, str) or "@" not in email:
             email = None
-        return subject.strip(), email, avatar_url
+        return Identity(subject.strip(), email, avatar_url)
+
+
+class NTHUOAuthClient:
+    """NTHUMods Auth（OpenID Connect，public client + PKCE）。
+
+    交換 code 後直接驗 id_token（RS256，JWKS kid 快取）取得 sub / name / email，
+    不用打 /userinfo，也不保留 access / refresh token：竹梅的 session 是自己的。
+    """
+
+    def __init__(self, http=requests):
+        self.http = http
+        self._jwks: dict[str, rsa.RSAPublicKey] = {}
+        self._jwks_fetched_at = 0.0
+
+    def exchange_code(self, config: AuthConfig, code: str, verifier: str) -> dict:
+        response = self.http.post(
+            NTHU_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": config.nthu_redirect_uri,
+                "client_id": config.nthu_client_id,
+                "code_verifier": verifier,
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        id_token = payload.get("id_token")
+        if not isinstance(id_token, str) or not id_token:
+            raise ValueError("NTHU token response did not contain id_token")
+        claims = self.verify_id_token(id_token, config.nthu_client_id, _oidc_nonce(verifier))
+        return {"claims": claims}
+
+    def profile(self, token: dict) -> Identity:
+        claims = token["claims"]
+        subject = claims.get("sub")
+        email = claims.get("email")
+        name = claims.get("name") or claims.get("name_en")
+        if not isinstance(subject, str) or not subject.strip():
+            raise ValueError("NTHU id_token did not contain sub")
+        if not isinstance(email, str) or "@" not in email:
+            email = None
+        if not isinstance(name, str) or not name.strip():
+            name = None
+        return Identity(subject.strip(), email, None, name)
+
+    def verify_id_token(
+        self, token: str, audience: str, nonce: str, now: int | None = None
+    ) -> dict:
+        try:
+            header_b64, payload_b64, signature_b64 = token.split(".")
+            header = json.loads(_b64url_decode(header_b64))
+            claims = json.loads(_b64url_decode(payload_b64))
+            signature = _b64url_decode(signature_b64)
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("NTHU id_token is malformed") from exc
+        if not isinstance(header, dict) or not isinstance(claims, dict):
+            raise ValueError("NTHU id_token is malformed")
+        if header.get("alg") != "RS256":
+            raise ValueError("NTHU id_token alg is not RS256")
+        key = self._public_key(str(header.get("kid") or ""))
+        try:
+            key.verify(
+                signature,
+                f"{header_b64}.{payload_b64}".encode("ascii"),
+                padding.PKCS1v15(),
+                hashes.SHA256(),
+            )
+        except InvalidSignature as exc:
+            raise ValueError("NTHU id_token signature is invalid") from exc
+        if claims.get("iss") != NTHU_ISSUER:
+            raise ValueError("NTHU id_token issuer mismatch")
+        aud = claims.get("aud")
+        if aud != audience and not (isinstance(aud, list) and audience in aud):
+            raise ValueError("NTHU id_token audience mismatch")
+        exp = claims.get("exp")
+        if not isinstance(exp, (int, float)) or exp + ID_TOKEN_LEEWAY_SECONDS < (now or _now()):
+            raise ValueError("NTHU id_token expired")
+        if not nonce or claims.get("nonce") != nonce:
+            raise ValueError("NTHU id_token nonce mismatch")
+        return claims
+
+    def _public_key(self, kid: str) -> rsa.RSAPublicKey:
+        key = self._jwks.get(kid)
+        if key is None or time.time() - self._jwks_fetched_at > NTHU_JWKS_CACHE_SECONDS:
+            self._refresh_jwks()
+            key = self._jwks.get(kid)
+        if key is None:
+            raise ValueError(f"NTHU JWKS has no key with kid {kid!r}")
+        return key
+
+    def _refresh_jwks(self) -> None:
+        response = self.http.get(NTHU_JWKS_URL, headers={}, timeout=10)
+        response.raise_for_status()
+        keys: dict[str, rsa.RSAPublicKey] = {}
+        for jwk in response.json().get("keys", []):
+            if not isinstance(jwk, dict) or jwk.get("kty") != "RSA" or not jwk.get("kid"):
+                continue
+            n = int.from_bytes(_b64url_decode(str(jwk["n"])), "big")
+            e = int.from_bytes(_b64url_decode(str(jwk["e"])), "big")
+            keys[str(jwk["kid"])] = rsa.RSAPublicNumbers(e, n).public_key()
+        self._jwks = keys
+        self._jwks_fetched_at = time.time()
 
 
 def _error_page(title: str, message: str, status_code: int = 400) -> HTMLResponse:
@@ -1467,7 +1630,7 @@ def _submission_item_html(it: dict, mine: bool) -> str:
     )
 
 
-def _submissions_html(items: list[dict], notice: str | None, user_id: str | None, nycu_ok: bool, google_ok: bool) -> str:
+def _submissions_html(items: list[dict], notice: str | None, user_id: str | None, nycu_ok: bool, google_ok: bool, *, nthu_ok: bool = False) -> str:
     alert = ""
     if notice in SUBMIT_NOTICES:
         text, is_error = SUBMIT_NOTICES[notice]
@@ -1490,10 +1653,12 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
           <input id="submit-note" class="submit-input" type="text" name="note" maxlength="{MAX_NOTE_LENGTH}" placeholder="例如：主辦是清大天文社、活動在 9/20">
           <button class="btn btn-primary account-action" type="submit">送出</button>
         </form>"""
-    elif nycu_ok or google_ok:
+    elif nycu_ok or google_ok or nthu_ok:
         btns = []
         if nycu_ok:
             btns.append('<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to=/submit/">登入後回報連結</a>')
+        if nthu_ok:
+            btns.append('<a class="btn btn-primary account-action" href="/auth/nthu/start?return_to=/submit/">用清大帳號登入</a>')
         if google_ok:
             btns.append('<a class="btn account-action" href="/auth/google/start?return_to=/submit/">用 Google 登入</a>')
         form = "".join(btns)
@@ -1512,8 +1677,8 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
     """
 
 
-def _submit_page_html(items: list[dict], notice: str | None, user: dict | None, nycu_ok: bool, google_ok: bool) -> str:
-    inner = _submissions_html(items, notice, user["id"] if user else None, nycu_ok, google_ok)
+def _submit_page_html(items: list[dict], notice: str | None, user: dict | None, nycu_ok: bool, google_ok: bool, *, nthu_ok: bool = False) -> str:
+    inner = _submissions_html(items, notice, user["id"] if user else None, nycu_ok, google_ok, nthu_ok=nthu_ok)
     content = f"""
 <section class="account-page">
   <div class="hero">
@@ -1720,18 +1885,21 @@ def _profile_html(
     )
 
 
-def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/") -> str:
-    if nycu_ok or google_ok:
+def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/", *, nthu_ok: bool = False) -> str:
+    if nycu_ok or google_ok or nthu_ok:
         encoded_return = quote(_safe_return_to(return_to), safe="/")
         nycu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to={encoded_return}">使用陽明交大 OAuth 登入</a>'
                     if nycu_ok else "")
+        nthu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nthu/start?return_to={encoded_return}">使用清大 NTHU 帳號登入</a>'
+                    if nthu_ok else "")
         google_btn = (f'<a class="btn account-action" href="/auth/google/start?return_to={encoded_return}">使用 Google 帳號登入</a>'
                       if google_ok else "")
         return f"""<section class="account-card">
         <p class="eyebrow">OAuth-only account</p>
         <h2>登入竹梅</h2>
-        <p>陽明交大成員請走學校單一入口；清大朋友、校友與其他人可用 Google 帳號登入。竹梅不會取得或儲存你的密碼。</p>
+        <p>陽明交大成員請走學校單一入口；清大成員可透過 NTHUMods 用學校帳號登入；校友與其他人可用 Google 帳號。竹梅不會取得或儲存你的密碼。</p>
         {nycu_btn}
+        {nthu_btn}
         {google_btn}
         <p class="privacy-note">登入只取得穩定的帳號識別與 Email，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。</p>
         </section>"""
@@ -1748,6 +1916,7 @@ def _account_html(
     nycu_ok: bool,
     google_ok: bool,
     *,
+    nthu_ok: bool = False,
     title: str = "帳號設定",
     message: str | None = None,
     my_submissions: list[dict] | None = None,
@@ -1805,7 +1974,14 @@ def _account_html(
         elif nycu_ok:
             rows.append('<div><dt>學校帳號</dt><dd><a class="account-bind" '
                         'href="/auth/nycu/start?link=1">綁定陽明交大 OAuth →</a></dd></div>')
-        if nycu and not by_provider.get("google") and user.get("email"):
+        nthu = by_provider.get("nthu")
+        if nthu:
+            rows.append(f'<div><dt>清大帳號</dt><dd>{html.escape(nthu.get("subject") or "")}'
+                        f'{unlink_form("nthu")}</dd></div>')
+        elif nthu_ok:
+            rows.append('<div><dt>清大帳號</dt><dd><a class="account-bind" '
+                        'href="/auth/nthu/start?link=1">綁定清大 NTHU 帳號 →</a></dd></div>')
+        if (nycu or nthu) and not by_provider.get("google") and user.get("email"):
             rows.append(f'<div><dt>Email</dt><dd>{html.escape(user["email"])}</dd></div>')
         google = by_provider.get("google")
         if google:
@@ -1814,10 +1990,14 @@ def _account_html(
         elif google_ok:
             rows.append('<div><dt>Google</dt><dd><a class="account-bind" '
                         'href="/auth/google/start?link=1">綁定 Google 帳號 →</a></dd></div>')
-        if "nycu" in by_provider and "google" in by_provider:
-            status_line = "已綁定學校與 Google 帳號"
-        elif "google" in by_provider:
+        labels = {"nycu": "陽明交大", "nthu": "清大", "google": "Google"}
+        linked = [labels[k] for k in ("nycu", "nthu", "google") if k in by_provider]
+        if len(linked) > 1:
+            status_line = "已綁定" + "、".join(linked) + " 帳號"
+        elif linked == ["Google"]:
             status_line = "以 Google 帳號登入"
+        elif linked == ["清大"]:
+            status_line = "以清大 NTHU 帳號登入"
         else:
             status_line = "以陽明交大 OAuth 登入"
         bind_hint = ("" if can_unlink else
@@ -1880,7 +2060,7 @@ def _account_html(
         </section>""")
 
     else:
-        sections.append(_login_card_html(nycu_ok, google_ok, return_to))
+        sections.append(_login_card_html(nycu_ok, google_ok, return_to, nthu_ok=nthu_ok))
 
     alert = (f'<div class="account-alert{" ok" if message_ok else ""}">{html.escape(message)}</div>'
              if message else "")
@@ -2013,6 +2193,7 @@ def _contribute_html(
     encryption_ready: bool,
     nycu_ok: bool,
     google_ok: bool,
+    nthu_ok: bool = False,
 ) -> str:
     esc = html.escape
     totals = public["totals"]
@@ -2103,7 +2284,7 @@ def _contribute_html(
   <div class="contrib-my-list">{my_body}</div>
 </section>"""
     else:
-        action = _login_card_html(nycu_ok, google_ok, "/contribute/")
+        action = _login_card_html(nycu_ok, google_ok, "/contribute/", nthu_ok=nthu_ok)
 
     content = f"""
 <section class="contribute-page">
@@ -2203,11 +2384,13 @@ def create_app(
     oauth_client: NYCUOAuthClient | None = None,
     submissions: SubmissionStore | None = None,
     google_oauth_client: "GoogleOAuthClient | None" = None,
+    nthu_oauth_client: "NTHUOAuthClient | None" = None,
 ) -> Starlette:
     config = config or AuthConfig.from_env()
     store = store or AuthStore(config.database_path)
     oauth_client = oauth_client or NYCUOAuthClient()
     google_oauth_client = google_oauth_client or GoogleOAuthClient()
+    nthu_oauth_client = nthu_oauth_client or NTHUOAuthClient()
     submissions = submissions or SubmissionStore(config.database_path)
     avatar_cache: dict[str, tuple[float, bytes, str]] = {}
     avatar_failures: dict[str, float] = {}
@@ -2224,6 +2407,20 @@ def create_app(
             "cancel_msg": "陽明交大未授權登入，帳號沒有建立。",
             "fail_msg": "無法向陽明交大完成身分驗證，請稍後再試。",
             "unconfigured_msg": "NYCU OAuth Client 尚未完成設定。",
+        },
+        "nthu": {
+            "client": nthu_oauth_client,
+            "authorize_url": NTHU_AUTHORIZE_URL,
+            # 不要 offline_access：竹梅有自己的 session，不需要 refresh token；scope 保持穩定才不會重複跳同意畫面
+            "scope": "openid profile email",
+            "client_id": config.nthu_client_id,
+            "redirect_uri": config.nthu_redirect_uri,
+            "configured": config.nthu_configured,
+            "extra": {"ui_locales": "zh"},
+            "nonce": True,
+            "cancel_msg": "清大未授權登入，帳號沒有建立。",
+            "fail_msg": "無法向 NTHUMods 完成身分驗證，請稍後再試。",
+            "unconfigured_msg": "NTHUMods Auth 尚未完成設定。",
         },
         "google": {
             "client": google_oauth_client,
@@ -2346,7 +2543,8 @@ def create_app(
         else:
             kwargs["return_to"] = _safe_return_to(request.query_params.get("return_to"))
         return HTMLResponse(
-            _account_html(user, config.configured, config.google_configured, **kwargs)
+            _account_html(user, config.configured, config.google_configured,
+                          nthu_ok=config.nthu_configured, **kwargs)
         )
 
     async def submit_page(request: Request):
@@ -2356,6 +2554,7 @@ def create_app(
             _submit_page_html(
                 submissions.list_recent(), notice, user,
                 config.configured, config.google_configured,
+                nthu_ok=config.nthu_configured,
             )
         )
 
@@ -2450,6 +2649,8 @@ def create_app(
             "code_challenge_method": "S256",
             **spec["extra"],
         }
+        if spec.get("nonce"):
+            params["nonce"] = _oidc_nonce(verifier)
         response = RedirectResponse(f"{spec['authorize_url']}?{urlencode(params)}", 302)
         response.set_cookie(
             OAUTH_STATE_COOKIE,
@@ -2463,7 +2664,13 @@ def create_app(
         return response
 
     async def oauth_callback(request: Request):
-        provider_key = str(request.path_params.get("provider") or "")
+        return await _oauth_callback(request, str(request.path_params.get("provider") or ""))
+
+    async def nthu_callback(request: Request):
+        # NTHUMods 登記的 redirect URI 是 /auth/callback，沒有 provider 段。
+        return await _oauth_callback(request, "nthu")
+
+    async def _oauth_callback(request: Request, provider_key: str):
         spec = providers.get(provider_key)
         if not spec:
             return _error_page("不支援的登入方式", "沒有這個登入提供者。", 404)
@@ -2482,9 +2689,7 @@ def create_app(
             access_token = await run_in_threadpool(
                 spec["client"].exchange_code, config, code, state_row["code_verifier"]
             )
-            subject, email, avatar_url = await run_in_threadpool(
-                spec["client"].profile, access_token
-            )
+            identity = await run_in_threadpool(spec["client"].profile, access_token)
         except (requests.RequestException, ValueError, json.JSONDecodeError):
             return _error_page("登入暫時失敗", spec["fail_msg"], 502)
         link_user_id = state_row["link_user_id"]
@@ -2493,12 +2698,15 @@ def create_app(
             if not current or current["id"] != link_user_id:
                 return _error_page("綁定失敗", "登入狀態已改變，請重新登入後再綁定一次。", 400)
             outcome = store.link_identity(
-                current["id"], provider_key, subject, email, avatar_url
+                current["id"], provider_key, identity.subject, identity.email, identity.avatar_url
             )
             response = RedirectResponse(f"/account/?link={outcome}", 303)
             response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
             return response
-        user = store.get_or_create_user(provider_key, subject, email, avatar_url)
+        user = store.get_or_create_user(
+            provider_key, identity.subject, identity.email, identity.avatar_url,
+            display_name=identity.display_name,
+        )
         raw_session = store.create_session(user["id"])
         response = RedirectResponse(state_row["return_to"], 303)
         response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
@@ -2878,6 +3086,7 @@ def create_app(
             encryption_ready=apify_encryption_available(),
             nycu_ok=config.configured,
             google_ok=config.google_configured,
+            nthu_ok=config.nthu_configured,
         ))
 
     async def crawl_frequency(request: Request):
@@ -2998,6 +3207,7 @@ def create_app(
                 "service": "chumei-auth",
                 "configured": config.configured,
                 "googleConfigured": config.google_configured,
+                "nthuConfigured": config.nthu_configured,
                 "savedFeedsConfigured": bool(config.feed_signing_key),
             }
         )
@@ -3014,6 +3224,7 @@ def create_app(
             Route("/contribute/", contribute_page, methods=["GET"]),
             Route("/auth/{provider}/start", oauth_start, methods=["GET"]),
             Route("/auth/{provider}/callback", oauth_callback, methods=["GET"]),
+            Route("/auth/callback", nthu_callback, methods=["GET"]),
             Route("/auth/me", me, methods=["GET"]),
             Route("/auth/fetch-requests", fetch_requests, methods=["GET", "POST", "DELETE"]),
             Route("/auth/apify-contributions", apify_contributions, methods=["GET", "POST"]),

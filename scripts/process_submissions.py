@@ -308,9 +308,8 @@ def triage_with_codex(env, url, info, content, candidates, image_paths):
     with tempfile.TemporaryDirectory(prefix="chumei-sub-") as td:
         cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
                "--output-schema", str(SCHEMA), "-o", f"{td}/out.json"]
-        model = env.get("CHUMEI_CODEX_MODEL")
-        if model:
-            cmd += ["-m", model]
+        model = env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna"
+        cmd += ["-m", model]
         for p in image_paths[:3]:
             cmd += ["-i", p]
         # prompt 走 stdin：-i 是變長參數會吞掉 positional prompt
@@ -382,9 +381,8 @@ def review_source_with_codex(env, url, info, name, posts, note):
     with tempfile.TemporaryDirectory(prefix="chumei-src-") as td:
         cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
                "--output-schema", str(SOURCE_SCHEMA), "-o", f"{td}/out.json"]
-        model = env.get("CHUMEI_CODEX_MODEL")
-        if model:
-            cmd += ["-m", model]
+        model = env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna"
+        cmd += ["-m", model]
         r = subprocess.run(cmd, cwd=td, capture_output=True, text=True, timeout=420,
                            input=SOURCE_PROMPT + "\n\n---\n" + user)
         if r.returncode != 0:

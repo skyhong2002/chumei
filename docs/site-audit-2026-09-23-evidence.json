@@ -1,0 +1,1103 @@
+{
+  "audit_date": "2026-09-23",
+  "origin": "https://chumei.observe.tw",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "limitations": "Public unauthenticated browser checks; no real OAuth completion, push delivery, submissions or deployment. Measurements include shared browser cache, not controlled Core Web Vitals tests.",
+  "pages": [
+    {
+      "path": "/",
+      "status": 200,
+      "title": "竹梅活動觀測站｜清大×交大校園活動",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 4267,
+      "timing": [
+        {
+          "ttfb": 56,
+          "dom": 315,
+          "load": 403,
+          "bytes": 56460,
+          "decoded": 391378
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/data/posts.json",
+          "bytes": 180672,
+          "decoded": 502169,
+          "ms": 223
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_6e9bbe1e15c5.jpg",
+          "bytes": 190713,
+          "decoded": 190413,
+          "ms": 146
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3991061880398321027.jpg",
+          "bytes": 185538,
+          "decoded": 185238,
+          "ms": 194
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posts/ig_nthu_happy_child__DdDZKhkCS4M.jpg",
+          "bytes": 184269,
+          "decoded": 183969,
+          "ms": 146
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 51692,
+          "decoded": 178370,
+          "ms": 226
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3991267094061194592.jpg",
+          "bytes": 170948,
+          "decoded": 170648,
+          "ms": 182
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posts/ig_nthu_cssa__Ddb0Z-gGuIn.jpg",
+          "bytes": 162980,
+          "decoded": 162680,
+          "ms": 145
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/events/",
+      "status": 200,
+      "title": "排序：時間優先｜活動總覽｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 4719,
+      "timing": [
+        {
+          "ttfb": 4,
+          "dom": 78,
+          "load": 79,
+          "bytes": 15977,
+          "decoded": 141271
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/data/events.json",
+          "bytes": 774967,
+          "decoded": 4582377,
+          "ms": 143
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/vendor/maplibre/maplibre-gl.js",
+          "bytes": 292428,
+          "decoded": 1056837,
+          "ms": 28
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_35c5d5c1bc4c.jpg",
+          "bytes": 272937,
+          "decoded": 272637,
+          "ms": 136
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_f40e26c7d098.jpg",
+          "bytes": 272937,
+          "decoded": 272637,
+          "ms": 136
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_fd607fa78bf8.jpg",
+          "bytes": 243123,
+          "decoded": 242823,
+          "ms": 134
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_2c1ec6710d55.jpg",
+          "bytes": 206204,
+          "decoded": 205904,
+          "ms": 131
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_09a0aa7d908f.jpg",
+          "bytes": 193060,
+          "decoded": 192760,
+          "ms": 128
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/calendar/",
+      "status": 200,
+      "title": "清交活動日曆｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 4832,
+      "timing": [
+        {
+          "ttfb": 26,
+          "dom": 134,
+          "load": 135,
+          "bytes": 21893,
+          "decoded": 121838
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/data/events.json",
+          "bytes": 300,
+          "decoded": 4582377,
+          "ms": 9
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_35c5d5c1bc4c.jpg",
+          "bytes": 300,
+          "decoded": 272637,
+          "ms": 12
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_f40e26c7d098.jpg",
+          "bytes": 300,
+          "decoded": 272637,
+          "ms": 12
+        },
+        {
+          "url": "https://chumei.observe.tw/data/sources.json",
+          "bytes": 43065,
+          "decoded": 264321,
+          "ms": 8
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_fd607fa78bf8.jpg",
+          "bytes": 300,
+          "decoded": 242823,
+          "ms": 7
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_2c1ec6710d55.jpg",
+          "bytes": 300,
+          "decoded": 205904,
+          "ms": 8
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 3
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/stories/",
+      "status": 200,
+      "title": "清交 IG 限時動態牆｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 448,
+      "timing": [
+        {
+          "ttfb": 10,
+          "dom": 58,
+          "load": 60,
+          "bytes": 3839,
+          "decoded": 16404
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/data/sources.json",
+          "bytes": 300,
+          "decoded": 264321,
+          "ms": 24
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3990786088508629590.jpg",
+          "bytes": 200032,
+          "decoded": 199732,
+          "ms": 133
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3990860287887868207.jpg",
+          "bytes": 197087,
+          "decoded": 196787,
+          "ms": 125
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3991061880398321027.jpg",
+          "bytes": 300,
+          "decoded": 185238,
+          "ms": 29
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 5
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3991262598850488535.jpg",
+          "bytes": 176617,
+          "decoded": 176317,
+          "ms": 133
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3991266171557511687.jpg",
+          "bytes": 173328,
+          "decoded": 173028,
+          "ms": 131
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/source/",
+      "status": 200,
+      "title": "資料來源與機構名錄｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 10836,
+      "timing": [
+        {
+          "ttfb": 7,
+          "dom": 133,
+          "load": 133,
+          "bytes": 51834,
+          "decoded": 723626
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/data/sources.json",
+          "bytes": 300,
+          "decoded": 264321,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 13
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css?v=63db20a8faca",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/avatars/ig_nthu_bgclub.jpg",
+          "bytes": 25787,
+          "decoded": 25487,
+          "ms": 28
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/avatars/ig_nctu_csunion.jpg",
+          "bytes": 23951,
+          "decoded": 23651,
+          "ms": 28
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/avatars/ig_nthu_official.jpg",
+          "bytes": 23777,
+          "decoded": 23477,
+          "ms": 28
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/avatars/ig_meichu_prep_cmte.jpg",
+          "bytes": 20753,
+          "decoded": 20453,
+          "ms": 27
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/subscribe/",
+      "status": 200,
+      "title": "校園活動訂閱管道｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 388,
+      "timing": [
+        {
+          "ttfb": 12,
+          "dom": 49,
+          "load": 50,
+          "bytes": 8650,
+          "decoded": 23119
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css?v=63db20a8faca",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css?v=b5a546f1f169",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/events",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 12
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 12
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/notify/",
+      "status": 200,
+      "title": "App 推播通知設定｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 350,
+      "timing": [
+        {
+          "ttfb": 5,
+          "dom": 64,
+          "load": 65,
+          "bytes": 13160,
+          "decoded": 38884
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/data/events.json",
+          "bytes": 300,
+          "decoded": 4582377,
+          "ms": 54
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 4
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css?v=63db20a8faca",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 4
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css?v=b5a546f1f169",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 4
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 85
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/status/",
+      "status": 200,
+      "title": "資料來源狀態｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 2529,
+      "timing": [
+        {
+          "ttfb": 128,
+          "dom": 232,
+          "load": 233,
+          "bytes": 12825,
+          "decoded": 38201
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/api/status.json",
+          "bytes": 69951,
+          "decoded": 531426,
+          "ms": 58
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/app.js",
+          "bytes": 51692,
+          "decoded": 178370,
+          "ms": 54
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css",
+          "bytes": 27217,
+          "decoded": 113528,
+          "ms": 72
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css",
+          "bytes": 1927,
+          "decoded": 5975,
+          "ms": 25
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 192
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/about/",
+      "status": 200,
+      "title": "關於竹梅｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 291,
+      "timing": [
+        {
+          "ttfb": 4,
+          "dom": 37,
+          "load": 38,
+          "bytes": 5174,
+          "decoded": 12127
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css?v=63db20a8faca",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css?v=b5a546f1f169",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 1
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/events",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 15
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 15
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/account/",
+      "status": 200,
+      "title": "登入｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 235,
+      "timing": [
+        {
+          "ttfb": 28,
+          "dom": 57,
+          "load": 58,
+          "bytes": 3174,
+          "decoded": 8021
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/assets/app.js",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/events",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 17
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 16
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/submit/",
+      "status": 200,
+      "title": "回報活動｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 440,
+      "timing": [
+        {
+          "ttfb": 79,
+          "dom": 125,
+          "load": 125,
+          "bytes": 5442,
+          "decoded": 22283
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/assets/app.js",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/events",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 19
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 19
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/contribute/",
+      "status": 200,
+      "title": "貢獻｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 363,
+      "timing": [
+        {
+          "ttfb": 1520,
+          "dom": 1565,
+          "load": 1788,
+          "bytes": 7365,
+          "decoded": 20490
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/assets/app.js",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/avatar/sky",
+          "bytes": 36729,
+          "decoded": 36429,
+          "ms": 263
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 26
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/event/evt_9b06f91c8aa4/",
+      "status": 200,
+      "title": "藏書印記：圖書章的生命故事｜2026 年 8 月 10 日｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 291,
+      "timing": [
+        {
+          "ttfb": 11,
+          "dom": 54,
+          "load": 56,
+          "bytes": 5000,
+          "decoded": 14052
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 4
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css?v=63db20a8faca",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 5
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_9b06f91c8aa4.jpg",
+          "bytes": 42305,
+          "decoded": 42005,
+          "ms": 36
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css?v=b5a546f1f169",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 4
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/follows",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 40
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/org/9/",
+      "status": 200,
+      "title": "清大圖書館｜竹梅活動觀測站",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 470,
+      "timing": [
+        {
+          "ttfb": 5,
+          "dom": 72,
+          "load": 73,
+          "bytes": 8356,
+          "decoded": 24456
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 3
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/site.css?v=63db20a8faca",
+          "bytes": 300,
+          "decoded": 113528,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/avatars/ig_nthu_library.jpg",
+          "bytes": 300,
+          "decoded": 18334,
+          "ms": 7
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/tokens.css?v=b5a546f1f169",
+          "bytes": 300,
+          "decoded": 5975,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand-medium.woff2",
+          "bytes": 300,
+          "decoded": 3468,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/fonts/chumei-brand.woff2",
+          "bytes": 300,
+          "decoded": 3428,
+          "ms": 2
+        },
+        {
+          "url": "https://chumei.observe.tw/auth/events",
+          "bytes": 599,
+          "decoded": 299,
+          "ms": 11
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "path": "/missing-audit-page/",
+      "status": 200,
+      "title": "竹梅活動觀測站｜清大×交大校園活動",
+      "errors": [],
+      "brokenImages": [],
+      "dom": 4267,
+      "timing": [
+        {
+          "ttfb": 6,
+          "dom": 114,
+          "load": 114,
+          "bytes": 56460,
+          "decoded": 391378
+        }
+      ],
+      "resources": [
+        {
+          "url": "https://chumei.observe.tw/data/posts.json",
+          "bytes": 300,
+          "decoded": 502169,
+          "ms": 5
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posters/evt_6e9bbe1e15c5.jpg",
+          "bytes": 300,
+          "decoded": 190413,
+          "ms": 5
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3991061880398321027.jpg",
+          "bytes": 300,
+          "decoded": 185238,
+          "ms": 12
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posts/ig_nthu_happy_child__DdDZKhkCS4M.jpg",
+          "bytes": 300,
+          "decoded": 183969,
+          "ms": 11
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/app.js?v=17c791107bd6",
+          "bytes": 300,
+          "decoded": 178370,
+          "ms": 11
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/stories/3991267094061194592.jpg",
+          "bytes": 300,
+          "decoded": 170648,
+          "ms": 7
+        },
+        {
+          "url": "https://chumei.observe.tw/assets/posts/ig_nthu_cssa__Ddb0Z-gGuIn.jpg",
+          "bytes": 300,
+          "decoded": 162680,
+          "ms": 11
+        }
+      ],
+      "mobile": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    }
+  ],
+  "accessibility": [
+    {
+      "path": "/",
+      "axe": []
+    },
+    {
+      "path": "/events/",
+      "axe": []
+    },
+    {
+      "path": "/calendar/",
+      "axe": []
+    },
+    {
+      "path": "/subscribe/",
+      "axe": [
+        {
+          "id": "link-in-text-block",
+          "impact": "serious",
+          "description": "Ensure links are distinguished from surrounding text in a way that does not rely on color",
+          "count": 2,
+          "nodes": [
+            {
+              "html": "<a href=\"https://emtech.cc/p/rss/\" target=\"_blank\" rel=\"noopener\">你應該開始使用 RSS！</a>",
+              "target": [
+                "a[href$=\"rss/\"]"
+              ],
+              "summary": "Fix any of the following:\n  The link has insufficient color contrast of 2.1:1 with the surrounding text. (Minimum contrast is 3:1, link text: #90a9ff, surrounding text: #f5f7ff)\n  The link has no styling (such as underline) to distinguish it from the surrounding text"
+            },
+            {
+              "html": "<a href=\"https://github.com/skyhong2002/chumei\" target=\"_blank\" rel=\"noopener\">GitHub 文件</a>",
+              "target": [
+                "p:nth-child(19) > a[target=\"_blank\"][rel=\"noopener\"]"
+              ],
+              "summary": "Fix any of the following:\n  The link has insufficient color contrast of 2.1:1 with the surrounding text. (Minimum contrast is 3:1, link text: #90a9ff, surrounding text: #f5f7ff)\n  The link has no styling (such as underline) to distinguish it from the surrounding text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "/account/",
+      "axe": [
+        {
+          "id": "link-in-text-block",
+          "impact": "serious",
+          "description": "Ensure links are distinguished from surrounding text in a way that does not rely on color",
+          "count": 1,
+          "nodes": [
+            {
+              "html": "<a href=\"/submit/\">回報的連結</a>",
+              "target": [
+                ".privacy-note > a[href$=\"submit/\"]"
+              ],
+              "summary": "Fix any of the following:\n  The link has insufficient color contrast of 1.42:1 with the surrounding text. (Minimum contrast is 3:1, link text: #90a9ff, surrounding text: #c5cee0)\n  The link has no styling (such as underline) to distinguish it from the surrounding text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "/stories/",
+      "axe": []
+    }
+  ],
+  "tests": {
+    "python_total": 244,
+    "python_pass": 243,
+    "python_fail": 1,
+    "failed_test": "test_seo.SEOOutputTests.test_title_h1_and_preview_description_are_unique_per_page",
+    "validate_outputs": "PASS: 2838 events",
+    "event_periods_ui": "PASS"
+  },
+  "static_links": {
+    "html_files_scanned": 3887,
+    "missing_unique_static_absolute_references": 0,
+    "dynamic_routes_excluded": true
+  },
+  "data": {
+    "events": 2838,
+    "ongoing_or_future_at_audit": 457,
+    "ongoing_started_before_today": 23,
+    "ongoing_missing_all_ics": 23,
+    "ongoing_missing_custom_ics": 23,
+    "upcoming_missing_venue": 102,
+    "upcoming_non_online_missing_geo": 104,
+    "upcoming_registration_required_missing_url": 90,
+    "directory_entries": 479,
+    "source_counts": {
+      "all": 1050,
+      "fresh": 579,
+      "due": 378,
+      "errors": 93
+    }
+  },
+  "external_time_verification": [
+    {
+      "source": "https://luma.com/nycuaa-1ipo",
+      "jsonld_startDate": "2026-09-25T16:00:00.000-07:00",
+      "site_bad_id": "evt_9015433fcfe0",
+      "site_start": "2026-09-25T16:00:00+08:00",
+      "correct_taipei": "2026-09-26T07:00:00+08:00"
+    },
+    {
+      "source": "https://luma.com/fum0o6xh",
+      "jsonld_startDate": "2026-09-26T09:00:00.000-07:00",
+      "site_bad_id": "evt_490332813616",
+      "site_start": "2026-09-26T09:00:00+08:00",
+      "correct_taipei": "2026-09-27T00:00:00+08:00"
+    }
+  ]
+}

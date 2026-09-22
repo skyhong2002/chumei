@@ -20,11 +20,29 @@ been dormant.
 
 ## Stories
 
-`fetch_stories_apify.py` replaces the account-bound Instaloader job. It scans
-at most five due organization accounts per three-hour pipeline run, delivers
-at most ten active Stories, and stops at the same US$10 reserve. Accounts are
-ranked by their historical posting cadence; active accounts are checked first.
-Story media is downloaded immediately because CDN URLs expire.
+`fetch_stories_apify.py` replaces the account-bound Instaloader job. The
+actor (`intropix/instagram-stories-scraper`) grants every free-plan Apify
+account 40 result items per day, at most 10 items and 10 scanned profiles per
+run, and always admits an account's first run of the day even when the shared
+free pool is busy. Each pipeline invocation rotates through the token pool:
+every run takes a batch of up to ten due profiles on the account with the most
+allowance left today (`apify_pool.choose_story_token`), and the number of runs
+per invocation spreads the pool's remaining daily allowance over the eight
+three-hour pipeline slots so live Stories are caught before they expire.
+Per-account allowance lives in `state/apify_pool.json` (`accounts.<label>.story`)
+and resets at UTC midnight; a `user_daily_exhausted` denial parks the account
+until then, a `free_capacity_exhausted` denial for one hour. Profiles the
+actor reports as not attempted stay due instead of being marked scanned.
+Accounts are ranked by their historical posting cadence; active accounts are
+checked first. Story media is downloaded immediately because CDN URLs expire.
+
+Runs are not free: each charges the account's monthly credit (US$0.005 per
+run start, US$0.002 per scanned profile, US$0.0025 per delivered item, about
+US$0.03–0.05 per run). Stories and the Facebook collector share that credit
+evenly: per account and per UTC day, Stories may spend at most half of the
+remaining credit divided by the days left in the billing cycle
+(`apify_pool.story_daily_credit_usd`); the Facebook collector's own pacing
+adapts to whatever remains.
 
 The old `fetch_stories.py` and the authenticated backends in
 `fetch_instagram.py` remain only as diagnostic/migration code. They are not
@@ -38,8 +56,9 @@ private or personal accounts are outside this collector's scope.
 ## Free-credit guardrails
 
 - No collector reads a maintainer's Instagram cookie.
-- Profile and Story batches default to five accounts.
-- The Story free-plan result cap is ten per run.
-- Both Apify Instagram collectors stop when aggregate remaining credit reaches
-  US$10.
+- Profile batches default to five accounts; Story runs scan at most ten
+  profiles and deliver at most ten items, and each Apify account gets at most
+  40 Story items per day.
+- Story runs spend at most half of each account's evenly paced remaining
+  credit per day, leaving the other half to the Facebook collector.
 - Fetch telemetry records the backend, batch size, and reported run cost.
