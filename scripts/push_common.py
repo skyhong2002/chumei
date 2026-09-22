@@ -394,6 +394,9 @@ class PushGone(Exception):
 def send_push(record, payload, ttl=43200):
     """對單一訂閱發一則通知。payload 是 dict（sw.js 以 JSON 解讀）。"""
     from pywebpush import WebPushException, webpush
+    from safe_outbound import validate_push_endpoint, PushSession
+
+    validate_push_endpoint(record["sub"]["endpoint"])
 
     try:
         webpush(
@@ -402,6 +405,8 @@ def send_push(record, payload, ttl=43200):
             vapid_private_key=str(VAPID_KEY_PATH),
             vapid_claims={"sub": VAPID_SUB},
             ttl=ttl,
+            requests_session=PushSession(),
+            timeout=15,
         )
     except WebPushException as exc:
         status = getattr(exc.response, "status_code", None)

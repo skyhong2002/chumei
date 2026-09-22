@@ -15,6 +15,10 @@ launchd: tw.observe.chumei.push（deploy/tw.observe.chumei.push.plist）。
 """
 
 import json
+import time
+from collections import deque
+
+from safe_outbound import validate_push_endpoint, UnsafeURL
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -34,12 +38,16 @@ def valid_subscription(sub):
         return False
     endpoint = sub.get("endpoint")
     keys = sub.get("keys") or {}
+    try:
+        validate_push_endpoint(endpoint)
+    except (UnsafeURL, TypeError):
+        return False
     return (
-        isinstance(endpoint, str)
-        and endpoint.startswith("https://")
-        and len(endpoint) < 1024
+        isinstance(keys, dict)
         and isinstance(keys.get("p256dh"), str)
         and isinstance(keys.get("auth"), str)
+        and 1 <= len(keys["p256dh"]) <= 256
+        and 1 <= len(keys["auth"]) <= 128
     )
 
 
@@ -56,14 +64,48 @@ WELCOME = {
 }
 
 
+# Single-process uvicorn service. Global cap protects against spoofed forwarded
+# headers and endpoint rotation; per-device cap also covers welcome/test sends.
+_send_times = deque()
+_endpoint_times = {}
+
+
+def allow_send(endpoint):
+    now = time.monotonic()
+    while _send_times and _send_times[0] <= now - 60:
+        _send_times.popleft()
+    for key, timestamp in list(_endpoint_times.items()):
+        if timestamp <= now - 60:
+            del _endpoint_times[key]
+    if len(_send_times) >= 30 or endpoint in _endpoint_times:
+        return False
+    _send_times.append(now)
+    _endpoint_times[endpoint] = now
+    return True
+
+
+async def read_body(request):
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > 16384:
+            raise ValueError("request too large")
+    body = json.loads(data)
+    if not isinstance(body, dict):
+        raise ValueError("expected object")
+    return body
+
+
 async def subscribe(request):
     try:
-        body = await request.json()
+        body = await read_body(request)
     except (json.JSONDecodeError, ValueError):
         return bad_request("invalid json")
     sub = body.get("subscription")
     if not valid_subscription(sub):
-        return bad_request("invalid subscription")
+        return bad_request("無效的訂閱；目前支援 Chrome／Edge、Firefox 與 Safari 的標準推播服務。")
+    if not allow_send(sub["endpoint"]):
+        return JSONResponse({"ok": False, "error": "請稍後再試"}, status_code=429)
     existed = pc.get_sub(sub["endpoint"]) is not None
     prefs = body.get("prefs")  # None＝不動既有偏好（pushsubscriptionchange 遷移時）
     record = pc.upsert_sub(
@@ -86,7 +128,7 @@ async def subscribe(request):
 
 async def unsubscribe(request):
     try:
-        body = await request.json()
+        body = await read_body(request)
     except (json.JSONDecodeError, ValueError):
         return bad_request("invalid json")
     endpoint = body.get("endpoint")
@@ -97,7 +139,7 @@ async def unsubscribe(request):
 
 async def status(request):
     try:
-        body = await request.json()
+        body = await read_body(request)
     except (json.JSONDecodeError, ValueError):
         return bad_request("invalid json")
     endpoint = body.get("endpoint")
@@ -119,13 +161,15 @@ async def stats(request):
 
 async def test(request):
     try:
-        body = await request.json()
+        body = await read_body(request)
     except (json.JSONDecodeError, ValueError):
         return bad_request("invalid json")
     endpoint = body.get("endpoint")
     record = pc.get_sub(endpoint) if isinstance(endpoint, str) else None
     if not record:
         return bad_request("not subscribed")
+    if not allow_send(endpoint):
+        return JSONResponse({"ok": False, "error": "請稍後再試"}, status_code=429)
     payload = {
         "title": "測試通知 🔔",
         "body": "收到這則代表推播運作正常。",
@@ -134,6 +178,8 @@ async def test(request):
     }
     try:
         pc.send_push(record, payload, ttl=300)
+    except UnsafeURL:
+        return bad_request("不支援這個推播服務，請重新開啟瀏覽器通知。")
     except pc.PushGone:
         pc.prune_endpoint(endpoint)
         return bad_request("endpoint gone")

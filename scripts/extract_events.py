@@ -117,7 +117,8 @@ def _save_cache(source_id, cache, lock):
 def fetch_image_b64(url, max_bytes=8_000_000):
     """下載並縮到 1024px JPEG 再 base64 — 控制 vision token 用量。"""
     try:
-        r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw fetcher)"})
+        from safe_outbound import get
+        r = get(url, timeout=20, max_bytes=max_bytes, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw fetcher)"})
         r.raise_for_status()
         if len(r.content) > max_bytes or not r.headers.get("content-type", "").startswith("image/"):
             return None
@@ -150,7 +151,8 @@ def user_prompt(item, retry_note=None):
 def fetch_image_file(url, dest_dir, idx, max_bytes=8_000_000):
     """下載並縮圖成 jpg 檔（給 codex exec -i 用）。回傳路徑或 None。"""
     try:
-        r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw fetcher)"})
+        from safe_outbound import get
+        r = get(url, timeout=20, max_bytes=max_bytes, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw fetcher)"})
         r.raise_for_status()
         if len(r.content) > max_bytes or not r.headers.get("content-type", "").startswith("image/"):
             return None
