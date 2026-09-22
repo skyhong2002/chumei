@@ -25,6 +25,8 @@ state/auth.sqlite3）。綁定後：
 
 import fcntl
 import hashlib
+from site_paths import published_site_dir
+
 import json
 import sqlite3
 import time
@@ -37,7 +39,7 @@ PUSH_DIR = ROOT / "state" / "push"
 SUBS_PATH = PUSH_DIR / "subscriptions.json"
 LOCK_PATH = PUSH_DIR / "subscriptions.lock"
 VAPID_KEY_PATH = PUSH_DIR / "vapid_private.pem"
-SOURCES_PATH = ROOT / "site" / "data" / "sources.json"
+SOURCES_PATH = published_site_dir() / "data" / "sources.json"
 VAPID_SUB = "mailto:sky.cs14@nycu.edu.tw"
 AUTH_DB_PATH = ROOT / "state" / "auth.sqlite3"
 SESSION_COOKIE = "chumei_session"

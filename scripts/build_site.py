@@ -18,9 +18,12 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
+from event_time import event_has_not_ended
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
 
-SITE = ROOT / "site"
+from site_paths import build_site_dir
+
+SITE = build_site_dir()
 BASE_URL = "https://chumei.observe.tw"
 EXTRACT_DIR = ROOT / "state" / "extraction"
 POSTER_DIR = SITE / "assets" / "posters"
@@ -470,6 +473,8 @@ def geocode_external(events):
         ent = cache.get(venue)
         stale_miss = ent and ent.get("lat") is None and _time.time() - ent.get("t", 0) > 7 * 86400
         if ent is None or stale_miss:
+            if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+                continue
             hit = None
             used_q = None
             failed = False
@@ -584,7 +589,7 @@ def cache_posters(events):
                 self.content_depth -= 1
 
     def discover(source_url):
-        if not source_url:
+        if not source_url or load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
             return []
         try:
             page = HttpClient(delay=0, timeout=25).get_text(source_url)
@@ -615,6 +620,8 @@ def cache_posters(events):
     source_cache = {}
 
     def save_candidate(url, dest):
+        if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+            return False
         try:
             r = session.get(html.unescape(url), timeout=25)
             r.raise_for_status()
@@ -770,8 +777,9 @@ def event_ics(e):
     return "\r\n".join(l for l in lines if l)
 
 
-def write_ics(path, events, name):
-    body = "\r\n".join(filter(None, (event_ics(e) for e in events)))
+def write_ics(path, events, name, now=None):
+    now = now or datetime.now(TZ_TAIPEI)
+    body = "\r\n".join(filter(None, (event_ics(e) for e in events if event_has_not_ended(e, now))))
     path.write_text(ics_calendar(body, name, "竹梅活動觀測站彙整清大與陽明交大的公開活動。",
                                  f"{BASE_URL}/subscribe/"))
 
@@ -1115,10 +1123,14 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
     else:
         date_label = "日期待確認"
     page_heading = f"{e['title']}｜{date_label}"
+    # 同名同日的場次也可能同時在不同場地舉辦；保留各活動網址，以地點辨識。
+    if with_time and loc:
+        page_heading += f"｜{loc}"
     preview_parts = [
         f"{date_label}「{e['title']}」",
-        e.get("organizer") or (org[1] if org else ""),
+        # 地點放在主辦名稱之前，避免較長的主辦名稱把場次差異截掉。
         loc,
+        e.get("organizer") or (org[1] if org else ""),
         e.get("summary") or e.get("description") or "查看活動時間、地點與原始公告。",
     ]
     preview_desc = _one_line("。".join(part.strip("。") for part in preview_parts if part), 180)
@@ -1626,7 +1638,7 @@ def org_pages(entries, events):
         for src in [e["source"]] + e.get("alt_posts", []):
             k = (src["source_id"], src["post_id"])
             ev_per_post[k] = ev_per_post.get(k, 0) + 1
-    today = date.today().isoformat()
+    now = datetime.now(TZ_TAIPEI)
     PLAT = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads",
             "x": "X", "bulletin": "公告頁", "website": "官網", "api": "NYCU LIFE"}
     for ent in entries:
@@ -1635,8 +1647,8 @@ def org_pages(entries, events):
             if l["platform"] == "bulletin":
                 evs += by_sid.get(next((s for s in ent.get("sids", [])), ""), [])
         evs = list({e["id"]: e for e in evs}.values())
-        upcoming = sorted([e for e in evs if e["start_at"][:10] >= today], key=lambda e: e["start_at"])
-        past = sorted([e for e in evs if e["start_at"][:10] < today], key=lambda e: e["start_at"], reverse=True)[:20]
+        upcoming = sorted([e for e in evs if event_has_not_ended(e, now)], key=lambda e: e["start_at"])
+        past = sorted([e for e in evs if not event_has_not_ended(e, now)], key=lambda e: e["start_at"], reverse=True)[:20]
 
         def ev_row(e):
             return (f'<li class="org-ev"><a href="/event/{e["id"]}/">'
@@ -1808,6 +1820,8 @@ def cache_post_image(sid, pid, url):
     miss = POST_IMG_DIR / f"{stem}.miss"
     if dest.exists():
         return f"/assets/posts/{dest.name}"
+    if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+        return None
     if miss.exists() and miss.read_text() == url:
         return None  # 同一個網址已經失敗過（多半是 CDN 連結過期）；換新網址才重試
     try:
@@ -2338,17 +2352,13 @@ def period_section(events):
 def prerender_events(events):
     """/events/ SSR：預設篩選（未來 7 天）的列表列。JS 載入 events.json 後依裝置重繪。"""
     now = datetime.now(TZ_TAIPEI)
-    today = now.strftime("%Y-%m-%d")
     range_end = now + timedelta(days=7)
 
     def in_default_range(e):
         t = _iso_dt(e["start_at"])
         if t is None:
             return False
-        if e.get("all_day"):
-            return (e.get("end_at") or e["start_at"])[:10] >= today and t <= range_end
-        end = _iso_dt(e.get("end_at")) or t
-        return end >= now and t <= range_end
+        return event_has_not_ended(e, now) and t <= range_end
 
     rows = [e for e in events if in_default_range(e)]
     # 與 app.js 相同：未開始以開始時間排序，進行中則以截止時間排序。
@@ -2526,7 +2536,7 @@ def main():
     events.sort(key=lambda e: e["start_at"])
     cache_posters(events)
     from render_source_covers import attach_source_screenshots
-    screenshot_limit = int(load_env().get("CHUMEI_SCREENSHOT_LIMIT", "20"))
+    screenshot_limit = 0 if load_env().get("CHUMEI_BUILD_OFFLINE") == "1" else int(load_env().get("CHUMEI_SCREENSHOT_LIMIT", "20"))
     n_screenshots = attach_source_screenshots(events, limit=screenshot_limit)
     n_screenshot_events = sum(e.get("image_kind") == "source_screenshot" for e in events)
     print(f"source screenshots: {n_screenshots} created, {n_screenshot_events} events attached")
@@ -2553,8 +2563,8 @@ def main():
     n_ext = geocode_external(events)
     print(f"geo-external: {n_ext} 校外場地 geocoded")
 
-    today = date.today().isoformat()
-    upcoming = [e for e in events if e["start_at"][:10] >= today]
+    build_now = datetime.now(TZ_TAIPEI)
+    upcoming = [e for e in events if event_has_not_ended(e, build_now)]
 
     for d in ("data", "api", "feeds", "event"):
         (SITE / d).mkdir(parents=True, exist_ok=True)
@@ -2609,7 +2619,6 @@ def main():
             write_ics(cdir / f"{name}.ics", subset_up, title)
     print(f"combo feeds: {len(combo_specs) * 3} pairs")
 
-    today_s = date.today().isoformat()
     ent_events = {}
     for e in events:
         seen_ent = set()
@@ -2618,7 +2627,7 @@ def main():
             if ent is not None and ent["id"] not in seen_ent:
                 seen_ent.add(ent["id"])
                 ent_events.setdefault(ent["id"], []).append(e)
-    # 同名又同一天的活動（同一場地一天兩場）頁面標題要能分辨，先數出來
+    # 同名同日的場次以時間與校區／場地區分，不因標題碰撞而合併活動。
     same_day_twins = Counter((e["title"], (e.get("start_at") or "")[:10]) for e in events)
     for e in events:
         ent = sid_to_entry.get(e["source"]["source_id"])
@@ -2631,8 +2640,8 @@ def main():
                 continue
             seen_ent.add(ent2["id"])
             sibs = [x for x in ent_events.get(ent2["id"], []) if x["id"] != e["id"]]
-            up = sorted([x for x in sibs if x["start_at"][:10] >= today_s], key=lambda x: x["start_at"])
-            past = sorted([x for x in sibs if x["start_at"][:10] < today_s], key=lambda x: x["start_at"], reverse=True)
+            up = sorted([x for x in sibs if event_has_not_ended(x, build_now)], key=lambda x: x["start_at"])
+            past = sorted([x for x in sibs if not event_has_not_ended(x, build_now)], key=lambda x: x["start_at"], reverse=True)
             org_sections.append((ent2["id"], ent2["name"], (up + past)[:4]))
         # 資訊列「原始貼文」＝這場活動的所有來源貼文（主來源＋合併掉的），依發文時間排序
         alt_posts = []

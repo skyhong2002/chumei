@@ -7,12 +7,13 @@ import json
 from pathlib import Path
 
 from build_site import page_shell
-from chumei_lib import ROOT
+from chumei_lib import ROOT, load_env
+from site_paths import build_site_dir
 from source_status import build_status_payload
 
 
-OUT_API = ROOT / "site" / "api" / "status.json"
-OUT_PAGE = ROOT / "site" / "status" / "index.html"
+OUT_API = build_site_dir() / "api" / "status.json"
+OUT_PAGE = build_site_dir() / "status" / "index.html"
 
 
 STYLE = r"""
@@ -158,7 +159,7 @@ SCRIPT = r"""
 
 
 def build() -> dict:
-    payload = build_status_payload()
+    payload = build_status_payload(refresh_apify=load_env().get("CHUMEI_BUILD_OFFLINE") != "1")
     OUT_API.parent.mkdir(parents=True, exist_ok=True)
     OUT_PAGE.parent.mkdir(parents=True, exist_ok=True)
     OUT_API.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
