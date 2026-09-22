@@ -31,7 +31,18 @@ body {
 }
 a { color: var(--chumei-bamboo-text); text-decoration: none; }
 a:hover { text-decoration: underline; }
-:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+/* Links inside reading text remain identifiable without relying on color. */
+main :where(p, li, dd) a[href]:not(.btn):not(.fchip) {
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+}
+:focus-visible {
+  outline: 2px solid var(--color-action-primary);
+  outline-offset: 3px;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
 
 /* ---------- app 殼（Threads 式）：桌機左欄／平板窄欄／手機頂欄＋底欄 ---------- */
 .site-header {

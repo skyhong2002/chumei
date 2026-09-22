@@ -46,9 +46,20 @@ PLATFORM_LABEL = {
 
 
 class TelegramError(RuntimeError):
-    def __init__(self, message, error_code=None):
+    def __init__(self, message, error_code=None, description=None):
         super().__init__(message)
         self.error_code = error_code
+        self.description = description
+
+
+def rejected_photo_content(error):
+    """Only explicit API rejections establish that no photo was delivered."""
+    return error.error_code == 400 and str(error.description or "").lower() in {
+        "bad request: failed to get http url content",
+        "bad request: wrong type of the web page content",
+        "bad request: photo_invalid_dimensions",
+        "bad request: image_process_failed",
+    }
 
 
 def load_events(path=EVENTS_PATH):
@@ -438,7 +449,7 @@ class TelegramClient:
             code = data.get("error_code")
             description = data.get("description") or "unknown Telegram error"
             retry_after = (data.get("parameters") or {}).get("retry_after")
-            last_error = TelegramError(f"{method} failed ({code}): {description}", code)
+            last_error = TelegramError(f"{method} failed ({code}): {description}", code, description)
             if attempt + 1 < attempts and (code == 429 or (code and code >= 500)):
                 time.sleep(min(int(retry_after or 2), 30))
                 continue
@@ -462,6 +473,13 @@ class TelegramClient:
                 raise TelegramError(f"formatted post exceeds {limit} UTF-16 units")
         results = []
         for index, text in enumerate(messages[start_part:], start=start_part):
+            text_payload = {
+                "chat_id": self.channel,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_notification": silent,
+                "link_preview_options": {"is_disabled": True},
+            }
             if index == 0:
                 payload = {
                     "chat_id": self.channel,
@@ -470,16 +488,18 @@ class TelegramClient:
                     "parse_mode": "HTML",
                     "disable_notification": silent,
                 }
-                result = self.call("sendPhoto", payload)
+                try:
+                    # A timeout may follow successful delivery. Never retry a
+                    # send automatically or infer a rejection from that result.
+                    result = self.call("sendPhoto", payload, attempts=1)
+                except TelegramError as exc:
+                    if not rejected_photo_content(exc):
+                        raise
+                    # Preserve the exact caption and part count so existing
+                    # checkpoints resume identically after a text-only send.
+                    result = self.call("sendMessage", text_payload, attempts=1)
             else:
-                payload = {
-                    "chat_id": self.channel,
-                    "text": text,
-                    "parse_mode": "HTML",
-                    "disable_notification": silent,
-                    "link_preview_options": {"is_disabled": True},
-                }
-                result = self.call("sendMessage", payload)
+                result = self.call("sendMessage", text_payload, attempts=1)
             results.append(result)
             if on_sent:
                 on_sent(result, index, len(messages))
