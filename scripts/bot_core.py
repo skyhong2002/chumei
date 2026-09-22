@@ -5,6 +5,8 @@ mtime 快取自動重載。平台 adapter（bot_telegram.py / bot_line.py）只�
 把使用者輸入丟進 answer()，拿回平台中立的回覆結構再自行渲染。
 """
 
+from site_paths import published_site_dir
+
 import json
 import re
 from datetime import datetime, timedelta
@@ -12,8 +14,8 @@ from datetime import datetime, timedelta
 from chumei_lib import ROOT, TZ_TAIPEI
 
 BASE_URL = "https://chumei.observe.tw"
-EVENTS_PATH = ROOT / "site" / "api" / "events.json"
-SOURCES_PATH = ROOT / "site" / "data" / "sources.json"
+EVENTS_PATH = published_site_dir() / "api" / "events.json"
+SOURCES_PATH = published_site_dir() / "data" / "sources.json"
 MAX_EVENTS = 8
 
 _CACHE = {}

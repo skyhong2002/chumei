@@ -20,7 +20,9 @@ import requests
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
 
-SITE = ROOT / "site"
+from site_paths import build_site_dir
+
+SITE = build_site_dir()
 BASE_URL = "https://chumei.observe.tw"
 EXTRACT_DIR = ROOT / "state" / "extraction"
 POSTER_DIR = SITE / "assets" / "posters"
@@ -470,6 +472,8 @@ def geocode_external(events):
         ent = cache.get(venue)
         stale_miss = ent and ent.get("lat") is None and _time.time() - ent.get("t", 0) > 7 * 86400
         if ent is None or stale_miss:
+            if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+                continue
             hit = None
             used_q = None
             failed = False
@@ -584,7 +588,7 @@ def cache_posters(events):
                 self.content_depth -= 1
 
     def discover(source_url):
-        if not source_url:
+        if not source_url or load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
             return []
         try:
             page = HttpClient(delay=0, timeout=25).get_text(source_url)
@@ -615,6 +619,8 @@ def cache_posters(events):
     source_cache = {}
 
     def save_candidate(url, dest):
+        if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+            return False
         try:
             r = session.get(html.unescape(url), timeout=25)
             r.raise_for_status()
@@ -1790,6 +1796,8 @@ def cache_post_image(sid, pid, url):
     miss = POST_IMG_DIR / f"{stem}.miss"
     if dest.exists():
         return f"/assets/posts/{dest.name}"
+    if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+        return None
     if miss.exists() and miss.read_text() == url:
         return None  # 同一個網址已經失敗過（多半是 CDN 連結過期）；換新網址才重試
     try:
@@ -2508,7 +2516,7 @@ def main():
     events.sort(key=lambda e: e["start_at"])
     cache_posters(events)
     from render_source_covers import attach_source_screenshots
-    screenshot_limit = int(load_env().get("CHUMEI_SCREENSHOT_LIMIT", "20"))
+    screenshot_limit = 0 if load_env().get("CHUMEI_BUILD_OFFLINE") == "1" else int(load_env().get("CHUMEI_SCREENSHOT_LIMIT", "20"))
     n_screenshots = attach_source_screenshots(events, limit=screenshot_limit)
     n_screenshot_events = sum(e.get("image_kind") == "source_screenshot" for e in events)
     print(f"source screenshots: {n_screenshots} created, {n_screenshot_events} events attached")
