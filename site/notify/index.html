@@ -521,7 +521,7 @@ button.btn.btn-primary{background:var(--color-action-primary)}
   $("np-add").addEventListener("click",function(){ prefs.mode="custom"; prefs.rules.push(emptyRule()); $("notify-advanced").open=true; changed(); });
 
   var eventsLoaded=false;
-  fetch("/data/events.json").then(function(r){return r.json()}).then(function(d){
+  fetch("/data/events-index.json").then(function(r){return r.json()}).then(function(d){
     var today=new Date(); today.setHours(0,0,0,0);
     upcoming=(d.events||[]).filter(function(e){
       var ts=new Date(e.start_at).getTime(); return !isNaN(ts)&&ts>=today.getTime();

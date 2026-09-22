@@ -20,7 +20,6 @@
 <link rel="stylesheet" href="/assets/tokens.css?v=b5a546f1f169">
 <link rel="stylesheet" href="/assets/site.css?v=63db20a8faca">
 <link rel="alternate" type="application/rss+xml" title="竹梅活動 RSS" href="/feeds/all.xml">
-<link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
@@ -73,7 +72,8 @@
       <h2 id="map-heading">活動地圖</h2>
       <span id="map-count" class="result-count"></span>
     </div>
-    <div id="map"></div>
+    <button id="load-map" class="fchip" aria-controls="map">顯示活動地圖</button>
+    <div id="map" hidden></div>
     <p id="map-note" class="map-note"></p>
   </section>
   <section class="results-section" aria-labelledby="list-heading">
@@ -100,7 +100,6 @@
     <section><h2>帳號</h2><a href="/account/" data-account-link><span data-account-label>登入／帳號</span></a></section>
   </nav>
 </footer>
-<script src="/assets/vendor/maplibre/maplibre-gl.js" defer></script>
 
 <script src="/assets/app.js?v=17c791107bd6" defer></script>
 
