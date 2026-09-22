@@ -17,6 +17,7 @@ from pathlib import Path
 
 import requests
 
+from event_categories import normalize_event_category
 from chumei_lib import iter_inbox, load_env, now_iso, ROOT, TZ_TAIPEI
 
 PROMPT_VERSION = 3
@@ -343,7 +344,7 @@ def process_item(env, item, lock, caches):
             "school": ev.get("school") or item["school"],
             "organizer": ev.get("organizer") or item["source_name"],
             "organizer_type": ev.get("organizer_type") or item["org_type"],
-            "category": ev.get("category") or "其他",
+            "category": ev.get("category"),
             "registration_required": ev.get("registration_required"),
             "registration_url": ev.get("registration_url"),
             "registration_deadline": ev.get("registration_deadline"),
@@ -359,6 +360,7 @@ def process_item(env, item, lock, caches):
             },
             "status": "review" if needs_review else "published",
         })
+    events = [normalize_event_category(e) for e in events]
     recurrings = []
     for rc in (parsed.get("recurrings") or []):
         try:
