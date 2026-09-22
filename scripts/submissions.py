@@ -191,6 +191,16 @@ class SubmissionStore:
                 """
             )
 
+            # Existing databases predate an account FK. Enforce new ownership
+            # without rebuilding the public report table during startup.
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").fetchone():
+                conn.execute("""
+                    CREATE TRIGGER IF NOT EXISTS submissions_existing_account
+                    BEFORE INSERT ON submissions
+                    WHEN NOT EXISTS (SELECT 1 FROM users WHERE id=NEW.user_id)
+                    BEGIN SELECT RAISE(ABORT, 'submission account no longer exists'); END
+                """)
+
     def count_today(self, user_id: str, now: int | None = None) -> int:
         now = now or _now()
         with self._connection() as conn:

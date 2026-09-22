@@ -217,7 +217,7 @@ def normalize_prefs(raw):
     return {"mode": mode, "orgs": orgs, "rules": rules}
 
 
-def upsert_sub(subscription, prefs=None, migrate_from=None, ua="", user_id=None):
+def upsert_sub(subscription, prefs=None, migrate_from=None, ua="", user_id=None, session_token=None):
     """新增/更新訂閱；migrate_from 時把舊 endpoint 的偏好搬到新 endpoint。
 
     user_id：字串＝綁定該帳號；""＝明確解除（瀏覽器已登出）；None＝不動。
@@ -225,6 +225,12 @@ def upsert_sub(subscription, prefs=None, migrate_from=None, ua="", user_id=None)
     """
     endpoint = subscription["endpoint"]
     with subs_lock():
+        # Recheck browser authentication inside the same lock as account deletion.
+        # An expired/deleted session must not recreate a just-removed device row.
+        if session_token is not None:
+            user_id = session_user_id(session_token) or ""
+            if session_token and not user_id:
+                return None
         data = load_subs()
         record = data["subs"].get(sub_key(endpoint))
         if migrate_from:
