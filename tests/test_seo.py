@@ -1,4 +1,6 @@
 import re
+import copy
+import sys
 import unittest
 from collections import defaultdict
 from html.parser import HTMLParser
@@ -8,6 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 BASE_URL = "https://chumei.observe.tw"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import build_site
 
 
 class SEOParser(HTMLParser):
@@ -65,6 +70,67 @@ def parse_pages():
         parser.feed(path.read_text())
         pages.append((path, parser))
     return pages
+
+
+class EventVenueSEOTests(unittest.TestCase):
+    def event(self, event_id, start, campus, venue, **extra):
+        return {
+            "id": event_id,
+            "title": "聯電2026校園人才發展計畫暨研發替代役說明會",
+            "start_at": start, "campus": campus, "venue": venue,
+            "organizer": "聯華電子（聯電）", "extraction": {}, **extra,
+        }
+
+    def render(self, event, with_time=True):
+        page = SEOParser()
+        page.feed(build_site.detail_page(event, with_time=with_time))
+        return page
+
+    def test_same_title_time_different_venues_keep_unique_pages(self):
+        events = [
+            self.event("evt_37717d19a7db", "2026-09-30T12:10:00+08:00", "nthu-main", "台達館 B05"),
+            self.event("evt_90291e8ab873", "2026-09-30T12:10:00+08:00", "other", "自強校區電機系館 1F"),
+            self.event("evt_81086527cfda", "2026-10-20T12:10:00+08:00", "nthu-main", "物理館 B1-019"),
+            self.event("evt_b3c8914bd8bb", "2026-10-20T12:10:00+08:00", "other", "資管大樓 IEC6019"),
+        ]
+        original = copy.deepcopy(events)
+        pages = [self.render(event) for event in events]
+        for attr in ("title", "h1"):
+            self.assertEqual(len({getattr(page, attr) for page in pages}), 4)
+        self.assertEqual(len({page.meta["description"] for page in pages}), 4)
+        for event, page in zip(events, pages):
+            with self.subTest(event=event["id"]):
+                self.assertIn(event["venue"], page.title)
+                self.assertIn(event["venue"], page.h1)
+                self.assertIn(event["venue"], page.meta["description"])
+                self.assertIn("12:10", page.h1)
+                self.assertEqual(page.canonicals, [f"{BASE_URL}/event/{event['id']}/"])
+                self.assertIsNone(page.redirect)
+                for prefix in ("og", "twitter"):
+                    self.assertEqual(page.meta[f"{prefix}:title"], page.title)
+                    self.assertEqual(page.meta[f"{prefix}:description"], page.meta["description"])
+        self.assertEqual(events, original)
+
+    def test_all_day_sessions_with_same_venue_use_campus(self):
+        events = [self.event(f"evt_{campus}", "2026-09-30T00:00:00+08:00", campus, "活動中心", all_day=True)
+                  for campus in ("nthu-main", "nycu-guangfu")]
+        pages = [self.render(event) for event in events]
+        self.assertNotEqual(pages[0].h1, pages[1].h1)
+        for event, page in zip(events, pages):
+            self.assertIn(build_site.CAMPUS_LABEL[event["campus"]], page.h1)
+            self.assertNotIn("00:00", page.h1)
+
+    def test_long_organizer_does_not_hide_venue_in_preview(self):
+        event = self.event("evt_long", "2026-09-30T12:10:00+08:00", "nthu-main", "台達館 B05",
+                           organizer="主辦單位" * 100)
+        self.assertIn(event["venue"], self.render(event).meta["description"])
+
+    def test_unique_title_keeps_compact_heading_and_missing_venue_is_valid(self):
+        event = self.event("evt_unique", "2026-09-30T12:10:00+08:00", "nthu-main", "台達館 B05")
+        self.assertEqual(self.render(event, with_time=False).h1,
+                         event["title"] + "｜2026 年 9 月 30 日")
+        event.update(campus=None, venue=None)
+        self.assertEqual(self.render(event).h1, event["title"] + "｜2026 年 9 月 30 日 12:10")
 
 
 class SEOOutputTests(unittest.TestCase):

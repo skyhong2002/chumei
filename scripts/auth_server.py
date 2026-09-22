@@ -79,6 +79,7 @@ from apify_contributions import (
 from event_time import event_has_not_ended
 from build_site import event_ics, ics_calendar, page_shell
 from chumei_lib import ROOT, load_env
+from site_paths import published_site_dir
 from submissions import (
     DAILY_LIMIT,
     MAX_NOTE_LENGTH,
@@ -342,7 +343,7 @@ def _keychain_value(service: str) -> str:
 class AuthStore:
     def __init__(self, path: Path, directory_path: Path | None = None):
         self.path = Path(path)
-        self.directory_path = Path(directory_path) if directory_path else ROOT / "site" / "data" / "sources.json"
+        self.directory_path = Path(directory_path) if directory_path else published_site_dir() / "data" / "sources.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
@@ -1425,7 +1426,7 @@ SUBMIT_NOTICES = {
 }
 
 
-EVENTS_DATA_PATH = ROOT / "site" / "data" / "events.json"
+EVENTS_DATA_PATH = published_site_dir() / "data" / "events.json"
 _events_cache: dict = {"mtime": None, "byid": {}}
 
 
