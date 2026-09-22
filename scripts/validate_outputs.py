@@ -39,6 +39,28 @@ def validate_browser_indexes(site, events):
     return errors
 
 
+
+def validate_quality_report(site, bundle):
+    try:
+        report = json.loads((site / "api/data-quality.json").read_text())
+        if report.get("generated_at") != bundle.get("generated_at"):
+            return fail("data quality report belongs to a different build")
+        items = report["items"]
+        if report["counts"]["queued_events"] != len(items) or len({r["id"] for r in items}) != len(items):
+            return fail("data quality queue count mismatch or duplicate ids")
+        event_ids = {e["id"] for e in bundle["events"]}
+        if any(r.get("event_url") and r["id"] not in event_ids for r in items):
+            return fail("data quality queue links to unpublished event")
+        if not (site / "quality/index.html").exists():
+            return fail("data quality page missing")
+        for metric in report["coverage"].values():
+            if not 0 <= metric["available"] <= metric["total"]:
+                return fail("data quality coverage invalid")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return fail(f"data quality report invalid: {exc}")
+    return 0
+
+
 def main():
     errors = 0
 
@@ -72,6 +94,7 @@ def main():
             errors += fail(f"detail page missing: {e['id']}")
 
     errors += validate_browser_indexes(SITE, events)
+    errors += validate_quality_report(SITE, bundle)
 
     for name in ("feeds/all.xml", "feeds/nthu.xml", "feeds/nycu.xml", "sitemap.xml"):
         try:

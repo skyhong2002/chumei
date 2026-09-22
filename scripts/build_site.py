@@ -20,6 +20,8 @@ import requests
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
 from event_categories import CAT_SLUG, normalize_event_category
 from event_time import event_has_not_ended
+from data_quality import (missing_venue, apply_quality_reviews, event_quality_issues,
+                          build_quality_report, write_quality_report)
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
 
 from site_paths import build_site_dir
@@ -384,6 +386,9 @@ def attach_geo(events, venues):
     n = 0
     for e in events:
         venue = (e.get("venue") or "").strip()
+        if missing_venue(e):
+            venue = ""
+            e.pop("geo", None)  # Never retain a precise marker for an unknown venue.
         campus = e.get("campus")
         if campus in ("online",):
             continue
@@ -1157,6 +1162,11 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
         for k, v in rows if v)
     review = ('<p class="review-note">⚠️ 此活動由 AI 從公開貼文擷取，欄位尚待確認，請以原始貼文為準。</p>'
               if e["extraction"].get("needs_review") else "")
+    quality_issues = event_quality_issues(e)
+    if quality_issues:
+        review += ('<div class="review-note"><strong>資料待確認</strong><ul>'
+                   + "".join(f'<li>{esc(i["message"])}</li>' for i in quality_issues)
+                   + f'</ul><a href="/quality/">查看資料缺漏與更正方式</a></div>')
     if e.get("poster_image"):
         poster = f'<img class="detail-poster" src="{esc(e["poster_image"])}" alt="{esc(e["title"])} 活動海報">'
     elif e.get("image_kind") == "source_screenshot":
@@ -1177,10 +1187,11 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
                   f'<img class="event-cover-bg" src="{cover}" alt="">'
                   '<div class="event-cover-content"><span class="event-cover-kicker">竹梅活動</span>'
                   f'<strong>{category}</strong><span class="event-cover-note">示意封面</span></div></div>')
+    map_action_label = "查看約略位置（非實際會場）" if (e.get("geo") or {}).get("approximate") else "在地圖上看"
     actions = "".join(filter(None, [
         f'<a class="btn btn-primary" href="{esc(e["registration_url"])}" rel="noopener">報名／活動頁</a>' if e.get("registration_url") else None,
         f'<a class="btn" href="{gcal}" rel="noopener">加入 Google 日曆</a>' if gcal else None,
-        (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">在地圖上看</a>'
+        (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">{map_action_label}</a>'
          if e.get("geo") else None),
         # 原始貼文統一列在資訊列（含帳號／平台／日期），不另設按鈕
         (f'<button class="btn going-btn going-btn-label" data-event-id="{e["id"]}" '
@@ -2572,6 +2583,8 @@ def write_browser_event_bundles(bundle):
 
 def main():
     events = dedupe(apply_overrides(load_events()))
+    quality_candidates = events
+    apply_quality_reviews(quality_candidates, read_sources_csv("event_quality_reviews.csv"))
     events = [e for e in events if e.get("start_at")]
     for e in events:
         e["schedule_kind"] = "period" if is_period_event(e) else "scheduled"
@@ -2624,6 +2637,7 @@ def main():
 
     bundle = {"generated_at": now_iso(), "events": events,
               "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL, "org": ORG_LABEL}}
+    write_quality_report(SITE, build_quality_report(quality_candidates, bundle["generated_at"], build_now), page_shell)
     write_browser_event_bundles(bundle)
     (SITE / "data" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False))
     (SITE / "api" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False, indent=1))
