@@ -93,13 +93,13 @@ test_seo.SITE = Path('published/current').resolve()
 suite = unittest.defaultTestLoader.loadTestsFromName('test_seo.SEOOutputTests.test_every_page_has_queryless_canonical_and_preview_metadata')
 raise SystemExit(not unittest.TextTestRunner().run(suite).wasSuccessful())"""],
             cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if seo_probe.returncode == 0:
+        if seo_probe.returncode == 0 or b'FAIL: test_every_page' not in seo_probe.stderr:
             raise RuntimeError('Missing canonical unexpectedly passed SEO checks')
         data = release / 'data/events.json'
         data.write_text('{invalid JSON')
         result = subprocess.run([sys.executable, 'scripts/validate_outputs.py'], cwd=root, env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode == 0:
+        if result.returncode == 0 or b'events.json unparseable' not in result.stderr:
             raise RuntimeError('Corrupted event data unexpectedly passed validation')
         print('CI passed: isolated release, unit/JS tests, SEO, browser smoke, invalid-data/SEO rejection.')
 

@@ -17,7 +17,7 @@ Linux 需使用 `playwright install --with-deps chromium`。Caddy 路由測試�
 更新依賴時使用 `uv`，並將 lock 與通過的測試一同提交：
 
 ```sh
-uv pip compile requirements.in --python-version 3.14 --generate-hashes --output-file requirements.txt --upgrade
+uv pip compile requirements.in --python-version 3.14 --universal --generate-hashes --output-file requirements.txt --upgrade
 ```
 
 更新後應重新建立乾淨虛擬環境執行以上安裝與檢查。Playwright 的 browser revision 隨 lock 內套件版本固定；Node/Caddy/Python 的 patch 與作業系統安全更新由 CI runner 提供，並非 bit-for-bit 系統映像。
