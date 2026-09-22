@@ -15,6 +15,7 @@ from pathlib import Path
 
 from apify_pool import pool_status, recommended_interval_hours
 from chumei_lib import read_sources_csv
+from publish_site import exclusive_lock
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / ".venv" / "bin" / "python"
@@ -51,7 +52,7 @@ def run_step(name, args):
     return ok
 
 
-def main():
+def run_pipeline():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-ig", action="store_true")
     ap.add_argument("--force-ig", action="store_true")
@@ -121,10 +122,7 @@ def main():
             )
 
     results["extract"] = run_step("extract", ["extract_events.py"])
-    results["map"] = run_step("map", ["build_map_data.py"])
-    results["build"] = (results["map"] and run_step("build", ["build_site.py"])
-                        and run_step("status", ["build_status_page.py"])
-                        and run_step("validate", ["validate_outputs.py"]))
+    results["build"] = results["extract"] and run_step("publish", ["publish_site.py"])
     # Telegram 改由獨立 launchd job（tw.observe.chumei.telegram，每 30 分鐘、
     # 每次最多 2 則）滴灌發送，與抓取節奏解耦，避免一輪攢一堆一次炸出。
 
@@ -135,6 +133,15 @@ def main():
 
     # fetcher 局部失敗只記錄；公開輸出與通知投遞需成功。
     return 0 if results.get("build") and results.get("telegram", True) else 1
+
+
+def main():
+    try:
+        with exclusive_lock(ROOT / "state" / "pipeline.lock"):
+            return run_pipeline()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

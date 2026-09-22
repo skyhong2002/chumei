@@ -17,6 +17,8 @@ from __future__ import annotations
 import argparse
 import csv
 import html as html_lib
+from site_paths import published_site_dir
+
 import json
 import re
 import subprocess
@@ -32,7 +34,7 @@ from chumei_lib import ROOT, TZ_TAIPEI, append_inbox, iter_inbox, load_env, now_
 from submissions import MAX_ATTEMPTS, SubmissionStore, classify_url, normalize_url
 
 SOURCE_ID = "user_submission"
-EVENTS_JSON = ROOT / "site" / "api" / "events.json"
+EVENTS_JSON = published_site_dir() / "api" / "events.json"
 STATE_DIR = ROOT / "state" / "submissions"
 MANUAL_REVIEW = STATE_DIR / "manual_review.jsonl"
 EXTRACT_CACHE = ROOT / "state" / "extraction" / f"{SOURCE_ID}.json"
@@ -131,7 +133,7 @@ def load_tracked_handles():
 
 def load_org_index():
     """source_id → 名錄 id（site/data/sources.json 的 sids），帳號類回報用來回單位頁連結。"""
-    path = ROOT / "site" / "data" / "sources.json"
+    path = published_site_dir() / "data" / "sources.json"
     if not path.exists():
         return {}
     out = {}
@@ -177,15 +179,8 @@ def _meta(html, prop):
 
 
 def _http_get(url):
-    headers = {"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"}
-    try:
-        return requests.get(url, timeout=25, headers=headers, allow_redirects=True)
-    except requests.exceptions.SSLError:
-        # 兩校不少站的憑證缺 Subject Key Identifier（同 fetch_infonews），放寬 strict flag 再試
-        from fetch_infonews import _RelaxedAdapter
-        session = requests.Session()
-        session.mount("https://", _RelaxedAdapter())
-        return session.get(url, timeout=25, headers=headers, allow_redirects=True)
+    from safe_outbound import get
+    return get(url, timeout=25, headers={"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"})
 
 
 def fetch_generic(url):
@@ -242,9 +237,11 @@ def screenshot(url, dest_dir):
     out = Path(dest_dir) / "page.jpg"
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(executable_path=chrome, headless=True)
-            ctx = browser.new_context(viewport={"width": 1000, "height": 1400}, locale="zh-TW",
-                                      user_agent=UA, ignore_https_errors=True)
+            browser = pw.chromium.launch(executable_path=chrome, headless=True,
+                                         args=["--disable-background-networking", "--disable-component-update"])
+            from safe_outbound import secure_browser_context
+            ctx = secure_browser_context(browser,viewport={"width": 1000, "height": 1400}, locale="zh-TW",
+                                      user_agent=UA)
             page = ctx.new_page()
             page.set_default_navigation_timeout(30_000)
             page.goto(url, wait_until="domcontentloaded")

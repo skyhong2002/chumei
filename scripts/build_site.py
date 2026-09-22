@@ -20,7 +20,9 @@ import requests
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
 
-SITE = ROOT / "site"
+from site_paths import build_site_dir
+
+SITE = build_site_dir()
 BASE_URL = "https://chumei.observe.tw"
 EXTRACT_DIR = ROOT / "state" / "extraction"
 POSTER_DIR = SITE / "assets" / "posters"
@@ -470,6 +472,8 @@ def geocode_external(events):
         ent = cache.get(venue)
         stale_miss = ent and ent.get("lat") is None and _time.time() - ent.get("t", 0) > 7 * 86400
         if ent is None or stale_miss:
+            if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+                continue
             hit = None
             used_q = None
             failed = False
@@ -584,7 +588,7 @@ def cache_posters(events):
                 self.content_depth -= 1
 
     def discover(source_url):
-        if not source_url:
+        if not source_url or load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
             return []
         try:
             page = HttpClient(delay=0, timeout=25).get_text(source_url)
@@ -615,6 +619,8 @@ def cache_posters(events):
     source_cache = {}
 
     def save_candidate(url, dest):
+        if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+            return False
         try:
             r = session.get(html.unescape(url), timeout=25)
             r.raise_for_status()
@@ -1097,10 +1103,14 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
     else:
         date_label = "日期待確認"
     page_heading = f"{e['title']}｜{date_label}"
+    # 同名同日的場次也可能同時在不同場地舉辦；保留各活動網址，以地點辨識。
+    if with_time and loc:
+        page_heading += f"｜{loc}"
     preview_parts = [
         f"{date_label}「{e['title']}」",
-        e.get("organizer") or (org[1] if org else ""),
+        # 地點放在主辦名稱之前，避免較長的主辦名稱把場次差異截掉。
         loc,
+        e.get("organizer") or (org[1] if org else ""),
         e.get("summary") or e.get("description") or "查看活動時間、地點與原始公告。",
     ]
     preview_desc = _one_line("。".join(part.strip("。") for part in preview_parts if part), 180)
@@ -1790,10 +1800,13 @@ def cache_post_image(sid, pid, url):
     miss = POST_IMG_DIR / f"{stem}.miss"
     if dest.exists():
         return f"/assets/posts/{dest.name}"
+    if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+        return None
     if miss.exists() and miss.read_text() == url:
         return None  # 同一個網址已經失敗過（多半是 CDN 連結過期）；換新網址才重試
     try:
-        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (chumei)"})
+        from safe_outbound import get
+        resp = get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (chumei)"})
         resp.raise_for_status()
         image = Image.open(io.BytesIO(resp.content))
         image = image.convert("RGB")
@@ -2545,7 +2558,7 @@ def main():
     events.sort(key=lambda e: e["start_at"])
     cache_posters(events)
     from render_source_covers import attach_source_screenshots
-    screenshot_limit = int(load_env().get("CHUMEI_SCREENSHOT_LIMIT", "20"))
+    screenshot_limit = 0 if load_env().get("CHUMEI_BUILD_OFFLINE") == "1" else int(load_env().get("CHUMEI_SCREENSHOT_LIMIT", "20"))
     n_screenshots = attach_source_screenshots(events, limit=screenshot_limit)
     n_screenshot_events = sum(e.get("image_kind") == "source_screenshot" for e in events)
     print(f"source screenshots: {n_screenshots} created, {n_screenshot_events} events attached")
@@ -2638,7 +2651,7 @@ def main():
             if ent is not None and ent["id"] not in seen_ent:
                 seen_ent.add(ent["id"])
                 ent_events.setdefault(ent["id"], []).append(e)
-    # 同名又同一天的活動（同一場地一天兩場）頁面標題要能分辨，先數出來
+    # 同名同日的場次以時間與校區／場地區分，不因標題碰撞而合併活動。
     same_day_twins = Counter((e["title"], (e.get("start_at") or "")[:10]) for e in events)
     for e in events:
         ent = sid_to_entry.get(e["source"]["source_id"])

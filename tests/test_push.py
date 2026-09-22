@@ -1,15 +1,14 @@
 """Web Push 測試：偏好比對、訂閱儲存、以及不靠瀏覽器的端到端加密驗證——
-偽造一個帶真 P-256 金鑰的訂閱、endpoint 指向本地 HTTP sink，
-用 pywebpush 實發後以 http_ece 解密，確認 VAPID 標頭與 payload 完整。"""
+使用真 P-256 金鑰與隔離的 VAPID 金鑰，mock 傳輸後以 http_ece 解密，
+確認 VAPID 標頭與 payload 完整；不發真實網路請求。"""
 
 import base64
 import json
 import sys
 import tempfile
-import threading
 import unittest
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -181,22 +180,6 @@ class StoreTest(unittest.TestCase):
         )
 
 
-class _Sink(BaseHTTPRequestHandler):
-    received = None
-
-    def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
-        _Sink.received = {
-            "headers": {k.lower(): v for k, v in self.headers.items()},
-            "body": self.rfile.read(length),
-        }
-        self.send_response(201)
-        self.end_headers()
-
-    def log_message(self, *args):
-        pass
-
-
 class EndToEndCryptoTest(unittest.TestCase):
     """不靠瀏覽器驗證 send_push 全鏈：VAPID 簽章標頭存在、payload 可用訂閱私鑰解回原文。"""
 
@@ -213,21 +196,28 @@ class EndToEndCryptoTest(unittest.TestCase):
         auth = b"0123456789abcdef"
         b64u = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
-        server = HTTPServer(("127.0.0.1", 0), _Sink)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            record = {"sub": {
-                "endpoint": f"http://127.0.0.1:{server.server_port}/sink",
-                "keys": {"p256dh": b64u(p256dh), "auth": b64u(auth)},
-            }}
-            payload = {"title": "測試", "body": "端到端", "url": "/subscribe/"}
+        record = {"sub": {
+            "endpoint": "https://fcm.googleapis.com/sink",
+            "keys": {"p256dh": b64u(p256dh), "auth": b64u(auth)},
+        }}
+        payload = {"title": "測試", "body": "端到端", "url": "/subscribe/"}
+        import safe_outbound
+        import requests
+        captured = {}
+
+        def transport(url, **kwargs):
+            captured.update({"headers": {k.lower(): v for k, v in kwargs["headers"].items()},
+                             "body": kwargs["data"]})
+            result = requests.Response()
+            result.status_code = 201
+            result._content = b""
+            return result
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(pc, "PUSH_DIR", Path(td)), mock.patch.object(pc, "VAPID_KEY_PATH", Path(td) / "vapid.pem"), mock.patch.object(safe_outbound, "request", side_effect=transport):
             pc.ensure_vapid()
             pc.send_push(record, payload, ttl=60)
-        finally:
-            server.shutdown()
 
-        received = _Sink.received
+        received = captured
         self.assertIsNotNone(received)
         self.assertIn("vapid", received["headers"].get("authorization", "").lower())
         self.assertEqual(received["headers"].get("content-encoding"), "aes128gcm")

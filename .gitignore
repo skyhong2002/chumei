@@ -19,3 +19,6 @@ site/source/
 site/org/
 
 .DS_Store
+
+# Immutable generated releases and atomic publication pointers.
+published/

@@ -13,7 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "sources" / "map"
-OUT = ROOT / "site" / "data" / "map"
+from site_paths import build_site_dir
+
+OUT = build_site_dir() / "data" / "map"
 
 
 def rnd(pt):

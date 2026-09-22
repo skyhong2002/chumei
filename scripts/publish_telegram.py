@@ -6,6 +6,8 @@ the publisher never floods a new channel with the existing catalogue.
 
 import argparse
 import html
+from site_paths import published_site_dir
+
 import json
 import re
 import sys
@@ -18,7 +20,7 @@ import requests
 
 from chumei_lib import INBOX_DIR, ROOT, TZ_TAIPEI, load_env, now_iso
 
-EVENTS_PATH = ROOT / "site" / "data" / "events.json"
+EVENTS_PATH = published_site_dir() / "data" / "events.json"
 STATE_PATH = ROOT / "state" / "telegram.json"
 BASE_URL = "https://chumei.observe.tw"
 FALLBACK_COVER = "/assets/fallback/event-cover.webp"

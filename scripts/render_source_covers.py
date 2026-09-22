@@ -15,7 +15,9 @@ from urllib.parse import urlparse
 from chumei_lib import ROOT, load_env
 
 
-OUTPUT_DIR = ROOT / "site" / "assets" / "source-screenshots"
+from site_paths import build_site_dir
+
+OUTPUT_DIR = build_site_dir() / "assets" / "source-screenshots"
 DOMAIN_SELECTORS = {
     "infonews.nycu.edu.tw": "#changeWidh",
 }
@@ -118,17 +120,18 @@ def attach_source_screenshots(events, limit=20):
             headless=True,
             args=["--disable-background-networking", "--disable-component-update"],
         )
-        context = browser.new_context(
+        from safe_outbound import secure_browser_context
+        context_options = dict(
             viewport={"width": 1200, "height": 900},
             device_scale_factor=1,
-            ignore_https_errors=True,
             locale="zh-TW",
         )
-        page = context.new_page()
-        page.set_default_navigation_timeout(30_000)
 
         for url, grouped_events in list(uncached.items())[:limit]:
             destination = _screenshot_path(url)
+            context = secure_browser_context(browser, **context_options)
+            page = context.new_page()
+            page.set_default_navigation_timeout(30_000)
             try:
                 page.goto(url, wait_until="domcontentloaded")
                 page.wait_for_timeout(900)
@@ -138,12 +141,13 @@ def attach_source_screenshots(events, limit=20):
             except Exception as exc:
                 print(f"  source screenshot fail {url}: {str(exc)[:120]}", file=sys.stderr)
                 continue
+            finally:
+                context.close()
             cover = "/assets/source-screenshots/" + destination.name
             for event in grouped_events:
                 event["cover_image"] = cover
                 event["image_kind"] = "source_screenshot"
 
-        context.close()
         browser.close()
     return produced
 

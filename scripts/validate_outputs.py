@@ -6,7 +6,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SITE = ROOT / "site"
+from site_paths import build_site_dir
+
+SITE = build_site_dir()
 
 
 def fail(msg):
@@ -83,8 +85,8 @@ def main():
             errors += fail(f"{name} not a calendar")
 
     api = json.loads((SITE / "api" / "events.json").read_text())
-    if len(api.get("events", [])) != len(events):
-        errors += fail("api/events.json count mismatch")
+    if api != bundle:
+        errors += fail("api/events.json content mismatch")
 
     try:
         status = json.loads((SITE / "api" / "status.json").read_text())
