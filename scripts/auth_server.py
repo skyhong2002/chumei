@@ -76,6 +76,7 @@ from apify_contributions import (
     user_rows as apify_user_rows,
     verify_token as verify_apify_token,
 )
+from event_time import event_has_not_ended
 from build_site import event_ics, ics_calendar, page_shell
 from chumei_lib import ROOT, load_env
 from site_paths import published_site_dir
@@ -1556,9 +1557,9 @@ def _saved_feed_public_id(token: str, signing_key: str) -> str | None:
 
 
 def _feed_ics(events: list[dict], name: str, url: str) -> str:
-    today = datetime.now(timezone(timedelta(hours=8))).date().isoformat()
+    now = datetime.now(timezone.utc)
     upcoming = sorted(
-        (e for e in events if str(e.get("start_at") or "")[:10] >= today),
+        (e for e in events if event_has_not_ended(e, now)),
         key=lambda e: e.get("start_at") or "",
     )
     body = "\r\n".join(filter(None, (event_ics(event) for event in upcoming)))
@@ -1756,14 +1757,14 @@ def _saved_feeds_html(feeds: list[dict], configured: bool) -> str:
 
 def _going_html(going_ids: list[str]) -> str:
     byid = _events_by_id()
-    today = time.strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc)
     upcoming, past = [], []
     for eid in going_ids:
         ev = byid.get(eid)
         if not ev:
             continue
         start = str(ev.get("start_at") or "")[:10]
-        (upcoming if start >= today else past).append((start, ev))
+        (upcoming if event_has_not_ended(ev, now) else past).append((start, ev))
     upcoming.sort(key=lambda p: p[0])
     past.sort(key=lambda p: p[0], reverse=True)
 
@@ -1841,9 +1842,9 @@ def _profile_html(
     handle = html.escape(profile.get("handle") or "")
     joined = _joined(profile)
     byid = _events_by_id()
-    today = time.strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc)
     upcoming_n = sum(1 for eid in going_ids
-                     if eid in byid and str(byid[eid].get("start_at") or "")[:10] >= today)
+                     if eid in byid and event_has_not_ended(byid[eid], now))
     actions = ""
     if owner:
         actions = ('<div class="profile-actions">'
@@ -1855,7 +1856,7 @@ def _profile_html(
         private_note = '<p class="account-hint">這個個人頁目前設為不公開，只有你看得到。可在<a href="/account/">帳號設定</a>改。</p>'
     going_block = (_going_html(going_ids) if owner
                    else _going_html([eid for eid in going_ids
-                                     if eid in byid and str(byid[eid].get("start_at") or "")[:10] >= today]))
+                                     if eid in byid and event_has_not_ended(byid[eid], now)]))
     content = f"""
 <section class="account-page profile-page">
   <header class="profile-head">

@@ -18,6 +18,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
+from event_time import event_has_not_ended
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
 
 from site_paths import build_site_dir
@@ -769,8 +770,9 @@ def event_ics(e):
     return "\r\n".join(l for l in lines if l)
 
 
-def write_ics(path, events, name):
-    body = "\r\n".join(filter(None, (event_ics(e) for e in events)))
+def write_ics(path, events, name, now=None):
+    now = now or datetime.now(TZ_TAIPEI)
+    body = "\r\n".join(filter(None, (event_ics(e) for e in events if event_has_not_ended(e, now))))
     path.write_text(ics_calendar(body, name, "竹梅活動觀測站彙整清大與陽明交大的公開活動。",
                                  f"{BASE_URL}/subscribe/"))
 
@@ -1618,7 +1620,7 @@ def org_pages(entries, events):
         for src in [e["source"]] + e.get("alt_posts", []):
             k = (src["source_id"], src["post_id"])
             ev_per_post[k] = ev_per_post.get(k, 0) + 1
-    today = date.today().isoformat()
+    now = datetime.now(TZ_TAIPEI)
     PLAT = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads",
             "x": "X", "bulletin": "公告頁", "website": "官網", "api": "NYCU LIFE"}
     for ent in entries:
@@ -1627,8 +1629,8 @@ def org_pages(entries, events):
             if l["platform"] == "bulletin":
                 evs += by_sid.get(next((s for s in ent.get("sids", [])), ""), [])
         evs = list({e["id"]: e for e in evs}.values())
-        upcoming = sorted([e for e in evs if e["start_at"][:10] >= today], key=lambda e: e["start_at"])
-        past = sorted([e for e in evs if e["start_at"][:10] < today], key=lambda e: e["start_at"], reverse=True)[:20]
+        upcoming = sorted([e for e in evs if event_has_not_ended(e, now)], key=lambda e: e["start_at"])
+        past = sorted([e for e in evs if not event_has_not_ended(e, now)], key=lambda e: e["start_at"], reverse=True)[:20]
 
         def ev_row(e):
             return (f'<li class="org-ev"><a href="/event/{e["id"]}/">'
@@ -2332,17 +2334,13 @@ def period_section(events):
 def prerender_events(events):
     """/events/ SSR：預設篩選（未來 7 天）的列表列。JS 載入 events.json 後依裝置重繪。"""
     now = datetime.now(TZ_TAIPEI)
-    today = now.strftime("%Y-%m-%d")
     range_end = now + timedelta(days=7)
 
     def in_default_range(e):
         t = _iso_dt(e["start_at"])
         if t is None:
             return False
-        if e.get("all_day"):
-            return (e.get("end_at") or e["start_at"])[:10] >= today and t <= range_end
-        end = _iso_dt(e.get("end_at")) or t
-        return end >= now and t <= range_end
+        return event_has_not_ended(e, now) and t <= range_end
 
     rows = [e for e in events if in_default_range(e)]
     # 與 app.js 相同：未開始以開始時間排序，進行中則以截止時間排序。
@@ -2585,8 +2583,8 @@ def main():
     n_ext = geocode_external(events)
     print(f"geo-external: {n_ext} 校外場地 geocoded")
 
-    today = date.today().isoformat()
-    upcoming = [e for e in events if e["start_at"][:10] >= today]
+    build_now = datetime.now(TZ_TAIPEI)
+    upcoming = [e for e in events if event_has_not_ended(e, build_now)]
 
     for d in ("data", "api", "feeds", "event"):
         (SITE / d).mkdir(parents=True, exist_ok=True)
@@ -2642,7 +2640,6 @@ def main():
             write_ics(cdir / f"{name}.ics", subset_up, title)
     print(f"combo feeds: {len(combo_specs) * 3} pairs")
 
-    today_s = date.today().isoformat()
     ent_events = {}
     for e in events:
         seen_ent = set()
@@ -2664,8 +2661,8 @@ def main():
                 continue
             seen_ent.add(ent2["id"])
             sibs = [x for x in ent_events.get(ent2["id"], []) if x["id"] != e["id"]]
-            up = sorted([x for x in sibs if x["start_at"][:10] >= today_s], key=lambda x: x["start_at"])
-            past = sorted([x for x in sibs if x["start_at"][:10] < today_s], key=lambda x: x["start_at"], reverse=True)
+            up = sorted([x for x in sibs if event_has_not_ended(x, build_now)], key=lambda x: x["start_at"])
+            past = sorted([x for x in sibs if not event_has_not_ended(x, build_now)], key=lambda x: x["start_at"], reverse=True)
             org_sections.append((ent2["id"], ent2["name"], (up + past)[:4]))
         # 資訊列「原始貼文」＝這場活動的所有來源貼文（主來源＋合併掉的），依發文時間排序
         alt_posts = []

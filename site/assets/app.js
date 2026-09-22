@@ -896,11 +896,8 @@
         posts.forEach(function (p) {
           p.events.forEach(function (e) { if (!seen[e.id]) { seen[e.id] = 1; evs.push(e); } });
         });
-        var today = new Date(); today.setHours(0, 0, 0, 0);
-        return evs.filter(function (e) {
-          var t = new Date(e.start_at).getTime();
-          return !isNaN(t) && t >= today.getTime();
-        }).sort(function (a, b) { return new Date(a.start_at) - new Date(b.start_at); });
+        var now = new Date();
+        return evs.filter(function (e) { return eventHasNotEnded(e, now); }).sort(function (a, b) { return new Date(a.start_at) - new Date(b.start_at); });
       }
       function colTitle(c) {
         if (c.t === "events") return { label: "即將活動", dot: "events" };
@@ -2053,6 +2050,27 @@
     var body = raw.replace(/^(?:(?:國立)?(?:陽明交通大學|陽明大學|交通大學|清華大學)|陽明交大|清大|交大|NYCU|NCTU|NTHU)[\s・｜|／/-]*/i, "").trim();
     return body || raw;
   }
+  // Keep in sync with scripts/event_time.py: inclusive dates, exclusive timed ends.
+  function eventHasNotEnded(e, now) {
+    function parse(value) {
+      if (!value) return NaN;
+      var iso = String(value);
+      if (iso.length === 10) iso += "T00:00:00";
+      if (!/(Z|[+-]\d{2}:?\d{2})$/.test(iso)) iso += "+08:00";
+      return Date.parse(iso);
+    }
+    var start = parse(e.start_at), end = parse(e.end_at);
+    if (isNaN(start)) return false;
+    var raw = e.end_at;
+    var dateEnd = raw && String(raw).length === 10;
+    if (isNaN(end) || end < start) { raw = e.start_at; dateEnd = true; }
+    if (e.all_day || dateEnd) {
+      var zone = String(raw).match(/(Z|[+-]\d{2}:?\d{2})$/);
+      end = parse(String(raw).slice(0, 10) + "T00:00:00" + (zone ? zone[0] : "+08:00")) + 86400000;
+    }
+    return end > (now || new Date()).getTime();
+  }
+
   function ongoingLabel(e) {
     // 跨日進行中的活動（展覽、申請期間）：顯示「進行中」而非幾個月前的開始日
     if (!e || !e.end_at) return null;
@@ -2154,10 +2172,7 @@
       var timeRange = value("time");
       if (timeRange !== "all") {
         var starts = new Date(e.start_at);
-        var ends = e.end_at ? new Date(e.end_at) : starts;
-        if (isNaN(starts.getTime())) return false;
-        if (ends < rangeStart && !e.all_day) return false;
-        if (e.all_day && (e.end_at || e.start_at || "").slice(0, 10) < todayStr()) return false;
+        if (!eventHasNotEnded(e, rangeStart)) return false;
         if (timeRange !== "upcoming") {
           var rangeEnd = new Date(rangeStart);
           if (timeRange === "24h") rangeEnd.setHours(rangeEnd.getHours() + 24);
