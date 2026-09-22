@@ -27,7 +27,13 @@ jobs:
           .venv/bin/python -m pip install --require-hashes -r requirements.txt
           .venv/bin/python -m pip check
           .venv/bin/python -m playwright install --with-deps chromium
-          sudo apt-get update
-          sudo apt-get install -y caddy
+      - name: Install production Caddy version
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 https://github.com/caddyserver/caddy/releases/download/v2.11.2/caddy_2.11.2_linux_amd64.tar.gz -o caddy_2.11.2_linux_amd64.tar.gz
+          sha512sum --check "$GITHUB_WORKSPACE/deploy/caddy-linux-amd64.sha512"
+          tar -xzf caddy_2.11.2_linux_amd64.tar.gz caddy
+          sudo install -m 755 caddy /usr/local/bin/caddy
+          caddy version
       - name: Isolated tests, release validation, SEO and browser smoke
         run: .venv/bin/python scripts/ci_check.py
