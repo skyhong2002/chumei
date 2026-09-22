@@ -18,7 +18,10 @@ The private manifest records hashes and the Git revision, never credential
 values. Directories are mode 0700 and files 0600. Copies contain personal data and
 plaintext configured secrets: restrict their destination and encrypt any external
 copy. The tool does not fetch from providers, send notifications, or export
-Keychain entries. SQLite integrity and foreign keys are checked before a snapshot
+Keychain entries; OAuth, feed-signing, and Apify contribution encryption
+settings now come only from environment files or process variables. The Web Push
+VAPID private key remains in the protected `state/push/` files described above. Any process-only secret must also be preserved in a protected
+credential file or separate encrypted custody. SQLite integrity and foreign keys are checked before a snapshot
 becomes visible; incomplete snapshots are not considered backups.
 
 ```sh
@@ -84,7 +87,7 @@ Telegram publisher files; stop these writers for an exact cutover backup.
 ## Keys and an offsite copy
 
 The following must be recoverable in an operator-controlled encrypted password
-manager or encrypted system/Keychain backup, independently of the host:
+manager or encrypted credential-file backup, independently of the host:
 
 - NYCU and Google OAuth client IDs/secrets; NTHU provider configuration.
 - Feed signing key and Apify contribution encryption key. If derived from the
@@ -96,8 +99,12 @@ manager or encrypted system/Keychain backup, independently of the host:
 - Caddy's complete host configuration/certificate state and DNS/tunnel credentials
   for the host; the repository template covers only this site's proxy block.
 
-See the Keychain service names in README. Do not paste key material into issue
-comments, logs, or this repository. No Keychain export or offsite destination is
+See [credential migration](credential-migration.md) before updating an older
+Keychain-based host. New backups include the migrated `.env` and `.env.apify`
+files; backups from before migration may lack those credentials. The backup
+manifest records `credential_storage: env_files`, not proof that every required
+key is present. No runtime Keychain access remains. Do not paste key material
+into issue comments, logs, or this repository. An offsite destination is not
 automatically configured. The operator must configure encrypted replication of
 the backup directory **including the independent deletion ledger**, use separate
 credentials/access control, set remote expiration consistent with privacy

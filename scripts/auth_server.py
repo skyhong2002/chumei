@@ -34,7 +34,6 @@ import math
 import re
 import secrets
 import sqlite3
-import subprocess
 import time
 import uuid
 from contextlib import contextmanager
@@ -248,16 +247,8 @@ class AuthConfig:
         env = load_env()
         client_id = env.get("CHUMEI_NYCU_OAUTH_CLIENT_ID", "").strip()
         client_secret = env.get("CHUMEI_NYCU_OAUTH_CLIENT_SECRET", "").strip()
-        if not client_id:
-            client_id = _keychain_value("tw.observe.chumei.nycu-oauth-client-id")
-        if not client_secret:
-            client_secret = _keychain_value("tw.observe.chumei.nycu-oauth-secret")
         google_client_id = env.get("CHUMEI_GOOGLE_OAUTH_CLIENT_ID", "").strip()
         google_client_secret = env.get("CHUMEI_GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
-        if not google_client_id:
-            google_client_id = _keychain_value("tw.observe.chumei.google-oauth-client-id")
-        if not google_client_secret:
-            google_client_secret = _keychain_value("tw.observe.chumei.google-oauth-secret")
         # NTHUMods 的 client 是 public client（沒有 secret），client_id 本身不是機密。
         # 設成空字串可關閉清大登入。
         nthu_client_id = env.get("CHUMEI_NTHU_OAUTH_CLIENT_ID", NTHU_DEFAULT_CLIENT_ID).strip()
@@ -265,8 +256,6 @@ class AuthConfig:
             "CHUMEI_NTHU_OAUTH_REDIRECT_PATH", NTHU_DEFAULT_REDIRECT_PATH
         ).strip() or NTHU_DEFAULT_REDIRECT_PATH
         feed_signing_key = env.get("CHUMEI_FEED_SIGNING_KEY", "").strip()
-        if not feed_signing_key:
-            feed_signing_key = _keychain_value("tw.observe.chumei.feed-signing-key")
         if not feed_signing_key and client_secret:
             # Domain-separated fallback keeps deployment zero-touch while avoiding raw token storage.
             # An explicit feed key remains preferable because rotating OAuth credentials then has no effect.
@@ -314,29 +303,6 @@ class AuthConfig:
     @property
     def nthu_redirect_uri(self) -> str:
         return f"{self.public_base_url}{self.nthu_redirect_path}"
-
-
-def _keychain_value(service: str) -> str:
-    """Read a deployment credential without placing it in .env or logs."""
-    try:
-        result = subprocess.run(
-            [
-                "security",
-                "find-generic-password",
-                "-a",
-                "chumei",
-                "-s",
-                service,
-                "-w",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return result.stdout.strip()
-    except (FileNotFoundError, subprocess.SubprocessError):
-        return ""
 
 
 class AuthStore:
