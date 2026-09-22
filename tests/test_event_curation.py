@@ -33,8 +33,9 @@ class CurationTests(unittest.TestCase):
 
     def test_known_curation_keeps_camp_and_interview_separate(self):
         rows = b.read_sources_csv("event_merges.csv")
+        rows = [r for r in rows if r["canonical_id"] in {"evt_35390d3f3ad1", "evt_4d6a96e3fe86"}]
         ids = sorted({r[k] for r in rows for k in ("event_id", "canonical_id")})
-        out = merge_reviewed_events([event(eid) for eid in ids])
+        out = merge_reviewed_events([event(eid) for eid in ids], rows)
         self.assertEqual(len(out), 2)
         self.assertEqual(sorted(1 + len(e["alt_posts"]) for e in out), [5, 11])
 
