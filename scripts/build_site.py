@@ -1634,7 +1634,7 @@ def org_pages(entries, events):
             by_sid.setdefault(src["source_id"], []).append(e)
     # 收錄貼文（含沒抽出活動的），各來源合流
     from chumei_lib import iter_inbox
-    now = now_iso()
+    now_text = now_iso()
     posts_by_sid, ev_per_post = {}, {}
     for it in iter_inbox():
         posts_by_sid.setdefault(it["source_id"], []).append(it)
@@ -1708,7 +1708,7 @@ def org_pages(entries, events):
                  for sid in ent.get("sids", []) for p in posts_by_sid.get(sid, [])}
         if posts:
             def post_key(p):
-                return min(p.get("posted_at") or p.get("fetched_at") or "", now)
+                return min(p.get("posted_at") or p.get("fetched_at") or "", now_text)
             ordered = sorted(posts.values(), key=post_key, reverse=True)
             shown = ordered[:30]
 
