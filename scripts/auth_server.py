@@ -1936,14 +1936,14 @@ def _profile_html(
 def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/", *, nthu_ok: bool = False) -> str:
     if nycu_ok or google_ok or nthu_ok:
         encoded_return = quote(_safe_return_to(return_to), safe="/")
-        nycu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to={encoded_return}">使用陽明交大 OAuth 登入</a>'
+        nycu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to={encoded_return}">使用陽明交大帳號登入</a>'
                     if nycu_ok else "")
         nthu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nthu/start?return_to={encoded_return}">使用清大 NTHU 帳號登入</a>'
                     if nthu_ok else "")
         google_btn = (f'<a class="btn account-action" href="/auth/google/start?return_to={encoded_return}">使用 Google 帳號登入</a>'
                       if google_ok else "")
         return f"""<section class="account-card">
-        <p class="eyebrow">OAuth-only account</p>
+        <p class="eyebrow">我的竹梅</p>
         <h2>登入竹梅</h2>
         <p>陽明交大成員請走學校單一入口；清大成員可透過 NTHUMods 用學校帳號登入；校友與其他人可用 Google 帳號。竹梅不會取得或儲存你的密碼。</p>
         {nycu_btn}
@@ -1952,9 +1952,9 @@ def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/
         <p class="privacy-note"><a href="/account/privacy">隱私與資料保留說明</a>。登入取得帳號識別、Email 與登入服務提供的名稱或頭像，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。新帳號的個人頁預設不公開；只有你在帳號設定勾選公開並儲存後，其他人才可看到名稱、頭像、追蹤單位與即將參加的活動。追蹤與參加總人數仍會匿名計入。</p>
         </section>"""
     return """<section class="account-card">
-        <p class="eyebrow">OAuth-only account</p>
+        <p class="eyebrow">我的竹梅</p>
         <h2>登入功能設定中</h2>
-        <p>OAuth Client 尚未完成設定，請稍後再試。</p>
+        <p>登入服務暫時無法使用，請稍後再試。你仍可瀏覽活動與使用公開訂閱。</p>
         <span class="btn btn-primary account-action disabled" aria-disabled="true">登入竹梅</span>
         </section>"""
 
@@ -2023,7 +2023,7 @@ def _account_html(
                         f'{unlink_form("nycu")}</dd></div>')
         elif nycu_ok:
             rows.append('<div><dt>學校帳號</dt><dd><a class="account-bind" '
-                        'href="/auth/nycu/start?link=1">綁定陽明交大 OAuth →</a></dd></div>')
+                        'href="/auth/nycu/start?link=1">綁定陽明交大帳號 →</a></dd></div>')
         nthu = by_provider.get("nthu")
         if nthu:
             rows.append(f'<div><dt>清大帳號</dt><dd>{html.escape(nthu.get("subject") or "")}'
@@ -2049,7 +2049,7 @@ def _account_html(
         elif linked == ["清大"]:
             status_line = "以清大 NTHU 帳號登入"
         else:
-            status_line = "以陽明交大 OAuth 登入"
+            status_line = "以陽明交大帳號登入"
         bind_hint = ('<p class="account-hint">綁定另一種登入方式後，用哪個帳號登入都會回到同一份追蹤與回報。若另一個帳號已有資料，會合併進目前帳號並沿用目前的公開設定；目前設為公開時，合併的追蹤與即將參加活動也會公開。</p>')
         sections.append(f"""<section class="account-card account-section">
         <h2>登入方式</h2>
@@ -2309,7 +2309,7 @@ def _contribute_html(
             )
             action = (
                 f'<button type="button" class="btn contrib-disable" data-disable="{esc(row["publicId"])}">停止貢獻</button>'
-                if active else '<span class="contrib-muted">已停止；重新提交同一 token 即可恢復</span>'
+                if active else '<span class="contrib-muted">已停止；重新提交同一組授權憑證即可恢復</span>'
             )
             actions = (
                 '<div class="contrib-actions">'
@@ -2320,22 +2320,22 @@ def _contribute_html(
                 '<article class="contrib-my-row">'
                 f'<div><strong>{esc(row["accountLabel"])}</strong>'
                 f'<span>{state_label} · 本期剩餘 US${float(row["remainingUsd"]):.3f}</span></div>'
-                f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先 quota</span></div>{actions}'
+                f'<div><strong>+{int(row["priorityBonus"])}</strong><span>每日優先點數</span></div>{actions}'
                 '</article>'
             )
         my_body = "".join(my_rows) or '<p class="contrib-empty">你還沒有貢獻 Apify 帳號。</p>'
         form_disabled = "" if encryption_ready else " disabled"
         form_note = (
-            "token 送到竹梅伺服器後會立即驗證並加密保存；公開頁只顯示你取的名稱與額度。"
-            if encryption_ready else "伺服器的貢獻加密金鑰尚未設定，目前暫停收件。"
+            "授權憑證送出後會驗證並加密保存；公開頁只顯示你取的名稱與額度。"
+            if encryption_ready else "貢獻功能暫時無法使用，請稍後再試。"
         )
         action = f"""
 <section class="contrib-panel" id="my-contributions">
-  <div class="contrib-heading"><div><p class="eyebrow">你的貢獻</p><h2>新增 Apify 帳號</h2></div><span class="contrib-rule">每個有效貢獻＝每日 +3 點優先 quota</span></div>
+  <div class="contrib-heading"><div><p class="eyebrow">你的貢獻</p><h2>新增 Apify 帳號</h2></div><span class="contrib-rule">每個有效貢獻＝每日 +3 點優先點數</span></div>
   <form id="contribution-form" class="contrib-form">
     <label for="apify-name">帳號名稱</label>
     <input id="apify-name" name="name" type="text" autocomplete="off" maxlength="{MAX_ACCOUNT_NAME_LENGTH}" placeholder="例如：社團帳號、MY-APIFY" required{form_disabled}>
-    <label for="apify-token">Apify API token</label>
+    <label for="apify-token">Apify 授權憑證（API token）</label>
     <div class="contrib-token-row"><input id="apify-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="apify_api_…" required{form_disabled}><button class="btn btn-primary" type="submit"{form_disabled}>驗證並貢獻</button></div>
     <p>{form_note} 每位使用者最多 {MAX_ACCOUNTS_PER_USER} 個有效帳號。</p>
     <p class="contrib-message" id="contribution-message" role="status"></p>
@@ -2349,7 +2349,7 @@ def _contribute_html(
 <section class="contribute-page">
   <div id="contribution-feedback" class="contrib-feedback" role="status" tabindex="-1" hidden></div>
   <a id="contribution-refresh-link" href="/contribute/" hidden>重新整理帳號清單 →</a>
-  <section class="hero contrib-hero"><p class="eyebrow">Community-powered crawling</p><h1>貢獻</h1><div id="contribution-crawl-summary" aria-live="polite">{_contribution_crawl_intro()}</div><p>替自己的 Apify Token 命名並把閒置免費額度接進竹梅，讓清大與陽明交大的 Instagram、Story 和 Facebook 公開資訊抓得更快。</p></section>
+  <section class="hero contrib-hero"><p class="eyebrow">一起補齊校園消息</p><h1>貢獻</h1><div id="contribution-crawl-summary" aria-live="polite">{_contribution_crawl_intro()}</div><p>想幫忙增加活動來源的更新機會？你可以提供自己的 Apify 資料擷取服務額度，協助整理 Instagram、限時動態與 Facebook 公開資訊。貢獻是自願的，不影響瀏覽、登入或訂閱。</p></section>
   <section class="contrib-totals" aria-label="社群貢獻總覽">
     <article><span>本期可用／有效貢獻</span><strong>{int(totals["accounts"])} / {int(totals["registeredAccounts"])}</strong></article>
     <article><span>貢獻者</span><strong>{int(totals["contributors"])}</strong></article>
@@ -2357,18 +2357,18 @@ def _contribute_html(
     <article><span>本期剩餘額度</span><strong>US${float(totals["remainingUsd"]):.2f}</strong></article>
   </section>
   <section class="contrib-explain">
-    <article><strong>1</strong><h2>登入後提交</h2><p>只收 Apify API token，不收密碼；伺服器先向 Apify 驗證額度。</p></article>
-    <article><strong>2</strong><h2>加密加入帳號池</h2><p>token 不會出現在公開 API、排行榜、log 或 Git，只用來執行爬取 Actor。</p></article>
-    <article><strong>3</strong><h2>全站一起加速</h2><p>每個有效貢獻讓貢獻者每天多 3 點優先 quota；可重複投入同一來源，權重會持續累加。帳號本期仍有額度時，也會增加每輪抓取槽位。</p></article>
+    <article><strong>1</strong><h2>登入後提交</h2><p>登入竹梅後，貼上 Apify 的授權憑證（API token）；這是讓竹梅使用該帳號服務的憑證，不是你的密碼。送出時會檢查可用額度。</p></article>
+    <article><strong>2</strong><h2>確認額度與用途</h2><p>竹梅會加密保存憑證，並用你的 Apify 額度讀取公開貼文。你可以隨時按「停止貢獻」移除憑證；請在 Apify 確認自己的額度與使用上限。</p></article>
+    <article><strong>3</strong><h2>全站一起加速</h2><p>每個有效貢獻讓你每天多 3 點優先點數，可在<a href="/status/">來源狀態頁</a>選擇想優先更新的單位。重複投入會累積優先程度；實際更新仍受可用額度與排程限制。</p></article>
   </section>
   <section class="contrib-portal" aria-labelledby="apify-portal-title">
-    <div><p class="eyebrow">Apify Portal</p><h2 id="apify-portal-title">還沒有 Token？從這裡開始</h2><p>登入或免費註冊 Apify，在「API &amp; Integrations」複製 Personal API token，再回到這裡貼上。請不要傳送密碼。</p></div>
-    <a class="btn btn-primary contrib-portal-link" href="https://console.apify.com/account#/integrations" target="_blank" rel="noopener noreferrer">前往 Apify 取得 Token ↗</a>
+    <div><p class="eyebrow">取得授權憑證</p><h2 id="apify-portal-title">還沒有 Apify 帳號？從這裡開始</h2><p>登入或免費註冊 Apify，在「API &amp; Integrations」複製 Personal API token，再回到這裡貼上。請不要傳送密碼。</p></div>
+    <a class="btn btn-primary contrib-portal-link" href="https://console.apify.com/account#/integrations" target="_blank" rel="noopener noreferrer">前往 Apify 取得授權憑證 ↗</a>
   </section>
   {action}
   <section class="contrib-grid">
-    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Scoreboard</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>貢獻／本期可用</th><th>每日 quota</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
-    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">Registered pool</p><h2>已註冊帳號</h2></div><a href="/status/">查看全池狀態 →</a></div><div class="contrib-account-list">{accounts_body}</div></section>
+    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">謝謝大家</p><h2>貢獻排行榜</h2></div></div><div class="contrib-table-wrap"><table><thead><tr><th>#</th><th>貢獻者</th><th>貢獻／本期可用</th><th>每日優先點數</th><th>本期剩餘</th></tr></thead><tbody>{scoreboard_body}</tbody></table></div></section>
+    <section class="contrib-panel"><div class="contrib-heading"><div><p class="eyebrow">社群提供的額度</p><h2>已註冊帳號</h2></div><a href="/status/">查看來源更新狀態 →</a></div><div class="contrib-account-list">{accounts_body}</div></section>
   </section>
 </section>
 <style>
@@ -2423,7 +2423,7 @@ document.addEventListener('submit',async function(event){{
 document.addEventListener('click',async function(event){{
   var rename=event.target.closest('[data-rename]');if(rename){{var name=prompt('新的帳號名稱',rename.dataset.name||'');if(!name)return;rename.disabled=true;var renamed=await fetch('/auth/apify-contributions/'+encodeURIComponent(rename.dataset.rename),{{method:'PATCH',headers:{{'content-type':'application/json'}},body:JSON.stringify({{name:name}})}});if(renamed.ok)location.reload();else rename.disabled=false;return}}
   var button=event.target.closest('[data-disable]');if(!button)return;
-  if(!confirm('停止貢獻後，竹梅會立即清除加密 token，確定嗎？'))return;
+  if(!confirm('停止貢獻後，竹梅會立即清除你的授權憑證，確定嗎？'))return;
   button.disabled=true;var response=await fetch('/auth/apify-contributions/'+encodeURIComponent(button.dataset.disable),{{method:'DELETE'}});
   if(response.ok)location.reload();else button.disabled=false;
 }});
@@ -2431,7 +2431,7 @@ document.addEventListener('click',async function(event){{
 """
     return page_shell(
         "貢獻｜竹梅活動觀測站",
-        "貢獻 Apify 免費額度，取得每日優先 quota，持續增加公開來源的抓取權重。",
+        "貢獻 Apify 免費額度，取得每日優先點數，持續增加公開來源的抓取權重。",
         content,
         canonical="https://chumei.observe.tw/contribute/",
     )
@@ -2465,7 +2465,7 @@ def create_app(
             "extra": {},
             "cancel_msg": "陽明交大未授權登入，帳號沒有建立。",
             "fail_msg": "無法向陽明交大完成身分驗證，請稍後再試。",
-            "unconfigured_msg": "NYCU OAuth Client 尚未完成設定。",
+            "unconfigured_msg": "陽明交大登入暫時無法使用，請稍後再試。",
         },
         "nthu": {
             "client": nthu_oauth_client,
@@ -2491,7 +2491,7 @@ def create_app(
             "extra": {"prompt": "select_account"},
             "cancel_msg": "Google 未授權登入，帳號沒有建立。",
             "fail_msg": "無法向 Google 完成身分驗證，請稍後再試。",
-            "unconfigured_msg": "Google OAuth Client 尚未完成設定。",
+            "unconfigured_msg": "Google 登入暫時無法使用，請稍後再試。",
         },
     }
 

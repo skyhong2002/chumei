@@ -31,7 +31,7 @@
 
 - **活動與貼文河道**：首頁貼文河道，以及地圖、列表、日曆三種活動檢視；活動地點可對應校園建築座標。
 - **470+ 單位名錄**：[/source/](https://chumei.observe.tw/source/) 收錄校方、系所、社團與校外主辦，每個單位有自己的活動、貼文與例行時段頁面。
-- **帳號系統**：支援陽明交大 OAuth、清大 NTHUMods Auth 與 Google 登入，可互相綁定；提供公開個人頁、追蹤單位、「我會去」、回報紀錄與跨裝置同步。
+- **帳號系統**：支援陽明交大 OAuth、清大 NTHUMods Auth 與 Google 登入，可互相綁定；提供預設不公開、可自行公開的個人頁、追蹤單位、「我會去」、回報紀錄與跨裝置同步。
 - **自訂行事曆與 RSS**：依學校、類型、校區、主辦自由組合。登入後可儲存最多 10 組具名訂閱，加入「只看我追蹤的單位」，並管理、換發私密網址。
 - **Web Push／PWA**：網站可安裝成 App，依學校、類型、追蹤單位與關鍵字推送；「我會去」活動可在前一天提醒。
 - **Telegram 與查詢 Bot**：[Telegram 頻道](https://t.me/chumei_events) 發布新活動；私訊 [@chumei_events_bot](https://t.me/chumei_events_bot) 可用「這週末 清大」「熱舞社」等自然語句搜尋。
@@ -83,34 +83,20 @@ flowchart LR
 | `scripts/run_pipeline.py` | 定期抓取、抽取、建站與發布的 orchestrator |
 | `site/` | 網站範本、品牌資產及本機建站／抓取快取 |
 | `published/current` | Caddy 提供的已驗證正式版本（原子 symlink 切換） |
-| `deploy/` | macOS launchd 服務定義 |
+| `deploy/` | macOS launchd 服務與 Caddy 路由範本 |
 | `docs/SCHEMA.md` | Inbox 與抽取資料格式 |
 
-## 本機開發
+## 開發與維運入口
 
-```sh
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-cp .env.example .env
-```
+目前有效的維護指南是 [架構與維運](docs/operations.md)，其中集中列出服務、發布／回復、備份、監控與功能驗收。請依工作選擇對應流程：
 
-在 `.env` 填入開發需要的金鑰後，可執行完整 pipeline，或只重新建站：
+- [本機環境、鎖定依賴與 CI 檢查](docs/ci.md)：乾淨 checkout 使用合成資料驗證，不需要正式金鑰。
+- [正式發布與回復](docs/atomic-publication.md)：離線重建、原子切換與首次啟用。
+- [備份、還原與新主機部署](docs/backup-recovery.md)：含可搬移的 launchd／Caddy 設定產生器。
 
-```sh
-.venv/bin/python scripts/run_pipeline.py
-.venv/bin/python scripts/build_site.py
-python3 -m http.server -d site 8899
-```
+`PLAN.md` 是 2026-08-21 的歷史紀錄；不再用作待辦清單。進行中的工作以 [Issues](https://github.com/skyhong2002/chumei/issues) 為準。
 
-執行完整測試：
-
-```sh
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-正式發布使用 `.venv/bin/python scripts/publish_site.py`，離線重建加 `--offline`。首次啟用需調整 Caddy root 並重啟讀取服務，操作與回復步驟見 [原子發布文件](docs/atomic-publication.md)。
-
-正式環境的密鑰只存在被 Git 忽略的 `.env` 或 macOS Keychain；請勿把 OAuth secret、Telegram token、社群 cookie 或 `state/` 內的使用者資料提交到 repository。
+正式環境的密鑰只存在被 Git 忽略的 `.env` 或 macOS Keychain；請勿把 OAuth secret、Telegram token、社群 cookie 或 `state/` 內的使用者資料提交到 repository。完整 pipeline 會存取外部供應商並可能消耗額度；日常程式驗證使用上述隔離 CI 流程。
 
 ## 帳號與自訂訂閱
 
@@ -164,9 +150,9 @@ CHUMEI_FEED_SIGNING_KEY=
 
 ### 頁面與 Feed
 
-- `/account/`：帳號設定、登入方式、行事曆、回報與自訂訂閱管理。
-- `/contribute/`：社群 Apify 額度貢獻、每日優先 quota、排行榜與已註冊帳號池。
-- `/@handle`：可由使用者關閉的公開個人頁。
+- `/account/`：帳號設定、登入方式、行事曆、回報、自訂訂閱與刪除帳號；`/account/privacy` 說明資料保留。
+- `/contribute/`：社群 Apify 額度貢獻、每日優先點數、排行榜與已註冊帳號池。
+- `/@handle`：新帳號預設不公開，可由使用者在設定中主動公開。
 - `/auth/calendar/{token}.ics`：「我會去」活動的私密行事曆，可由帳號頁換發。
 - `/feeds/custom.ics`、`/feeds/custom.xml`：不需登入的多維條件組合。
 - `/feeds/s/{signed-token}.ics`、`.xml`：帳號儲存的私密訂閱；修改條件不更換網址，除非使用者主動換發。
