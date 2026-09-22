@@ -12,6 +12,7 @@ import re
 from datetime import datetime, timedelta
 
 from chumei_lib import ROOT, TZ_TAIPEI
+from event_categories import CAT_SLUG, SLUG_CAT, CATEGORY_ALIASES, canonical_category, normalize_event_bundle
 
 BASE_URL = "https://chumei.observe.tw"
 EVENTS_PATH = published_site_dir() / "api" / "events.json"
@@ -32,7 +33,7 @@ def _cached_json(path):
 
 
 def load_events():
-    return _cached_json(EVENTS_PATH)
+    return normalize_event_bundle(_cached_json(EVENTS_PATH))
 
 
 def load_sources():
@@ -95,11 +96,10 @@ _PLACE_WORDS = [
     ("線上", ("campus", "online")),
 ]
 
-_CAT_WORDS = [
-    ("工作坊", "工作坊"), ("演講", "演講"), ("講座", "演講"), ("表演", "表演"),
-    ("展覽", "展覽"), ("比賽", "比賽"), ("競賽", "比賽"), ("營隊", "營隊"),
-    ("徵才", "徵才"), ("市集", "市集"), ("運動", "運動"), ("聚會", "聚會"),
-]
+_CAT_WORDS = sorted(
+    [(label, label) for label in CAT_SLUG] + list(CATEGORY_ALIASES.items()),
+    key=lambda pair: -len(pair[0]),
+)
 
 _HELP_WORDS = {"help", "說明", "幫助", "指令", "?", "？"}
 
@@ -158,7 +158,7 @@ def search(q, now=None):
             continue
         if q["campus"] and e.get("campus") != q["campus"]:
             continue
-        if q["category"] and (e.get("category") or "其他") != q["category"]:
+        if q["category"] and canonical_category(e.get("category")) != q["category"]:
             continue
         if q["keyword"] and not _match_keyword(e, q["keyword"]):
             continue

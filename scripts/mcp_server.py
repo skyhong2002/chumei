@@ -18,16 +18,13 @@ from datetime import datetime, timedelta
 from mcp.server.mcpserver import MCPServer
 
 from chumei_lib import ROOT, TZ_TAIPEI
+from event_categories import CAT_SLUG, SLUG_CAT, CATEGORY_ALIASES, canonical_category, normalize_event_bundle
 
 BASE_URL = "https://chumei.observe.tw"
 EVENTS_PATH = published_site_dir() / "api" / "events.json"
 SOURCES_PATH = published_site_dir() / "data" / "sources.json"
 PORT = 8321
 
-CAT_SLUG = {"演講": "talk", "工作坊": "workshop", "表演": "show", "展覽": "expo",
-            "比賽": "contest", "營隊": "camp", "徵才": "recruit", "市集": "market",
-            "運動": "sport", "聚會": "social", "其他": "other"}
-SLUG_CAT = {v: k for k, v in CAT_SLUG.items()}
 ORG_SLUG = {"official": "official", "department": "dept", "club": "club", "external": "ext"}
 
 
@@ -46,7 +43,7 @@ def _cached_json(path):
 
 
 def load_events():
-    return _cached_json(EVENTS_PATH)
+    return normalize_event_bundle(_cached_json(EVENTS_PATH))
 
 
 def load_sources():
@@ -72,8 +69,8 @@ def _start_at(e):
 def _norm_category(category):
     if not category:
         return None
-    if category in CAT_SLUG:
-        return category
+    if category in CAT_SLUG or category in CATEGORY_ALIASES:
+        return canonical_category(category)
     if category in SLUG_CAT:
         return SLUG_CAT[category]
     raise ValueError(f"未知的活動類型 {category!r}；可用：{'、'.join(CAT_SLUG)}（或英文代碼 {', '.join(SLUG_CAT)}）")
@@ -183,7 +180,7 @@ def search_events(
             continue
         if campus and e.get("campus") != campus:
             continue
-        if category and (e.get("category") or "其他") != category:
+        if category and canonical_category(e.get("category")) != category:
             continue
         if organizer_type and e.get("organizer_type") != organizer_type:
             continue

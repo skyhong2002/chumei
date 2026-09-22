@@ -18,6 +18,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
+from event_categories import CAT_SLUG, normalize_event_category
 from event_time import event_has_not_ended
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
 
@@ -74,7 +75,7 @@ def load_events():
                         {k: r.get(k) for k in ("title", "weekday", "time", "venue")}
                         for r in rec["recurrings"]]
                 events.append(ev)
-    return events
+    return [normalize_event_category(e) for e in events]
 
 
 WEEKDAY_ZH = "一二三四五六日"
@@ -120,7 +121,7 @@ def apply_overrides(events):
             ev[field] = value
             if ev.get("status") == "review":
                 ev["status"] = "published"
-    return [e for e in events if e.get("status") != "rejected"]
+    return [normalize_event_category(e) for e in events if e.get("status") != "rejected"]
 
 
 def norm_title(t):
@@ -2635,9 +2636,6 @@ def main():
     write_ics(SITE / "feeds" / "all.ics", upcoming, "竹梅活動觀測站")
 
     # 自訂訂閱組合：學校 × （類型｜校區｜主辦）預產矩陣 → /feeds/c/
-    CAT_SLUG = {"演講": "talk", "工作坊": "workshop", "表演": "show", "展覽": "expo",
-                "比賽": "contest", "營隊": "camp", "徵才": "recruit", "市集": "market",
-                "運動": "sport", "聚會": "social", "其他": "other"}
     ORG_SLUG = {"official": "official", "department": "dept", "club": "club", "external": "ext"}
     cdir = SITE / "feeds" / "c"
     cdir.mkdir(parents=True, exist_ok=True)

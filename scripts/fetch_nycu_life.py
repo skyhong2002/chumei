@@ -9,6 +9,7 @@ import sys
 
 import requests
 
+from event_categories import normalize_event_category
 from chumei_lib import SeenState, append_inbox, now_iso, ROOT
 from source_status import record_fetch
 
@@ -53,7 +54,7 @@ def main():
             "school": "nycu",
             "organizer": organizer,
             "organizer_type": "official",
-            "category": a.get("category") or "其他",
+            "category": a.get("category"),
             "registration_url": a.get("canonicalUrl"),
             "registration_deadline": (a.get("registration") or {}).get("deadline"),
             "price": None,
@@ -62,6 +63,7 @@ def main():
             "extraction": {"model": "none", "confidence": 1.0, "needs_review": False, "prompt_version": 0},
             "status": "published",
         })
+        structured[-1] = normalize_event_category(structured[-1])
         if not seen.has("nycu_life_api", pid):
             fresh.append({
                 "source_id": "nycu_life_api",

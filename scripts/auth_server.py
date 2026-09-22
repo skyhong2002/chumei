@@ -79,6 +79,7 @@ from apify_contributions import (
 )
 from event_time import event_has_not_ended
 from build_site import event_ics, ics_calendar, page_shell
+from event_categories import CAT_SLUG, SLUG_CAT, canonical_category, normalize_event_category
 from chumei_lib import ROOT, load_env
 from site_paths import published_site_dir
 from submissions import (
@@ -126,11 +127,8 @@ SAVED_FEED_NAME_MAX = 40
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
 AVATAR_CACHE_SECONDS = 5 * 60
 
-CATEGORY_FILTERS = {
-    "talk": "演講", "workshop": "工作坊", "show": "表演", "expo": "展覽",
-    "contest": "比賽", "camp": "營隊", "recruit": "徵才", "market": "市集",
-    "sport": "運動", "social": "聚會", "other": "其他",
-}
+
+CATEGORY_FILTERS = SLUG_CAT
 CAMPUS_FILTERS = {
     "nthu-main": "清大校本部", "nthu-nanda": "清大南大",
     "nycu-guangfu": "交大光復", "nycu-boai": "交大博愛",
@@ -1491,7 +1489,7 @@ def _events_by_id() -> dict:
             data = json.loads(EVENTS_DATA_PATH.read_text())
         except (OSError, json.JSONDecodeError):
             return _events_cache["byid"]
-        _events_cache["byid"] = {e["id"]: e for e in data.get("events", []) if e.get("id")}
+        _events_cache["byid"] = {e["id"]: normalize_event_category(e) for e in data.get("events", []) if e.get("id")}
         _events_cache["mtime"] = mtime
     return _events_cache["byid"]
 
@@ -1562,11 +1560,7 @@ def _event_matches_feed(event: dict, rule: dict, followed_org_ids: set[int] | No
     if school != "all" and event.get("school") not in (school, "both"):
         return False
     if rule["categories"]:
-        category = event.get("category") or "其他"
-        category_slug = next(
-            (slug for slug, label in CATEGORY_FILTERS.items() if slug != "other" and label == category),
-            "other",
-        )
+        category_slug = CAT_SLUG[canonical_category(event.get("category"))]
         if category_slug not in rule["categories"]:
             return False
     if rule["campuses"] and event.get("campus") not in rule["campuses"]:
