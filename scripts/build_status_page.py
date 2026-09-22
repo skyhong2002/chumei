@@ -40,9 +40,11 @@ SCRIPT = r"""
   const chip=(label,count,value,kind)=>`<button class="fchip" data-${kind}-filter="${esc(value)}" aria-pressed="${value===''?'true':'false'}"><span class="fchip-label">${label}</span><span class="fchip-count">${Number(count).toLocaleString()}</span></button>`;
   function renderSummary(){
     const d=state.data,c=d.counts,a=d.apify||{},usage=d.apiUsage||{},inc=d.incidents||[];
-    document.querySelector('#status-incidents').innerHTML=inc.length?inc.map(i=>`<article class="status-incident ${i.severity==='major'?'is-major':'is-minor'}"><div class="status-incident-head"><span class="status-incident-badge">${i.severity==='major'?'暫停中':'降速中'}</span><strong>${esc(i.title)}</strong></div><p>${esc(i.detail)}</p>${i.until?`<span class="status-incident-until">預計 ${fmtTime(i.until)} 恢復嘗試</span>`:''}</article>`).join(''):'<p class="status-incident-none">目前沒有進行中的事件，所有來源照排程抓取。</p>';
-    document.querySelector('#status-totals').innerHTML=[['監測來源',c.sources],['正常',c.fresh],['等待排程',c.due],['暫停／受限',c.blocked],['錯誤',c.errors]].map(([label,value])=>`<article class="status-total"><span>${label}</span><strong>${Number(value).toLocaleString()}</strong></article>`).join('');
-    document.querySelector('#status-filters').innerHTML=chip('全部',c.sources,'','status')+chip('正常',c.fresh,'ok','status')+chip('等待排程',c.due,'due','status')+chip('暫停／受限',c.blocked,'blocked','status')+chip('錯誤',c.errors,'error','status');
+    document.querySelector('#status-incidents').innerHTML=inc.length?inc.map(i=>`<article class="status-incident ${i.severity==='major'?'is-major':'is-minor'}"><div class="status-incident-head"><span class="status-incident-badge">${i.severity==='major'?'暫停中':'降速中'}</span><strong>${esc(i.title)}</strong></div><p>${esc(i.detail)}</p>${i.until?`<span class="status-incident-until">預計 ${fmtTime(i.until)} 恢復嘗試</span>`:''}</article>`).join(''):'<p class="status-incident-none">目前沒有額度或冷卻事件；資料新鮮度請看下方覆蓋指標。</p>';
+    document.querySelector('#status-totals').innerHTML=[['監測來源',c.sources],['成功且未逾期',c.fresh],['等待排程',c.due],['暫停／受限',c.blocked],['錯誤',c.errors]].map(([label,value])=>`<article class="status-total"><span>${label}</span><strong>${Number(value).toLocaleString()}</strong></article>`).join('');
+    document.querySelector('#status-filters').innerHTML=chip('全部',c.sources,'','status')+chip('成功且未逾期',c.fresh,'ok','status')+chip('等待排程',c.due,'due','status')+chip('暫停／受限',c.blocked,'blocked','status')+chip('錯誤',c.errors,'error','status');
+    const coverage=d.coverage||{},stories=d.coverageByKind?.instagram_story||{};
+    document.querySelector('#coverage-note').textContent=`最近 24 小時成功 ${coverage.success24h||0} / ${c.sources||0}；7 天內 ${coverage.success7d||0}。未達各來源更新目標 ${coverage.missedTarget||0}（${coverage.missedTargetPercent||0}%），超過兩倍間隔 ${coverage.overdueTwoIntervals||0}；無成功紀錄 ${coverage.neverSucceeded||0}。限動 24 小時內成功 ${stories.success24h||0} / ${stories.sources||0}，${stories.storyTargetsOver24h||0} 個來源間隔超過 24 小時，無法保證捕捉每則限動。額度等待 ${coverage.quotaWait||0}、帳號無法取得 ${coverage.accountUnavailable||0}、抓取錯誤 ${coverage.fetchErrors||0}。連續三次無內容 ${coverage.emptySuccessStreaks||0}（需檢查，也可能沒有新內容）。成功只代表端點查詢成功。`;
     const platforms=['Instagram','Facebook','Threads','X','校園公告'];
     document.querySelector('#platform-filters').innerHTML=chip('全部',c.sources,'','platform')+platforms.map(name=>chip(name,d.sources.filter(s=>s.platform===name).length,name,'platform')).join('');
     const used=Number(a.usedUsd||0),limit=Number(a.limitUsd||0),remaining=Number(a.remainingUsd||0),temporary=Number(a.temporaryCreditUsd||0),percent=limit?Math.min(100,used/limit*100):0;
@@ -70,9 +72,14 @@ SCRIPT = r"""
       const api=u?`<div class="status-method-api">${meta[2]} 24h：${u.requests24h} 次 · ${u.errors24h} 錯誤</div>`:'';
       return `<button class="status-method-card" data-backend-filter="${esc(m.backend)}" aria-pressed="false"><div class="status-method-title"><strong>${esc(meta[0])}</strong><span>${esc(meta[1])}</span></div><div class="status-method-count"><b>${Number(m.sources).toLocaleString()}</b><span>個排程來源</span></div><div class="status-method-meta">目標每 ${targetLabel(m)} · 正常 ${m.fresh} · 待抓 ${m.due} · 暫停 ${m.blocked} · 錯誤 ${m.errors}${api}</div></button>`;
     }).join('');
-    document.querySelector('#pipeline-note').textContent=`主 pipeline 每 ${fmtInterval(d.pipeline?.intervalHours)}啟動；Instagram 依帳號近期發文頻率採 12 小時到 14 天的動態間隔。點卡片可篩選下方列表。`;
+    document.querySelector('#pipeline-note').textContent=`快照建立時最後已完成輪次：${fmtTime(d.pipeline?.lastCompletedRun||d.pipeline?.lastRun)}（本次發布完成結果要到下次快照才可見）。流程結果不代表來源資料健康。主 pipeline 每 ${fmtInterval(d.pipeline?.intervalHours)}啟動；Instagram 依帳號近期發文頻率採 12 小時到 14 天的動態間隔。點卡片可篩選下方列表。`;
   }
   function renderSnapshot(){
+    const generated=Date.parse(state.data.generatedAt),age=(Date.now()-generated)/3600000;
+    const stale=!Number.isFinite(age)||age<-.1||age>Number(state.data.snapshotMaxAgeHours||9);
+    const warning=document.querySelector('#snapshot-warning');
+    warning.textContent=stale?'警告：狀態快照已過期或時間無效，下列數字不是即時健康狀態。請檢查發布排程。':'';
+    warning.hidden=!stale;
     document.querySelector('#snapshot').textContent=`資料快照：${fmtTime(state.data.generatedAt)} · ${state.auth?`今日優先 quota 尚餘 ${Number(state.quota?.remainingToday||0)} 點`:'登入後可替來源累積權重'}`;
   }
   function applyQuota(quota){
@@ -129,7 +136,7 @@ SCRIPT = r"""
     state.sort=key;state.limit=120;renderSort();if(state.data)renderRows();
   }
   function renderRows(){const q=state.filter.toLowerCase();const rows=state.data.sources.filter(s=>(!q||`${s.name} ${s.username} ${s.backend} ${s.kindLabel||''}`.toLowerCase().includes(q))&&(!state.platform||s.platform===state.platform)&&(!state.status||s.status===state.status)&&(!state.backend||s.backend===state.backend)).sort(compareSources);const visible=rows.slice(0,state.limit);document.querySelector('#source-count').textContent=`顯示 ${visible.length.toLocaleString()} / ${rows.length.toLocaleString()} 筆${state.backend?` · ${state.backend}`:''}`;
-    const items=visible.map(s=>{const blockedLabel=(s.blockedReason||'').includes('冷卻')?'冷卻中':'額度受限';return `<div class="status-src-row"><div class="status-row-name"><div class="status-name">${esc(s.name)}</div><div class="status-sub">${esc(s.platform)} ${esc(s.kindLabel||'')} · ${esc(s.username)}</div></div><div class="status-backend">${esc(s.backend)}</div><div class="status-row-status"><span class="status-chip ${s.status}">${s.status==='ok'?'正常':s.status==='due'?'等待排程':s.status==='blocked'?blockedLabel:'錯誤'}</span>${s.lastError?`<details class="status-error-details"><summary>查看詳情</summary><div>${esc(s.lastError)}</div></details>`:''}</div><div class="status-time status-recent"><div>嘗試 ${fmtTime(s.lastAttempt)}</div><div class="status-sub">成功 ${fmtTime(s.lastSuccess)}</div></div><div class="status-time status-next"><div>${fmtTime(s.nextDue)}</div><div class="status-sub">目標 ${fmtInterval(s.targetIntervalHours)} · 實際 ${fmtInterval(s.averageIntervalHours)}</div></div>${weightControls(s)}</div>`}).join('');const more=visible.length<rows.length?`<button class="filter-expand status-more" data-show-more>顯示更多（還有 ${(rows.length-visible.length).toLocaleString()} 筆）</button>`:'';document.querySelector('#source-rows').innerHTML=items+more||'<p class="status-count">沒有符合的來源。</p>';}
+    const items=visible.map(s=>{const blockedLabel=(s.blockedReason||'').includes('冷卻')?'冷卻中':'額度受限';return `<div class="status-src-row"><div class="status-row-name"><div class="status-name">${esc(s.name)}</div><div class="status-sub">${esc(s.platform)} ${esc(s.kindLabel||'')} · ${esc(s.username)}</div></div><div class="status-backend">${esc(s.backend)}</div><div class="status-row-status"><span class="status-chip ${s.status}">${s.status==='ok'?'未逾期':s.status==='due'?(s.missedTarget?'未達更新目標':'等待排程'):s.status==='blocked'?blockedLabel:s.errorCategory==='account_unavailable'?'帳號無法取得':'抓取錯誤'}</span>${s.lastError?`<details class="status-error-details"><summary>查看詳情</summary><div>${esc(s.lastError)}</div></details>`:''}</div><div class="status-time status-recent"><div>嘗試 ${fmtTime(s.lastAttempt)}</div><div class="status-sub">成功 ${fmtTime(s.lastSuccess)}</div></div><div class="status-time status-next"><div>${fmtTime(s.nextDue)}${s.missedTarget?' · 更新已逾期':''}</div><div class="status-sub">目標 ${fmtInterval(s.targetIntervalHours)} · 實際 ${fmtInterval(s.averageIntervalHours)}</div></div>${weightControls(s)}</div>`}).join('');const more=visible.length<rows.length?`<button class="filter-expand status-more" data-show-more>顯示更多（還有 ${(rows.length-visible.length).toLocaleString()} 筆）</button>`:'';document.querySelector('#source-rows').innerHTML=items+more||'<p class="status-count">沒有符合的來源。</p>';}
   async function requestFetch(id,action){
     if(state.pending)return;
     state.pending=true;renderRows();
@@ -152,7 +159,7 @@ SCRIPT = r"""
   document.querySelector('#source-sort').addEventListener('change',e=>setSort(e.target.value,false));
   document.querySelector('#source-sort-direction').addEventListener('click',()=>setSort(state.sort));
   renderSort();
-  Promise.all([fetch('/api/status.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('無法取得來源狀態');return r.json()}),fetch('/auth/fetch-requests',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('無法取得加權資料');return r.json()})]).then(([data,quota])=>{state.data=data;applyQuota(quota);renderSummary();renderRows()}).catch(e=>{document.querySelector('#status-message').textContent=`狀態資料讀取失敗：${e.message}`});
+  Promise.all([fetch('/api/status.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('無法取得來源狀態');return r.json()}),fetch('/auth/fetch-requests',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('無法取得加權資料');return r.json()}).catch(()=>({authenticated:false,weights:{}}))]).then(([data,quota])=>{state.data=data;applyQuota(quota);renderSummary();renderRows();setInterval(renderSnapshot,60000)}).catch(e=>{document.querySelector('#status-message').textContent=`狀態資料讀取失敗：${e.message}`});
 })();
 </script>
 """
@@ -172,9 +179,11 @@ def build() -> dict:
     content = f"""
 <section class="status-page">
   <section class="hero"><h1>資料來源狀態</h1><p>查看竹梅每個公開帳號與公告來源的抓取排程。登入後可把每日 quota 重複投入同一來源，持續累積抓取權重。數字為來源總權重；有剩餘 quota 時可按「＋」，自己投入的加成可按「−」逐點收回。當天投入的點數收回後會恢復當天 quota；過往點數收回不增加今日額度。系統仍會遵守公開端點冷卻與 Apify 免費額度保留線。<span class="status-snapshot" id="snapshot">資料快照：載入中…</span></p></section>
+  <p id="snapshot-warning" role="alert" hidden></p>
   <div class="status-incidents" id="status-incidents" aria-label="進行中事件"></div>
   <section class="status-overview" aria-label="抓取系統總覽">
     <div class="status-section-head"><h2>系統總覽</h2><p>大數字是目前排程內的來源數</p></div>
+    <p class="status-note" id="coverage-note"></p>
     <div class="status-total-grid" id="status-totals"></div>
     <article class="status-apify" id="apify-quota" aria-label="Instagram 與 Facebook 共用的 Apify API 額度"></article>
     <div class="status-section-head"><h2>爬取方式</h2><p id="pipeline-note">讀取排程設定中…</p></div>

@@ -3,7 +3,7 @@ const vm = require('node:vm');
 const script = require('node:fs').readFileSync(0, 'utf8');
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-async function page(quota, responses = [], blockedReason = '', sources = null) {
+async function page(quota, responses = [], blockedReason = '', sources = null, snapshot = {}) {
   const nodes = new Map(), events = {}, calls = [];
   const headers = ['name','backend','status','recent','next','weight'].map(key => ({
     dataset: {sourceSort: key}, attributes: {}, arrow: {textContent: ''},
@@ -23,9 +23,9 @@ async function page(quota, responses = [], blockedReason = '', sources = null) {
     querySelectorAll(selector) {return selector === '[data-source-sort]' ? headers : [];},
   };
   const source = {id: 'test', name: 'Test', platform: 'Threads', backend: 'RSSHub', status: 'due', blockedReason};
-  const data = {counts: {}, sources: sources || [source, {...source, id: 'other', name: 'Other'}], pipeline: {intervalHours: 3}};
+  const data = {counts: {}, sources: sources || [source, {...source, id: 'other', name: 'Other'}], pipeline: {intervalHours: 3}, generatedAt: new Date().toISOString(), ...snapshot};
   let initial = true;
-  vm.runInNewContext(script, {document, Intl, Date, fetch: async (url, options = {}) => {
+  vm.runInNewContext(script, {document, Intl, Date, setInterval() {}, fetch: async (url, options = {}) => {
     if (url === '/api/status.json') return {ok: true, json: async () => data};
     if (initial) { initial = false; return {ok: true, json: async () => quota}; }
     calls.push({url, ...options});
@@ -38,6 +38,7 @@ async function page(quota, responses = [], blockedReason = '', sources = null) {
   return {
     html: () => nodes.get('#source-rows').innerHTML,
     snapshot: () => nodes.get('#snapshot').textContent,
+    warning: () => nodes.get('#snapshot-warning').textContent,
     calls,
     headers,
     names: () => [...nodes.get('#source-rows').innerHTML.matchAll(/class="status-name">([^<]*)</g)].map(x => x[1]),
@@ -56,6 +57,9 @@ async function page(quota, responses = [], blockedReason = '', sources = null) {
   const guest = await page({authenticated: false, weights: {test: 7}, remainingToday: 0});
   assert.match(guest.html(), /總權重 7/);
   assert.doesNotMatch(guest.html(), /data-weight-action/);
+  assert.equal(guest.warning(), '');
+  const oldSnapshot = await page({}, [], '', null, {generatedAt:'2020-01-01T00:00:00Z'});
+  assert.match(oldSnapshot.warning(), /快照已過期/);
   const empty = await page({authenticated: true, remainingToday: 0, weights: {test: 3}, myWeights: {test: 2}});
   assert.match(empty.html(), /data-weight-action="remove"/);
   assert.doesNotMatch(empty.html(), /data-weight-action="add"/);
