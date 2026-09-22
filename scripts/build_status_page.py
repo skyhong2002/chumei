@@ -179,6 +179,7 @@ def build() -> dict:
     content = f"""
 <section class="status-page">
   <section class="hero"><h1>資料來源狀態</h1><p>查看竹梅每個公開帳號與公告來源的抓取排程。登入後可把每日 quota 重複投入同一來源，持續累積抓取權重。數字為來源總權重；有剩餘 quota 時可按「＋」，自己投入的加成可按「−」逐點收回。當天投入的點數收回後會恢復當天 quota；過往點數收回不增加今日額度。系統仍會遵守公開端點冷卻與 Apify 免費額度保留線。<span class="status-snapshot" id="snapshot">資料快照：載入中…</span></p></section>
+  <p><a href="/quality/">活動資料待確認清單：場地、精確定位與報名連結可用率</a></p>
   <p id="snapshot-warning" role="alert" hidden></p>
   <div class="status-incidents" id="status-incidents" aria-label="進行中事件"></div>
   <section class="status-overview" aria-label="抓取系統總覽">
