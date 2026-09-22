@@ -754,15 +754,16 @@ def event_ics(e):
                 pass
     else:
         if st.tzinfo is None:
-            return ""  # Never silently assign a timezone to an unknown instant.
+            st = st.replace(tzinfo=TZ_TAIPEI)  # Legacy local records; new extraction validates the source zone.
         st = st.astimezone(TZ_TAIPEI)
         lines.append(f"DTSTART;TZID=Asia/Taipei:{st:%Y%m%dT%H%M%S}")
         if e.get("end_at"):
             try:
                 en = datetime.fromisoformat(e["end_at"])
-                if en.tzinfo is not None:
-                    en = en.astimezone(TZ_TAIPEI)
-                    lines.append(f"DTEND;TZID=Asia/Taipei:{en:%Y%m%dT%H%M%S}")
+                if en.tzinfo is None:
+                    en = en.replace(tzinfo=TZ_TAIPEI)
+                en = en.astimezone(TZ_TAIPEI)
+                lines.append(f"DTEND;TZID=Asia/Taipei:{en:%Y%m%dT%H%M%S}")
             except ValueError:
                 pass
     loc = calendar_location(e)
@@ -1103,8 +1104,10 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
         else:
             # 沒有結束時間就預設 1 小時，零長度的行程在日曆上很難讀
             d2 = datetime.fromisoformat(en) if en else d1 + timedelta(hours=1)
-            if d1.tzinfo is None or d2.tzinfo is None:
-                raise ValueError("missing timezone")
+            if d1.tzinfo is None:
+                d1 = d1.replace(tzinfo=TZ_TAIPEI)
+            if d2.tzinfo is None:
+                d2 = d2.replace(tzinfo=TZ_TAIPEI)
             d1, d2 = d1.astimezone(TZ_TAIPEI), d2.astimezone(TZ_TAIPEI)
             dates = f"{d1:%Y%m%dT%H%M%S}/{d2:%Y%m%dT%H%M%S}"
         gcal = ("https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + requests.utils.quote(e["title"])

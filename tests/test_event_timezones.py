@@ -112,7 +112,9 @@ class TimezoneTests(unittest.TestCase):
         self.assertIn('dates=20260926T070000/20260926T110000', page)
         self.assertIn('2026 年 9 月 26 日', page)
         self.assertEqual(b.fmt_dt(ev['start_at']), '2026/9/26（六） 07:00')
-        self.assertEqual(b.event_ics(event(start_at='2026-09-25T16:00:00')), '')
+        # Legacy local records retain A02's Taipei default; new extraction validates offsets.
+        self.assertIn('DTSTART;TZID=Asia/Taipei:20260925T160000',
+                      b.event_ics(event(start_at='2026-09-25T16:00:00')))
 
     def test_all_day_dates_remain_civil_dates(self):
         ev = event(start_at='2026-09-25T00:00:00-07:00', end_at='2026-09-26T00:00:00-07:00', all_day=True)
