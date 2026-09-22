@@ -1717,11 +1717,11 @@ def org_pages(entries, events):
 
 
 def source_page(events, entries):
-    """/source/：表格於 build 時整份預渲染（SSR）；app.js 讀 sources.json 後原地重繪加上篩選排序。"""
+    """/source/：首批表格預渲染（SSR），無 JS 時仍顯示完整名錄；app.js 讀 sources.json 後原地重繪加上篩選排序。"""
     content = f"""<section class="hero"><h1>資料來源與機構名錄</h1>
 <p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告系統與社群帳號。
 還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
-<span id="src-count" aria-live="polite">目前列出 {len(entries)} 個單位。</span></p></section>
+<span id="src-count" aria-live="polite">共收錄 {len(entries)} 個單位。</span></p></section>
 <section class="filters" aria-label="名錄篩選">
   <div class="filter-row"><span class="label">學校</span><span id="sf-school" class="fgroup"></span>
     <span class="search-hit"><input id="search" type="search" placeholder="搜尋社團、單位…" aria-label="搜尋名錄"></span></div>
@@ -2433,7 +2433,7 @@ def prerender_stories():
 
 
 def source_table_html(entries):
-    """/source/ SSR：完整名錄表；追蹤數載入前暫以收錄活動數穩定排序。"""
+    """/source/ SSR：首批 60 筆與 noscript 完整名錄；追蹤數載入前暫以收錄活動數穩定排序。"""
     esc = html.escape
     now = datetime.now(TZ_TAIPEI)
     PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "website": "官網"}
@@ -2496,7 +2496,45 @@ def source_table_html(entries):
             th("follow", "追蹤", "src-th-follow", on=True, arrow=" ↓") + "</div>")
     # 公開追蹤數由 /auth/follows 動態載入；載入前沿用穩定的收錄數排序，JS 隨即重排。
     ordered = sorted(entries, key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
-    return head + "".join(row(e) for e in ordered)
+    return head + "".join(row(e) for e in ordered[:60]) + (
+        "<noscript>" + "".join(row(e) for e in ordered[60:]) + "</noscript>" if len(ordered) > 60 else "")
+
+
+# Browser index: retain display/filter/search fields, fetch detail via its SSR URL.
+EVENT_INDEX_FIELDS = (
+    "id", "title", "start_at", "end_at", "all_day", "schedule_kind", "school",
+    "campus", "category", "organizer", "organizer_type", "org_id", "org_name",
+    "venue", "summary", "description", "reg", "fee", "price", "poster_image", "cover_image",
+    "image_kind", "geo",
+)
+
+
+def browser_event_bundles(bundle, today=None):
+    """Split at this month's start; ongoing multi-month events stay in the index."""
+    month_start = (today or datetime.now(TZ_TAIPEI).date()).replace(day=1).isoformat()
+    recent, archive = [], []
+    for event in bundle["events"]:
+        compact = {key: event[key] for key in EVENT_INDEX_FIELDS if key in event}
+        if (event.get("extraction") or {}).get("needs_review"):
+            compact["extraction"] = {"needs_review": True}
+        # Compare instants in the site's timezone, including overseas events.
+        end = event.get("end_at") or event.get("start_at") or ""
+        try:
+            parsed = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            end_day = parsed.replace(tzinfo=parsed.tzinfo or TZ_TAIPEI).astimezone(TZ_TAIPEI).date().isoformat()
+        except ValueError:
+            end_day = end[:10]
+        (recent if end_day >= month_start else archive).append(compact)
+    metadata = {"generated_at": bundle["generated_at"], "labels": bundle["labels"],
+                "categories": sorted({e.get("category") or "其他" for e in bundle["events"]})}
+    return ({**metadata, "events": recent, "archive_url": "/data/events-archive.json",
+             "archive_count": len(archive), "coverage_start": month_start},
+            {**metadata, "events": archive})
+
+
+def write_browser_event_bundles(bundle):
+    for name, data in zip(("events-index.json", "events-archive.json"), browser_event_bundles(bundle)):
+        (SITE / "data" / name).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
 
 
 def main():
@@ -2553,6 +2591,7 @@ def main():
 
     bundle = {"generated_at": now_iso(), "events": events,
               "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL, "org": ORG_LABEL}}
+    write_browser_event_bundles(bundle)
     (SITE / "data" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False))
     (SITE / "api" / "events.json").write_text(json.dumps(bundle, ensure_ascii=False, indent=1))
 

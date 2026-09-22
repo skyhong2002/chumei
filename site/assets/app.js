@@ -393,6 +393,51 @@
     }, true);
   })();
 
+  // Shared compact index; history is fetched only when a view needs it.
+  var eventIndexPromise;
+  function fetchEventJSON(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error("活動資料載入失敗");
+      return r.json();
+    });
+  }
+  function loadEventIndex() {
+    if (!eventIndexPromise) eventIndexPromise = fetchEventJSON("/data/events-index.json").catch(function (err) {
+      eventIndexPromise = null;
+      throw err;
+    });
+    return eventIndexPromise;
+  }
+  function loadEventArchive(bundle) {
+    if (!bundle.archive_url) return Promise.resolve(bundle);
+    if (!bundle.archivePromise) bundle.archivePromise = fetchEventJSON(bundle.archive_url).then(function (data) {
+      var seen = {};
+      bundle.events.forEach(function (e) { seen[e.id] = true; });
+      data.events.forEach(function (e) { if (!seen[e.id]) { bundle.events.push(e); seen[e.id] = true; } });
+      bundle.events.sort(function (a, b) { return a.start_at.localeCompare(b.start_at); });
+      bundle.archive_url = null;
+      return bundle;
+    }).catch(function (err) { bundle.archivePromise = null; throw err; });
+    return bundle.archivePromise;
+  }
+  function archiveStatus(host, retry, failed) {
+    var status = host.previousElementSibling;
+    if (!status || !status.classList.contains("archive-status")) {
+      status = document.createElement("p");
+      status.className = "archive-status";
+      status.setAttribute("role", "status");
+      host.parentNode.insertBefore(status, host);
+    }
+    status.textContent = failed ? "歷史活動載入失敗。" : "正在載入歷史活動…";
+    if (failed) {
+      var button = document.createElement("button");
+      button.textContent = "重試";
+      button.addEventListener("click", retry);
+      status.appendChild(button);
+    }
+    return status;
+  }
+
   // ---- 手機全域搜尋（Threads 式）：頂欄右上 🔍 → 全螢幕搜尋層（單位＋活動） ----
   (function () {
     var header = document.querySelector(".site-header");
@@ -426,14 +471,10 @@
     function loadData() {
       if (sdata) return Promise.resolve(sdata);
       return Promise.all([
-        fetch("/data/posts.json").then(function (r) { return r.json(); }).catch(function () { return null; }),
+        loadEventIndex().then(loadEventArchive),
         fetch("/data/sources.json").then(function (r) { return r.json(); }).catch(function () { return null; })
       ]).then(function (rs) {
-        var seen = {}, events = [];
-        (((rs[0] || {}).posts) || []).forEach(function (p) {
-          p.events.forEach(function (e) { if (!seen[e.id]) { seen[e.id] = 1; events.push(e); } });
-        });
-        sdata = { events: events, orgs: ((rs[1] || {}).entries) || [] };
+        sdata = { events: rs[0].events, orgs: ((rs[1] || {}).entries) || [] };
         return sdata;
       });
     }
@@ -498,7 +539,9 @@
       document.body.style.overflow = "hidden";
       var input = ov.querySelector("input");
       input.focus();
-      loadData().then(function () { if (ov && input.value) results(input.value); });
+      loadData().then(function () { if (ov && input.value) results(input.value); }).catch(function () {
+        if (ov) ov.querySelector(".search-ov-body").innerHTML = '<p class="empty">搜尋資料載入失敗，請關閉後重試。</p>';
+      });
       input.addEventListener("input", function () {
         clearTimeout(sT);
         ov.classList.toggle("has-query", !!input.value.trim());
@@ -539,8 +582,7 @@
   initFeed();
   if (!listEl && !calEl) return;
 
-  fetch("/data/events.json")
-    .then(function (r) { return r.json(); })
+  loadEventIndex()
     .then(function (bundle) {
       if (listEl) initList(bundle);
       if (calEl) initCalendar(bundle);
@@ -1540,7 +1582,14 @@
           th("follow", "追蹤", "src-th-follow") + "</div>";
       }
 
-      function render() {
+      var sourceLimit = 60;
+      var moreSources = document.createElement("button");
+      moreSources.className = "fchip";
+      moreSources.textContent = "顯示更多單位";
+      table.after(moreSources);
+      moreSources.addEventListener("click", function () { sourceLimit += 60; render(true); });
+      function render(keepLimit) {
+        if (keepLimit !== true) sourceLimit = 60;
         Object.keys(groups).forEach(function (key) {
           groups[key].options.forEach(function (opt) {
             var b = groups[key].buttons[opt[0]];
@@ -1550,8 +1599,9 @@
         var list = entries.filter(function (e) { return matches(e); }).sort(SORTS[state.sort] || SORTS.follow);
         var natural = SORT_BASE_DESC[state.sort] ? "desc" : "asc";
         if (state.dir !== natural) list.reverse();
-        document.getElementById("src-count").textContent = "目前列出 " + list.length + " 個單位。";
-        table.innerHTML = headHtml() + (list.map(row).join("") || '<p class="empty">沒有符合的單位。</p>');
+        document.getElementById("src-count").textContent = "符合 " + list.length + " 個單位，已顯示 " + Math.min(sourceLimit, list.length) + " 個。";
+        moreSources.hidden = sourceLimit >= list.length;
+        table.innerHTML = headHtml() + (list.slice(0, sourceLimit).map(row).join("") || '<p class="empty">沒有符合的單位。</p>');
         var qs = new URLSearchParams();
         Object.keys(state).forEach(function (k) {
           if (!state[k] || state[k] === "all") return;
@@ -1576,6 +1626,9 @@
       });
       render();
     }).catch(function () {
+      // If enhancement fails, expose the full SSR directory kept for no-JS clients.
+      var fallback = table.querySelector("noscript");
+      if (fallback) { fallback.insertAdjacentHTML("beforebegin", fallback.textContent); fallback.remove(); }
       if (!table.firstElementChild) table.innerHTML = '<p class="empty">名錄載入失敗。</p>';
     });
   }
@@ -2047,7 +2100,7 @@
     if (moreFilters && window.innerWidth <= 700 && moreActive()) moreFilters.open = true;
 
     var cats = {};
-    bundle.events.forEach(function (e) { cats[e.category || "其他"] = 1; });
+    (bundle.categories || bundle.events.map(function (e) { return e.category || "其他"; })).forEach(function (cat) { cats[cat] = 1; });
 
     var rangeStart = new Date();
 
@@ -2133,6 +2186,11 @@
       Object.keys(chipGroups).forEach(function (key) {
         var group = chipGroups[key];
         group.options.forEach(function (opt) {
+          if (key === "time" && opt[0] === "all" && bundle.archive_url) {
+            group.buttons[opt[0]].querySelector(".fchip-count").textContent = "";
+            group.buttons[opt[0]].setAttribute("aria-label", opt[1] + "，載入歷史活動");
+            return;
+          }
           var count = bundle.events.filter(function (e) { return matches(e, key, opt[0]); }).length;
           var button = group.buttons[opt[0]];
           if (!button) return;
@@ -2240,6 +2298,28 @@
 
     // ---- 地圖（預設顯示，卡片接在下方） ----
     var mapState = { map: null, markers: [], ready: false, pending: [] };
+    var mapButton = document.getElementById("load-map");
+    var mapRequested = false;
+    if (mapButton) mapButton.addEventListener("click", function () {
+      mapButton.disabled = true;
+      mapButton.textContent = "地圖載入中…";
+      var style = document.createElement("link");
+      style.rel = "stylesheet"; style.href = "/assets/vendor/maplibre/maplibre-gl.css";
+      document.head.appendChild(style);
+      var script = document.createElement("script");
+      script.src = "/assets/vendor/maplibre/maplibre-gl.js";
+      script.onload = function () {
+        mapRequested = true;
+        document.getElementById("map").hidden = false;
+        mapButton.hidden = true;
+        renderMap(mapState.pending);
+      };
+      script.onerror = function () {
+        mapButton.disabled = false;
+        mapButton.textContent = "地圖載入失敗，重試";
+      };
+      document.head.appendChild(script);
+    });
 
     function schoolColor(s) {
       return s === "nthu" ? "#8E24AA" : s === "nycu" ? "#0045F2" : "#0F766E";
@@ -2335,6 +2415,7 @@
 
     function renderMap(list) {
       mapState.pending = list;
+      if (!mapRequested) return;
       var m = initMap();
       if (!m) {
         var unavailable = document.getElementById("map-note");
@@ -2405,7 +2486,7 @@
     function syncUrl(resultCount) {
       var qs = new URLSearchParams();
       Object.keys(state).forEach(function (k) {
-        if (state[k] && state[k] !== "all" && !(k === "time" && state[k] === "7d")) qs.set(k, state[k]);
+        if (state[k] && (state[k] !== "all" || k === "time") && !(k === "time" && state[k] === "7d")) qs.set(k, state[k]);
       });
       history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
       pageSEO.refresh(resultCount + " 場活動符合條件。");
@@ -2414,7 +2495,20 @@
     window.addEventListener("chumei-going-change", function () {
       if (state.sort === "going" || state.going === "on") render();
     });
+    var archiveLoading = false;
     function render() {
+      if (state.time === "all" && bundle.archive_url) {
+        if (archiveLoading) return;
+        archiveLoading = true;
+        var status = archiveStatus(listEl, render, false);
+        loadEventArchive(bundle).then(function () {
+          archiveLoading = false; status.remove(); render();
+        }).catch(function () {
+          archiveLoading = false; archiveStatus(listEl, render, true);
+        });
+        return;
+      }
+      bundle.events.forEach(function (e) { eventsById[e.id] = e; });
       var list = bundle.events.filter(matches);
       if (state.sort === "going") {
         // 熱門＝竹梅使用者標記「我會去」的人數；同分照時間近的優先
@@ -2485,7 +2579,7 @@
     Object.keys(state).forEach(function (k) { if (params.get(k)) state[k] = params.get(k); });
 
     var cats = {};
-    bundle.events.forEach(function (e) { cats[e.category || "其他"] = 1; });
+    (bundle.categories || bundle.events.map(function (e) { return e.category || "其他"; })).forEach(function (cat) { cats[cat] = 1; });
 
     var chipGroups = {};
     function buildChips(id, options, key) {
@@ -2794,7 +2888,20 @@
       return new Date(firstMonth.getFullYear(), firstMonth.getMonth() + offset, 1);
     }
 
+    var archiveLoading = false;
     function redraw() {
+      if (monthsBefore > 0 && bundle.archive_url) {
+        if (archiveLoading) return;
+        archiveLoading = true;
+        var status = archiveStatus(calEl, redraw, false);
+        loadEventArchive(bundle).then(function () {
+          archiveLoading = false; status.remove(); redraw();
+        }).catch(function () {
+          archiveLoading = false; archiveStatus(calEl, redraw, true);
+        });
+        return;
+      }
+      bundle.events.forEach(function (e) { byIdCal[e.id] = e; });
       indexEvents();
       updateChipCounts();
       Object.keys(quickSelects).forEach(function (key) { quickSelects[key].value = state[key]; });

@@ -14,6 +14,29 @@ def fail(msg):
     return 1
 
 
+def validate_browser_indexes(site, events):
+    errors = 0
+    try:
+        current = json.loads((site / "data/events-index.json").read_text())
+        archive = json.loads((site / "data/events-archive.json").read_text())
+        current_ids = [e["id"] for e in current["events"]]
+        archive_ids = [e["id"] for e in archive["events"]]
+        if len(set(current_ids + archive_ids)) != len(current_ids + archive_ids):
+            errors += fail("browser indexes contain duplicate events")
+        if set(current_ids + archive_ids) != {e["id"] for e in events}:
+            errors += fail("browser indexes do not cover the full event dataset")
+        if current.get("archive_count") != len(archive_ids) or current.get("archive_url") != "/data/events-archive.json":
+            errors += fail("browser index archive metadata mismatch")
+        if current.get("generated_at") != archive.get("generated_at"):
+            errors += fail("browser indexes belong to different builds")
+        from check_browser_budget import check
+        if not check(site):
+            errors += fail("browser event index exceeds download budget; see docs/browser-performance.md")
+    except Exception as exc:
+        errors += fail(f"browser indexes invalid: {exc}")
+    return errors
+
+
 def main():
     errors = 0
 
@@ -45,6 +68,8 @@ def main():
             errors += fail(f"cover missing on disk: {cover}")
         if not (SITE / "event" / e["id"] / "index.html").exists():
             errors += fail(f"detail page missing: {e['id']}")
+
+    errors += validate_browser_indexes(SITE, events)
 
     for name in ("feeds/all.xml", "feeds/nthu.xml", "feeds/nycu.xml", "sitemap.xml"):
         try:
