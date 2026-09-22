@@ -16,3 +16,12 @@ evt_4d6a96e3fe86,registration_deadline,2026-08-31T23:59:00+08:00,2026-09-06 手�
 evt_4d6a96e3fe86,end_at,2026-09-07T23:59:59+08:00,2026-09-06 手動核對；暑北依 DcmGh0HzIEQ 與倒數貼文，DTDA 依 DcnmoYbGbjE 最新時程；日期含末日
 evt_4d6a96e3fe86,summary,DTDA 第三屆企業專案生面試期間為 9/2–9/7，個別時間與地點依面試通知。,2026-09-06 手動核對；暑北依 DcmGh0HzIEQ 與倒數貼文，DTDA 依 DcnmoYbGbjE 最新時程；日期含末日
 evt_4d6a96e3fe86,description,清大設計思考與數據分析社第三屆社員招募包含研習生與企業專案生。依最新延長公告，報名表於 8/31 23:59 截止；9/1 寄發研習生錄取結果及企業專案生面試通知。企業專案生面試期間為 9/2–9/7，可採實體或線上形式，個別場次時間與地點依主辦通知；9/9 發送專案生錄取結果。此為面試安排期間，非每日全天開放的活動。,2026-09-06 手動核對；暑北依 DcmGh0HzIEQ 與倒數貼文，DTDA 依 DcnmoYbGbjE 最新時程；日期含末日
+evt_9015433fcfe0,start_at,2026-09-26T07:00:00+08:00,2026-09-23 核對 https://luma.com/nycuaa-1ipo JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_9015433fcfe0,end_at,2026-09-26T11:00:00+08:00,2026-09-23 核對 https://luma.com/nycuaa-1ipo JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_9015433fcfe0,source_timezone,America/Los_Angeles,2026-09-23 核對 https://luma.com/nycuaa-1ipo JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_05a9433e4a6e,start_at,2026-09-26T07:00:00+08:00,2026-09-23 核對 https://luma.com/nycuaa-1ipo JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_05a9433e4a6e,end_at,2026-09-26T11:00:00+08:00,2026-09-23 核對 https://luma.com/nycuaa-1ipo JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_05a9433e4a6e,source_timezone,America/Los_Angeles,2026-09-23 核對 https://luma.com/nycuaa-1ipo JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_490332813616,start_at,2026-09-27T00:00:00+08:00,2026-09-23 核對 https://luma.com/fum0o6xh JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_490332813616,end_at,2026-09-27T09:00:00+08:00,2026-09-23 核對 https://luma.com/fum0o6xh JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
+evt_490332813616,source_timezone,America/Los_Angeles,2026-09-23 核對 https://luma.com/fum0o6xh JSON-LD；來源當地時間 -07:00 轉換為同一瞬間（A03）
