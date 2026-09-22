@@ -40,12 +40,27 @@ def fixture(root):
     (root / 'state/nycu_life_activities.json').write_text(json.dumps(events, ensure_ascii=False))
     inbox = root / 'data/feeds/inbox'
     inbox.mkdir(parents=True)
-    (inbox / 'ci.jsonl').write_text(json.dumps({
+    # A full column is needed to exercise nested scrolling. Keep the event-backed
+    # post at the bottom: its absolute screen-reader labels exposed deck overflow.
+    post_texts = [
+        'CI 同名說明會', '籃球友誼賽開放報名，歡迎同學組隊參加。', '吉他社成果演出，週末一起欣賞音樂。',
+        '圖書館推出新書展示，探索不同文化觀點。', '登山團出發前說明裝備與路線規劃。',
+        '手作陶藝體驗課程分享捏塑與上釉技巧。', '程式設計讀書會討論資料結構練習題。',
+        '攝影展記錄校園四季景色和人文故事。', '志工招募協助社區長者學習手機操作。',
+        '電影欣賞交流會邀請大家分享觀後心得。', '天文觀測夜帶你認識星座與望遠鏡。',
+        '生態導覽尋訪步道上的植物和鳥類。', '舞蹈工作坊從基礎律動開始練習。',
+        '烘焙同好交換餅乾食譜與製作經驗。', '游泳訓練介紹暖身動作及水中安全。',
+        '桌遊聚會準備策略挑戰和合作任務。',
+    ]
+    (inbox / 'ci.jsonl').write_text(''.join(json.dumps({
         'source_id': 'ig_nthu_dsc', 'source_name': 'CI 測試單位', 'platform': 'instagram',
-        'raw_source': 'ci', 'school': 'nthu', 'org_type': 'club', 'post_id': 'ci_0',
-        'url': 'https://example.com/ci/0', 'posted_at': now.isoformat(),
-        'fetched_at': now.isoformat(), 'text': 'CI 同名說明會', 'images': [],
-    }, ensure_ascii=False) + '\n')
+        'raw_source': 'ci', 'school': 'nthu', 'org_type': 'club', 'post_id': f'ci_{index}',
+        'url': f'https://example.com/ci/{index}',
+        'posted_at': (now - timedelta(minutes=60 - index)).isoformat(),
+        'fetched_at': (now - timedelta(minutes=20 - index)).isoformat(),
+        'text': post_texts[index],
+        'images': [],
+    }, ensure_ascii=False) + '\n' for index in range(len(post_texts))))
 
 
 def main():

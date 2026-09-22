@@ -1483,9 +1483,11 @@ a.feed-plat:hover { background: var(--color-surface-soft); color: var(--color-te
     height: 100%; align-items: stretch; justify-content: safe center;
     /* 欄寬固定（Threads 式）：視窗不夠寬就橫向捲，不縮欄 */
     grid-template-columns: repeat(var(--ncols, 2), var(--feed-col-w));
-    overflow-x: auto; overscroll-behavior-x: contain;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
   }
-  body.feed-locked .feed-cols .feed-col { position: static; height: auto; }
+  /* Contain absolute descendants (including screen-reader labels) in the
+     column so they cannot create a second vertical scroller on the deck. */
+  body.feed-locked .feed-cols .feed-col { position: relative; top: auto; height: auto; }
   /* 桌機欄位模式：篩選在各欄選單內，整列 tabs（含 ⚙）不需要 */
   body.feed-locked .feed-tabs-row { display: none; }
 }
@@ -1828,7 +1830,7 @@ a.feed-plat:hover { background: var(--color-surface-soft); color: var(--color-te
   .post-feed.feed-pager .feed-col {
     flex: 0 0 100%; width: 100%; min-width: 0;
     scroll-snap-align: start; scroll-snap-stop: always;
-    position: static; height: 100%;
+    position: relative; top: auto; height: 100%;
     overflow-x: clip; overflow-y: auto; overscroll-behavior-y: contain;
     /* 不用 -webkit-overflow-scrolling: touch——iOS 會另開捲動圖層吃掉 touchmove，
        換頁手勢就傳不到 JS（iOS 13+ 本來就有慣性捲動，不需要它） */
