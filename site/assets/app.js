@@ -2,6 +2,20 @@
 (function () {
   "use strict";
 
+  function keepDialogFocus(dialog, event) {
+    if (event.key !== "Tab") return;
+    var controls = Array.from(dialog.querySelectorAll('a[href], button, input, select, textarea, [tabindex]'))
+      .filter(function (el) { return !el.disabled && el.tabIndex >= 0 && el.getClientRects().length; });
+    if (!controls.length) return;
+    var first = controls[0], last = controls[controls.length - 1];
+    if (!dialog.contains(document.activeElement) ||
+        (event.shiftKey && document.activeElement === first) ||
+        (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+
   // ---- SEO：Canonical 固定為無 query 的正式網址；篩選 query 仍有自己的標題、H1 與預覽文案 ----
   var pageSEO = (function () {
     var title = document.querySelector("title");
@@ -467,7 +481,7 @@
       else nav.appendChild(navSearch);
     }
 
-    var sdata = null, ov = null, sT;
+    var sdata = null, ov = null, sT, searchOpener = null;
     function loadData() {
       if (sdata) return Promise.resolve(sdata);
       return Promise.all([
@@ -526,11 +540,16 @@
       if (!ov) return;
       ov.remove(); ov = null;
       document.body.style.overflow = "";
+      if (searchOpener && searchOpener.isConnected) searchOpener.focus();
     }
     function openSearch() {
       if (ov) return;
+      searchOpener = document.activeElement;
       ov = document.createElement("div");
       ov.className = "search-ov";
+      ov.setAttribute("role", "dialog");
+      ov.setAttribute("aria-modal", "true");
+      ov.setAttribute("aria-label", "全站搜尋");
       ov.innerHTML = '<div class="search-ov-bar">' +
         '<input type="search" placeholder="搜尋社團、單位、活動…" aria-label="全站搜尋">' +
         '<button class="search-ov-cancel">取消</button></div>' +
@@ -549,7 +568,10 @@
         sT = setTimeout(function () { if (ov) results(input.value); }, 120);
       });
       ov.querySelector(".search-ov-cancel").addEventListener("click", close);
-      input.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+      ov.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") { e.preventDefault(); close(); }
+        else keepDialogFocus(ov, e);
+      });
     }
     btn.addEventListener("click", openSearch);
     if (navSearch) navSearch.addEventListener("click", openSearch);
@@ -1722,7 +1744,7 @@
           });
         }
 
-        var lb = null, groupCur = 0, storyCur = 0, swipe = null;
+        var lb = null, groupCur = 0, storyCur = 0, swipe = null, storyOpener = null;
         var storyDuration = 6500, storyElapsed = 0, storyStarted = 0, storyFrame = 0;
         var storyPaused = false, storyManualPause = false, storyHolding = false;
         var storyWheel = { x: 0, y: 0, last: 0, handled: false };
@@ -1736,6 +1758,7 @@
           return { group: 0, story: 0 };
         }
         function openLightbox(i) {
+          storyOpener = document.activeElement;
           var pos = flatPosition(Math.max(0, Math.min(flat.length - 1, i)));
           groupCur = pos.group;
           storyCur = pos.story;
@@ -1850,13 +1873,15 @@
           document.body.classList.add("story-open");
           document.body.style.overflow = "hidden";
           showCurrent();
+          lb.querySelector(".slb-close").focus();
         }
         function onKey(ev) {
           if (!lb || lb.style.display === "none") return;
+          keepDialogFocus(lb, ev);
           if (ev.key === "Escape") close();
           if (ev.key === "ArrowLeft") moveStory(-1);
           if (ev.key === "ArrowRight") moveStory(1);
-          if (ev.key === " ") { ev.preventDefault(); togglePause(); }
+          if (ev.key === " " && !ev.target.closest("button, a")) { ev.preventDefault(); togglePause(); }
         }
         function close() {
           lb.style.display = "none";
@@ -1865,6 +1890,7 @@
           cancelAnimationFrame(storyFrame);
           storyFrame = 0;
           storyWheel = { x: 0, y: 0, last: 0, handled: false };
+          if (storyOpener && storyOpener.isConnected) storyOpener.focus();
         }
         function moveAccount(delta) {
           var next = groupCur + delta;
