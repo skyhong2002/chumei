@@ -1,0 +1,45 @@
+chumei.observe.tw {
+	# observe.tw 不在 CLOUDFLARE_API_TOKEN 的 zone 權限內，改用預設 ACME（HTTP-01/TLS-ALPN）
+	encode zstd gzip
+
+	# MCP server（scripts/mcp_server.py，launchd: tw.observe.chumei.mcp）
+	handle /mcp* {
+		reverse_proxy 127.0.0.1:8321
+	}
+
+	# LINE bot webhook（scripts/bot_line.py，launchd: tw.observe.chumei.bot-line）
+	handle /line/webhook {
+		reverse_proxy 127.0.0.1:8322
+	}
+
+	# Web Push 訂閱 API（scripts/push_server.py，launchd: tw.observe.chumei.push）
+	handle /push/* {
+		reverse_proxy 127.0.0.1:8323
+	}
+
+	# OAuth-only 帳號服務（scripts/auth_server.py，launchd: tw.observe.chumei.auth）
+	@chumei_auth path /auth/* /account /account/* /submit /submit/* /contribute /contribute/* /@* /feeds/custom.ics /feeds/custom.xml /feeds/s/*
+	handle @chumei_auth {
+		reverse_proxy 127.0.0.1:8324
+	}
+
+	handle {
+		root * /Users/skyhong/Projects/chumei/published/current
+		header Cache-Control "no-cache, must-revalidate"
+		file_server
+	}
+
+	# Missing files must never return the homepage with HTTP 200.
+	handle_errors 404 {
+		header X-Robots-Tag "noindex"
+		header Cache-Control "no-store"
+		@asset path /assets/* /data/* /api/* /feeds/* /sw.js /manifest.webmanifest /robots.txt /sitemap.xml *.js *.css *.json *.xml *.ics *.png *.jpg *.jpeg *.webp *.svg *.ico *.woff *.woff2 *.map
+		handle @asset {
+			respond "Not found" 404
+		}
+		handle {
+			rewrite * /404.html
+			file_server
+		}
+	}
+}
