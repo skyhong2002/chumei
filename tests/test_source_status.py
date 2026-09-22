@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,70 @@ import source_status
 
 
 class SourceStatusTests(unittest.TestCase):
+    def test_quota_missing_account_and_real_fetch_errors_are_distinct(self):
+        self.assertEqual(source_status.error_category("no unauthenticated provider available within free-credit reserve"), "quota_wait")
+        self.assertEqual(source_status.error_category("user_daily_exhausted"), "quota_wait")
+        self.assertEqual(source_status.error_category("{'error': 'user_not_found'}"), "account_unavailable")
+        self.assertEqual(source_status.error_category("503 upstream failure"), "fetch_error")
+
+    def test_retry_in_future_does_not_make_stale_success_healthy(self):
+        row = {"id": "story:test", "sourceId": "ig_test", "username": "test",
+               "kind": "instagram_story", "backend": "Apify Stories", "targetIntervalHours": 24}
+        with patch.object(source_status, "source_registry", return_value=[row]), \
+             patch.object(source_status, "load_ledger", return_value={"story:test": {"lastSuccess": 100}}), \
+             patch.object(source_status, "_inbox_last_success", return_value={"ig_test": 199999}), \
+             patch.object(source_status, "_read_json", return_value={"accounts": {"test": {"next_eligible": 300000}}}), \
+             patch.object(source_status, "apify_quota", return_value={}), \
+             patch.object(source_status, "api_usage_summary", return_value={}):
+            payload = source_status.build_status_payload(now=200000)
+        self.assertEqual(payload["sources"][0]["status"], "due")
+        self.assertEqual(payload["coverage"]["missedTarget"], 1)
+        self.assertEqual(payload["coverage"]["overdueTwoIntervals"], 1)
+        self.assertEqual(payload["coverageByKind"]["instagram_story"]["success24h"], 0)
+        self.assertEqual(payload["counts"]["fresh"], 0)
+
+    def test_health_rechecks_ages_independently_from_pipeline_success(self):
+        payload = {"generatedAt": "1970-01-02T00:00:00Z", "pipeline": {
+            "lastCompletedRun": "1970-01-02T00:00:00Z", "lastResults": {"build": True}},
+            "sources": [{"lastSuccess": 86400, "targetIntervalHours": 3, "status": "ok"}]}
+        self.assertEqual(source_status.assess_health(payload, now=86401)["status"], "ok")
+        result = source_status.assess_health(payload, now=86400 + 4 * 3600)
+        self.assertIn("source_targets_missed", result["issues"])
+        self.assertNotIn("snapshot_stale", result["issues"])
+        result = source_status.assess_health(payload, now=86400 + 10 * 3600)
+        self.assertIn("snapshot_stale", result["issues"])
+        self.assertIn("pipeline_completion_stale", result["issues"])
+        payload["sources"][0]["status"] = "blocked"
+        self.assertIn("source_failures_or_limits", source_status.assess_health(payload, now=86401)["issues"])
+        self.assertEqual(source_status.assess_health({}, now=86401)["status"], "degraded")
+
+    def test_empty_success_streak_resets_when_content_returns(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(source_status, "LEDGER_PATH", Path(td) / "ledger.json"):
+            for ts in (100, 200, 300):
+                source_status.record_fetch("test", backend="RSSHub", ok=True, attempted_at=ts)
+            entry = source_status.load_ledger()["test"]
+            self.assertEqual(entry["consecutiveEmptySuccesses"], 3)
+            self.assertEqual(source_status.coverage_summary([entry], now=301)["emptySuccessStreaks"], 1)
+            source_status.record_fetch("test", backend="RSSHub", ok=True, items=1, attempted_at=400)
+            self.assertEqual(source_status.load_ledger()["test"]["consecutiveEmptySuccesses"], 0)
+
+    def test_health_cli_reads_only_snapshot_and_fails_closed(self):
+        import check_source_health
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "snapshot.json"
+            with patch("builtins.print"):
+                self.assertEqual(check_source_health.main(["--snapshot", str(path)]), 1)
+                path.write_text("not json")
+                self.assertEqual(check_source_health.main(["--snapshot", str(path)]), 1)
+                path.write_text(json.dumps({"generatedAt": "2020-01-01T00:00:00Z", "sources": []}))
+                self.assertEqual(check_source_health.main(["--snapshot", str(path)]), 1)
+                now = datetime.now(timezone.utc)
+                path.write_text(json.dumps({"generatedAt": now.isoformat(),
+                    "pipeline": {"lastCompletedRun": now.isoformat(), "lastResults": {"build": True}},
+                    "sources": [{"lastSuccess": now.timestamp(), "targetIntervalHours": 3, "status": "ok"}]}))
+                self.assertEqual(check_source_health.main(["--snapshot", str(path)]), 0)
+            self.assertEqual(list(Path(td).iterdir()), [path])
+
     def test_live_schedule_estimate_uses_new_pool_and_current_instagram_intervals(self):
         import apify_pool
         sources = [

@@ -20,6 +20,7 @@ LEDGER_PATH = ROOT / "state" / "source_fetch_ledger.json"
 USAGE_PATH = ROOT / "state" / "api_usage.jsonl"
 HISTORY_LIMIT = 20
 APIFY_RESERVE_USD = 10.0
+SNAPSHOT_MAX_AGE_HOURS = 9.0  # Three missed publication cycles.
 
 
 CURRENT_LEDGER_BACKENDS = {
@@ -158,6 +159,9 @@ def record_fetch(source_key: str, *, backend: str, ok: bool, items: int = 0,
             entry["lastSuccess"] = ts
             entry["lastError"] = ""
             entry["consecutiveFailures"] = 0
+            entry["consecutiveEmptySuccesses"] = (
+                int(entry.get("consecutiveEmptySuccesses", 0)) + 1 if not items else 0
+            )
             history = [float(value) for value in entry.get("successHistory", [])]
             if not history or abs(history[-1] - ts) > 1:
                 history.append(ts)
@@ -263,6 +267,84 @@ def api_usage_summary(now: float | None = None) -> dict:
             "cost30dUsd": round(sum(float(r.get("costUsd", 0)) for r in selected if r.get("ts", 0) >= now - 30 * 86400), 6),
         }
     return out
+
+
+def error_category(error: str) -> str | None:
+    """Classify observed failures, without inferring that quota has recovered."""
+    text = error.lower()
+    if not text:
+        return None
+    if any(marker in text for marker in ("reserve", "user_daily_exhausted", "quota", "credit", "budget")):
+        return "quota_wait"
+    if any(marker in text for marker in ("not found", "not_found", "does not exist", "doesn't exist", "usernotfound")):
+        return "account_unavailable"
+    return "fetch_error"
+
+
+def coverage_summary(rows: list[dict], *, now: float) -> dict:
+    """Freshness is based on successful fetches, never on the retry schedule."""
+    def recent(row, hours):
+        success = row.get("lastSuccess")
+        return isinstance(success, (int, float)) and 0 <= now - success <= hours * 3600
+
+    total = len(rows)
+    missed = sum(bool(row.get("missedTarget")) for row in rows)
+    return {
+        "sources": total,
+        "success24h": sum(recent(row, 24) for row in rows),
+        "success7d": sum(recent(row, 168) for row in rows),
+        "neverSucceeded": sum(not row.get("lastSuccess") for row in rows),
+        "missedTarget": missed,
+        "missedTargetPercent": round(100 * missed / total, 1) if total else 0,
+        "overdueTwoIntervals": sum(bool(row.get("overdueTwoIntervals")) for row in rows),
+        "quotaWait": sum(row.get("errorCategory") == "quota_wait" for row in rows),
+        "accountUnavailable": sum(row.get("errorCategory") == "account_unavailable" for row in rows),
+        "fetchErrors": sum(row.get("errorCategory") == "fetch_error" for row in rows),
+        "emptySuccessStreaks": sum(row.get("consecutiveEmptySuccesses", 0) >= 3 for row in rows),
+        "storyTargetsOver24h": sum(row.get("kind") == "instagram_story" and row.get("targetIntervalHours", 0) > 24 for row in rows),
+    }
+
+
+def assess_health(payload: dict, *, now: float | None = None,
+                  max_age_hours: float = SNAPSHOT_MAX_AGE_HOURS) -> dict:
+    """Read-only monitor result. A successful pipeline is not source health."""
+    now = time.time() if now is None else now
+    issues = []
+    try:
+        generated = datetime.fromisoformat(payload["generatedAt"].replace("Z", "+00:00")).timestamp()
+        age = (now - generated) / 3600
+        if age < -0.1 or age > max_age_hours:
+            issues.append("snapshot_stale")
+    except (KeyError, ValueError, TypeError, AttributeError):
+        age = None
+        issues.append("snapshot_invalid")
+    rows = payload.get("sources", [])
+    # Re-evaluate source ages at monitor time, not just snapshot time.
+    missed = sum(not isinstance(r.get("lastSuccess"), (int, float)) or
+                 not 0 <= now - r["lastSuccess"] <= float(r.get("targetIntervalHours", 0)) * 3600 for r in rows)
+    if not rows:
+        issues.append("sources_missing")
+    if missed:
+        issues.append("source_targets_missed")
+    if any(r.get("status") in {"blocked", "error"} for r in rows):
+        issues.append("source_failures_or_limits")
+    if any(r.get("consecutiveEmptySuccesses", 0) >= 3 for r in rows):
+        issues.append("repeated_empty_fetches")
+    pipeline = payload.get("pipeline", {})
+    if not pipeline.get("lastCompletedRun", pipeline.get("lastRun")):
+        issues.append("pipeline_completion_unknown")
+    else:
+        try:
+            completed = datetime.fromisoformat(str(pipeline.get("lastCompletedRun", pipeline.get("lastRun"))).replace("Z", "+00:00")).timestamp()
+            if not 0 <= now - completed <= max_age_hours * 3600:
+                issues.append("pipeline_completion_stale")
+        except ValueError:
+            issues.append("pipeline_completion_invalid")
+    if any(value is False for value in pipeline.get("lastResults", {}).values()):
+        issues.append("pipeline_step_failed")
+    return {"status": "degraded" if issues else "ok", "issues": issues,
+            "snapshotAgeHours": round(age, 2) if age is not None else None,
+            "missedTargetsNow": missed}
 
 
 def method_summaries(rows: list[dict]) -> list[dict]:
@@ -443,13 +525,24 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
             blocked = "Instagram 公開來源冷卻中"
         elif source["kind"] == "facebook" and apify.get("exhausted"):
             blocked = "Apify 本期額度已用完"
-        state = "blocked" if blocked else ("error" if error else ("due" if next_due <= now else "ok"))
+        category = error_category(error)
+        if category == "quota_wait":
+            blocked = "等待免費額度／每日配額（上次嘗試受限）"
+        if blocked and not category:
+            category = "quota_wait" if "額度" in blocked else "fetch_error"
+        age_hours = (now - float(last_success)) / 3600 if last_success else None
+        missed = age_hours is None or not 0 <= age_hours <= source["targetIntervalHours"]
+        state = "blocked" if blocked else ("error" if error else ("due" if next_due <= now or missed else "ok"))
         rows.append({
             **source, "lastAttempt": last_attempt, "lastSuccess": last_success,
             "nextDue": next_due, "averageIntervalHours": _average_interval(entry.get("successHistory", [])),
             "lastItems": int(entry.get("lastItems") or 0), "lastError": error,
             "consecutiveFailures": int(entry.get("consecutiveFailures") or 0),
             "status": state, "requestable": True, "blockedReason": blocked,
+            "errorCategory": category, "successAgeHours": age_hours,
+            "missedTarget": missed,
+            "overdueTwoIntervals": age_hours is not None and age_hours > source["targetIntervalHours"] * 2,
+            "consecutiveEmptySuccesses": int(entry.get("consecutiveEmptySuccesses") or 0),
         })
     counts = {
         "sources": len(rows), "due": sum(r["status"] == "due" for r in rows),
@@ -458,14 +551,23 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
         "fresh": sum(r["status"] == "ok" for r in rows),
     }
     usage = api_usage_summary(now)
-    return {
+    payload = {
         "generatedAt": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
-        "pipeline": {"lastRun": pipeline.get("last_run"), "lastResults": pipeline.get("last_results", {}),
+        "snapshotMaxAgeHours": SNAPSHOT_MAX_AGE_HOURS,
+        "pipeline": {"lastRun": pipeline.get("last_run"),
+                     "lastCompletedRun": pipeline.get("last_run"),
+                     "completionScope": "last completed cycle known before snapshot publication",
+                     "lastResults": pipeline.get("last_results", {}),
                      "intervalHours": 3.0},
         "counts": counts, "apiUsage": usage, "apify": apify,
+        "coverage": coverage_summary(rows, now=now),
+        "coverageByKind": {kind: coverage_summary([r for r in rows if r["kind"] == kind], now=now)
+                           for kind in sorted({r["kind"] for r in rows})},
         "incidents": detect_incidents(now=now, profile_schedule=profile_schedule,
                                       story_schedule=story_schedule, apify=apify,
                                       facebook_interval_hours=facebook_interval, rows=rows),
         "methods": method_summaries(rows),
         "sources": rows,
     }
+    payload["health"] = assess_health(payload, now=now)
+    return payload
