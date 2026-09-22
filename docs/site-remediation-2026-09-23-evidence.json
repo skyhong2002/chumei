@@ -1,0 +1,387 @@
+{
+  "results": [
+    {
+      "path": "/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0,
+      "revalidatedAfterFix": true
+    },
+    {
+      "path": "/events/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/calendar/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/stories/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/source/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/subscribe/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/notify/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/status/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/about/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/account/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/account/privacy",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/submit/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/contribute/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/quality/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/event/evt_05a9433e4a6e/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/event/evt_490332813616/",
+      "width": 1440,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/missing-audit-page/",
+      "width": 1440,
+      "status": 404,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/subscribe/",
+      "width": 1440,
+      "theme": "light",
+      "axeViolations": []
+    },
+    {
+      "path": "/subscribe/",
+      "width": 1440,
+      "theme": "dark",
+      "axeViolations": []
+    },
+    {
+      "path": "/account/",
+      "width": 1440,
+      "theme": "light",
+      "axeViolations": []
+    },
+    {
+      "path": "/account/",
+      "width": 1440,
+      "theme": "dark",
+      "axeViolations": []
+    },
+    {
+      "path": "/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/events/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/calendar/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/stories/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/source/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/subscribe/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/notify/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/status/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/about/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/account/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/account/privacy",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/submit/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/contribute/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/quality/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/event/evt_05a9433e4a6e/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/event/evt_490332813616/",
+      "width": 390,
+      "status": 200,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/missing-audit-page/",
+      "width": 390,
+      "status": 404,
+      "errors": [],
+      "overflow": false,
+      "brokenImages": 0
+    },
+    {
+      "path": "/subscribe/",
+      "width": 390,
+      "theme": "light",
+      "axeViolations": []
+    },
+    {
+      "path": "/subscribe/",
+      "width": 390,
+      "theme": "dark",
+      "axeViolations": []
+    },
+    {
+      "path": "/account/",
+      "width": 390,
+      "theme": "light",
+      "axeViolations": []
+    },
+    {
+      "path": "/account/",
+      "width": 390,
+      "theme": "dark",
+      "axeViolations": []
+    }
+  ],
+  "failures": [],
+  "finalHomeChecks": [
+    {
+      "width": 390,
+      "documentWidth": 390,
+      "deckKeyboard": "passed"
+    },
+    {
+      "width": 1024,
+      "documentWidth": 1024,
+      "deckKeyboard": "passed"
+    },
+    {
+      "width": 1440,
+      "documentWidth": 1440,
+      "deckKeyboard": "passed"
+    },
+    {
+      "width": 1920,
+      "documentWidth": 1920,
+      "deckKeyboard": "passed"
+    }
+  ],
+  "finalAccountAndSubscriptionChecks": "passed including eight axe runs",
+  "recorded_at": "2026-09-23T03:38:43+08:00",
+  "python_tests": 341,
+  "python_tests_result": "passed",
+  "published_event_count": 2838,
+  "ongoing_ics": {
+    "all": {
+      "expected": 23,
+      "missing": 0
+    },
+    "custom": {
+      "expected": 23,
+      "missing": 0
+    }
+  },
+  "payload": {
+    "initial_decoded_bytes": 982478,
+    "initial_gzip_bytes": 189855,
+    "prior_full_decoded_bytes": 4582377
+  },
+  "backup": {
+    "hourly_job_installed": true,
+    "keep_successful_snapshots": 168,
+    "real_isolated_restore_verified": true,
+    "offsite_configured": false,
+    "keychain_escrow_configured": false
+  },
+  "real_oauth_login_tested": false,
+  "real_notification_sent_for_testing": false,
+  "ci_run": "https://github.com/skyhong2002/chumei/actions/runs/35774678112",
+  "source_health": {
+    "status": "degraded",
+    "issues": [
+      "source_targets_missed",
+      "source_failures_or_limits"
+    ],
+    "snapshotAgeHours": 0.02,
+    "missedTargetsNow": 560
+  }
+}
