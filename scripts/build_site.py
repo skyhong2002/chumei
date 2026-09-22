@@ -1801,7 +1801,8 @@ def cache_post_image(sid, pid, url):
     if miss.exists() and miss.read_text() == url:
         return None  # 同一個網址已經失敗過（多半是 CDN 連結過期）；換新網址才重試
     try:
-        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (chumei)"})
+        from safe_outbound import get
+        resp = get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (chumei)"})
         resp.raise_for_status()
         image = Image.open(io.BytesIO(resp.content))
         image = image.convert("RGB")
