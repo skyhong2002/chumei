@@ -1,0 +1,12 @@
+# Runtime and operational tools. Regenerate requirements.txt with the command in docs/ci.md.
+requests
+starlette
+Pillow
+playwright
+mcp
+uvicorn
+pywebpush
+cryptography
+instaloader
+browser-cookie3
+fonttools[woff]
