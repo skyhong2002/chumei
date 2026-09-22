@@ -1103,10 +1103,14 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
     else:
         date_label = "日期待確認"
     page_heading = f"{e['title']}｜{date_label}"
+    # 同名同日的場次也可能同時在不同場地舉辦；保留各活動網址，以地點辨識。
+    if with_time and loc:
+        page_heading += f"｜{loc}"
     preview_parts = [
         f"{date_label}「{e['title']}」",
-        e.get("organizer") or (org[1] if org else ""),
+        # 地點放在主辦名稱之前，避免較長的主辦名稱把場次差異截掉。
         loc,
+        e.get("organizer") or (org[1] if org else ""),
         e.get("summary") or e.get("description") or "查看活動時間、地點與原始公告。",
     ]
     preview_desc = _one_line("。".join(part.strip("。") for part in preview_parts if part), 180)
@@ -2608,7 +2612,7 @@ def main():
             if ent is not None and ent["id"] not in seen_ent:
                 seen_ent.add(ent["id"])
                 ent_events.setdefault(ent["id"], []).append(e)
-    # 同名又同一天的活動（同一場地一天兩場）頁面標題要能分辨，先數出來
+    # 同名同日的場次以時間與校區／場地區分，不因標題碰撞而合併活動。
     same_day_twins = Counter((e["title"], (e.get("start_at") or "")[:10]) for e in events)
     for e in events:
         ent = sid_to_entry.get(e["source"]["source_id"])
