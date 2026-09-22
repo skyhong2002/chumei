@@ -1494,6 +1494,9 @@ a.feed-plat:hover { background: var(--color-surface-soft); color: var(--color-te
 :root { --feed-col-w: 420px; }
 @media (min-width: 1280px) { :root { --feed-col-w: 490px; } }
 .feed-cols {
+  /* Keep positioned descendants inside the deck's scrollable overflow area.
+     A static deck lets them use .post-feed as their containing block instead. */
+  position: relative;
   display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; align-items: start;
 }
 .feed-cols .feed-col {
