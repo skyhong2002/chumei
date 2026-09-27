@@ -2723,16 +2723,13 @@ def main():
     prerender_events(events)
     prerender_calendar(events)
     prerender_stories()
+    from search_discovery import build_search_pages, write_search_sitemap
+    hub_paths = build_search_pages(SITE, events, build_now, BASE_URL, page_shell, _ev_list_row)
     canonicalize_shared_shell()
     version_static_assets()
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/submit/", f"{BASE_URL}/source/", f"{BASE_URL}/status/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
-           [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
-           [f"{BASE_URL}/org/{i}/" for i in (org_ids or [])]
-    (SITE / "sitemap.xml").write_text(
-        '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        + "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>")
-    (SITE / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n")
+    write_search_sitemap(SITE, events, org_ids or [], hub_paths, build_now, BASE_URL,
+                         state_path=ROOT / "state" / "sitemap-state.json")
 
     n_review = sum(1 for e in events if e["extraction"].get("needs_review"))
     print(f"build: {len(events)} events ({len(upcoming)} upcoming, {n_review} needs_review)")
