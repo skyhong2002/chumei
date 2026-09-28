@@ -486,3 +486,22 @@ class DedupeDeterminismTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedShellTests(unittest.TestCase):
+    def test_repeated_normalization_does_not_accumulate_blank_lines(self):
+        page = ('<html><body><header class="site-header"></header><main>x</main>\n'
+                '<script src="/assets/app.js"></script>\n</body></html>')
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(build_site, "SITE", Path(tmp)):
+            (Path(tmp) / "about").mkdir()
+            target = Path(tmp) / "about" / "index.html"
+            target.write_text(page)
+            build_site.canonicalize_shared_shell()
+            first = target.read_text()
+            for _ in range(3):
+                build_site.canonicalize_shared_shell()
+            self.assertEqual(target.read_text(), first)
+            self.assertNotIn("\n\n", first)
+            self.assertEqual(first.count('class="fab"'), 1)
+            self.assertEqual(first.count('class="site-footer"'), 1)

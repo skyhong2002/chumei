@@ -897,7 +897,8 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 def canonicalize_shared_shell():
     """Keep static shells aligned; the Threads-style homepage has no footer."""
     footer_re = re.compile(r'<footer class="site-footer">.*?</footer>', re.S)
-    fab_re = re.compile(r'<a class="fab"[^>]*>.*?</a>', re.S)
+    # 連同前面的換行一起移除，否則每次建站都會在 </script> 與 </body> 之間多留一行空白。
+    fab_re = re.compile(r'\n*<a class="fab"[^>]*>.*?</a>', re.S)
     changed = 0
     for path in SITE.rglob("*.html"):
         src = path.read_text(encoding="utf-8")
@@ -910,7 +911,7 @@ def canonicalize_shared_shell():
         else:
             out = src.replace("</main>", f"</main>\n{SHARED_FOOTER}", 1)
         out = fab_re.sub("", out)
-        out = out.replace("</body>", f"{SHARED_FAB}\n</body>", 1)
+        out = re.sub(r"\n*</body>", lambda _: f"\n{SHARED_FAB}\n</body>", out, count=1)
         if out != src:
             path.write_text(out, encoding="utf-8")
             changed += 1
