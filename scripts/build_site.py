@@ -897,7 +897,8 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 def canonicalize_shared_shell():
     """Keep static shells aligned; the Threads-style homepage has no footer."""
     footer_re = re.compile(r'<footer class="site-footer">.*?</footer>', re.S)
-    fab_re = re.compile(r'<a class="fab"[^>]*>.*?</a>', re.S)
+    # 連同前面的換行一起移除，否則每次建站都會在 </script> 與 </body> 之間多留一行空白。
+    fab_re = re.compile(r'\n*<a class="fab"[^>]*>.*?</a>', re.S)
     changed = 0
     for path in SITE.rglob("*.html"):
         src = path.read_text(encoding="utf-8")
@@ -910,7 +911,7 @@ def canonicalize_shared_shell():
         else:
             out = src.replace("</main>", f"</main>\n{SHARED_FOOTER}", 1)
         out = fab_re.sub("", out)
-        out = out.replace("</body>", f"{SHARED_FAB}\n</body>", 1)
+        out = re.sub(r"\n*</body>", lambda _: f"\n{SHARED_FAB}\n</body>", out, count=1)
         if out != src:
             path.write_text(out, encoding="utf-8")
             changed += 1
@@ -1481,13 +1482,18 @@ def build_sources_data(events):
 
     norms = [_norm_org(e["name"]) for e in entries]
 
-    def attach(name, school, org_type, platform, url, label, sid, note=None, fallback_kind=None):
+    def attach(name, school, org_type, platform, url, label, sid, note=None, fallback_kind=None,
+               exact_match=False):
         n = _norm_org(name)
         src_campus = _org_campus(name) if school == "nycu" else None
         brand = bool(BRAND_NAME_RE.match(name))
         best_i, best = -1, 0.55
         for i, e in enumerate(entries):
             if e["school"] != school:
+                continue
+            # Reviewed ambiguous names (a center vs its volunteer club, for
+            # example) must not be merged solely by substring similarity.
+            if exact_match and n != norms[i]:
                 continue
             # 陽明與交通的社團是兩套系統：兩邊校區皆已知且不同 → 不配對
             if school == "nycu" and src_campus and e.get("campus") and e["campus"] != src_campus:
@@ -1528,7 +1534,8 @@ def build_sources_data(events):
         page = r["page"].strip()
         url = page if page.startswith("http") else f"https://www.facebook.com/{page}"
         attach(r["name"], r.get("school") or "other", r.get("org_type"), "facebook",
-               url, "Facebook", f"fb_{page_slug(page)}")
+               url, "Facebook", f"fb_{page_slug(page)}",
+               exact_match=r.get("directory_match") == "exact")
     for r in read_sources_csv("social_accounts.csv"):
         if r.get("active", "true").lower() == "false" or r["platform"] != "website":
             continue
@@ -2723,16 +2730,13 @@ def main():
     prerender_events(events)
     prerender_calendar(events)
     prerender_stories()
+    from search_discovery import build_search_pages, write_search_sitemap
+    hub_paths = build_search_pages(SITE, events, build_now, BASE_URL, page_shell, _ev_list_row)
     canonicalize_shared_shell()
     version_static_assets()
 
-    urls = [f"{BASE_URL}/", f"{BASE_URL}/calendar/", f"{BASE_URL}/subscribe/", f"{BASE_URL}/notify/", f"{BASE_URL}/about/", f"{BASE_URL}/submit/", f"{BASE_URL}/source/", f"{BASE_URL}/status/", f"{BASE_URL}/stories/", f"{BASE_URL}/events/"] + \
-           [f"{BASE_URL}/event/{e['id']}/" for e in events] + \
-           [f"{BASE_URL}/org/{i}/" for i in (org_ids or [])]
-    (SITE / "sitemap.xml").write_text(
-        '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        + "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>")
-    (SITE / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n")
+    write_search_sitemap(SITE, events, org_ids or [], hub_paths, build_now, BASE_URL,
+                         state_path=ROOT / "state" / "sitemap-state.json")
 
     n_review = sum(1 for e in events if e["extraction"].get("needs_review"))
     print(f"build: {len(events)} events ({len(upcoming)} upcoming, {n_review} needs_review)")

@@ -51,7 +51,9 @@ launchctl kickstart -k "gui/$(id -u)/tw.observe.chumei.push"
 
 每次成功發布後會自動套用相同保留策略（預設最新 3 個，`current` 和 `previous` 永不刪除）；最壞會保留 5 個版本，避免持續累積每版約 629 MB 的快照。保留數量可用 `--keep` 調整。清理失敗只記錄警告，不會誤報已成功的發布失敗。人工備份、未完成 staging 不會自動刪除；程序被強制終止留下的 `.staging-*` 可在確認無 publisher 執行時手動清理。
 
-`state/pipeline.lock` 阻止同時執行多輪 pipeline；`state/publish.lock` 保護發布、回復與清理。鎖由作業系統隨程序結束釋放，重複作業會以非零狀態退出。抽取失敗不會發布；部分 fetcher 失敗仍維持原先「記錄並使用其既有資料」的策略。
+`state/pipeline.lock` 阻止同時執行多輪 pipeline；`state/publish.lock` 保護發布、回復與清理。
+
+`state/sitemap-state.json` 記錄 sitemap 各頁的內容雜湊與 `lastmod`，放在網站根目錄之外、跨發布版本沿用；頁面內容沒變就不會更新 `lastmod`（同單位「更多活動」與「可能相關的活動」的增減不算內容變動）。鎖由作業系統隨程序結束釋放，重複作業會以非零狀態退出。抽取失敗不會發布；部分 fetcher 失敗仍維持原先「記錄並使用其既有資料」的策略。
 
 建站子程式只寫入 `CHUMEI_BUILD_DIR` 指定的私有 staging，依序完成地圖、主站、狀態頁和輸出驗證後，才使用同檔案系統的 `os.replace()` 一次更換 `current`。stage 使用真實檔案複本，不使用會污染正式檔案的 hardlink；歷史活動 URL 和圖片快取會保留，最新 repository 範本和 fetcher 輸出會覆蓋進新 stage。一般建站 CLI 仍可用於本機 `site/` 預覽，正式 Caddy 不再讀取該目錄。
 

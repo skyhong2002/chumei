@@ -35,7 +35,7 @@ STATUS_LABELS = {
 }
 OPEN_STATUSES = {"pending", "processing", "accepted"}
 
-TRACKING_PARAMS = {"igsh", "igshid", "igsi", "fbclid", "mibextid", "ref", "rdid", "share_id", "s", "t", "xmt"}
+TRACKING_PARAMS = {"igsh", "igshid", "igsi", "stkn", "fbclid", "mibextid", "ref", "rdid", "share_id", "share_url", "s", "t", "xmt"}
 HOST_ALIASES = {
     "instagram.com": "www.instagram.com",
     "m.facebook.com": "www.facebook.com",
@@ -60,6 +60,11 @@ def normalize_url(raw: str | None) -> str | None:
     value = (raw or "").strip()
     if not value:
         return None
+    # A pasted list must not become a single URL with the other URLs in its path.
+    if len(re.findall(r"https?:/+", value, re.I)) > 1 and re.search(
+        r"[、，,；;\s]https?:/+", value, re.I
+    ):
+        return None
     if not re.match(r"^https?://", value, re.I):
         value = "https://" + value
     if len(value) > MAX_URL_LENGTH:
@@ -83,7 +88,10 @@ def normalize_url(raw: str | None) -> str | None:
         if not k.lower().startswith("utm_") and k.lower() not in TRACKING_PARAMS
     ]
     path = re.sub(r"/{2,}", "/", parts.path) or "/"
-    if path != "/" and not path.endswith("/") and "." not in path.rsplit("/", 1)[-1]:
+    if host == "docs.google.com" and re.fullmatch(r"/forms/d/(?:e/)?[^/]+/viewform/", path):
+        path = path.rstrip("/")  # Repair older submissions whose path we changed.
+    if (host in {"www.instagram.com", "www.facebook.com", "www.threads.net", "x.com"}
+            and path != "/" and not path.endswith("/") and "." not in path.rsplit("/", 1)[-1]):
         path += "/"
     return urlunsplit(("https", host, path, urlencode(query), ""))
 
@@ -106,6 +114,9 @@ def classify_url(url: str) -> dict:
         if m and m.group(1) not in {"explore", "accounts", "stories", "direct"}:
             return {"kind": "ig_profile", "platform": "instagram", "handle": m.group(1).lower(), "post_id": None}
     if host == "www.facebook.com":
+        m = re.fullmatch(r"/people/[^/]+/(\d+)/?", path)
+        if m:
+            return {"kind": "fb_page", "platform": "facebook", "handle": m.group(1), "post_id": None}
         if path.startswith("/groups/"):
             return {"kind": "fb_group", "platform": "facebook", "handle": None, "post_id": None}
         m = re.match(r"^/events/(\d+)", path)
