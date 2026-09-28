@@ -1,4 +1,4 @@
-page,name,school,org_type,category_hint,active,notes
+page,name,school,org_type,category_hint,active,notes,directory_match
 nthu.tw,國立清華大學,nthu,official,綜合,true,search result facebook.com/nthu.tw
 nthuarts,清大藝術中心(藝術文化總中心),nthu,official,藝文,true,search result facebook.com/nthuarts; KKTIX nthuarts.kktix.cc 同名佐證
 NTHULIB,清大圖書館,nthu,official,藝文,true,search result facebook.com/NTHULIB; 常辦講座展覽
@@ -346,3 +346,7 @@ https://www.facebook.com/profile.php?id=61578757687309,悅讀AI半導體,nycu,cl
 https://www.facebook.com/profile.php?id=100083022176657,思源親善大使團,nycu,club,任務性,true,2026-08 deep search：實訪確認（2022 後低度更新）
 NCTU711,交大二餐7-11,nycu,external,校園商家,true,2026-08-26 使用者回報 sub_e04959c51991：og:title 交大二餐7-11
 ChuMeiGamePreparatoryCommittee,竹梅籌備委員會,both,club,校園媒體,true,2026-09-02 補搜同單位其他平台：og:title 竹梅籌備委員會 對應 IG chumei2026
+nycu.cross.disciplinary,國立陽明交通大學跨域學程,nycu,official,跨域學程,true,2026-09-27 人工核對回報：校方網站列為官方 FB https://cross.web.nycu.edu.tw/2023/03/03/112年跨域學程申請說明會/,exact
+counseingcenter,陽明交大健康心理中心（交大校區）,nycu,official,心理健康,true,2026-09-27 人工核對回報：校方健康心理中心列為官方 FB https://mhcc.nycu.edu.tw/mhcc/ch/app/data/doc?detailNo=1369944200354729984&module=nycu0062&type=s,exact
+fixandchat,維修聊天室,nthu,club,永續活動,true,2026-09-27 人工核對 FB 公開簡介及清大校友中心合作活動；與 ig_fixandchat 同單位
+https://www.facebook.com/people/交大日本文化研究社/61591851335912/,交大日本文化研究社,nycu,club,學藝性,true,2026-09-27 人工核對社團官網 https://jcc.nycu.cc/ 及回報分享網址轉址

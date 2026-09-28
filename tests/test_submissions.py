@@ -27,6 +27,25 @@ process_submissions = _load("process_submissions")
 
 
 class UrlTests(unittest.TestCase):
+    def test_web_paths_and_google_forms_are_not_given_a_trailing_slash(self):
+        for url in ("https://example.org/register", "https://forms.gle/AbCd123",
+                    "https://docs.google.com/forms/d/e/FORM/viewform"):
+            self.assertEqual(submissions.normalize_url(url), url)
+        self.assertEqual(
+            submissions.normalize_url("https://docs.google.com/forms/d/e/FORM/viewform/"),
+            "https://docs.google.com/forms/d/e/FORM/viewform")
+
+    def test_pasted_url_lists_are_rejected_and_tracking_is_removed(self):
+        self.assertIsNone(submissions.normalize_url(
+            "https://www.instagram.com/nycu.jcc/、https://x.com/nycu_jcc"))
+        self.assertIsNone(submissions.normalize_url(
+            "https://www.instagram.com/nycu.jcc/、https:/x.com/nycu_jcc"))
+        self.assertEqual(submissions.normalize_url("https://instagram.com/p/ABC/?stkn=abc"),
+                         "https://www.instagram.com/p/ABC/")
+        self.assertEqual(submissions.classify_url(
+            "https://www.facebook.com/people/交大日本文化研究社/61591851335912/")["handle"],
+            "61591851335912")
+
     def test_normalize_strips_tracking_and_aliases(self):
         self.assertEqual(
             submissions.normalize_url("instagram.com/p/AbC123/?igsh=xyz&utm_source=ig#x"),
@@ -234,6 +253,34 @@ class ProcessTests(unittest.TestCase):
     def test_tracked_profile_links_to_its_org_page(self):
         got = self._run("https://www.instagram.com/nthu_sa/")
         self.assertEqual((got["status"], got["event_url"]), ("existing", "/org/42/"))
+
+    def test_x_profile_uses_fetcher_source_id(self):
+        info = submissions.classify_url("https://x.com/nycu_jcc/")
+        self.assertEqual(process_submissions.org_url({"x_nycu_jcc": 123}, info), "/org/123/")
+
+    def test_merged_event_sources_are_indexed_without_inbox(self):
+        path = Path(self.tempdir.name) / "events.json"
+        event = {"id": "evt_1", "title": "活動", "source": {"source_id": "fb_club", "post_id": "1"},
+                 "alt_posts": [{"source_id": "ig_club", "post_id": "ABC",
+                                "url": "https://www.instagram.com/p/ABC/"}],
+                 "alt_sources": ["https://example.org/event"]}
+        path.write_text(json.dumps({"events": [event]}))
+        with mock.patch.object(process_submissions, "EVENTS_JSON", path):
+            index = process_submissions.load_events_index()
+        self.assertEqual(index["by_source"][("ig_club", "ABC")], ["evt_1"])
+        self.ctx["events"] = index
+        got = self._run("https://example.org/event", fetch_content=mock.Mock(side_effect=AssertionError))
+        self.assertEqual(got["event_url"], "/event/evt_1/")
+
+    def test_later_publication_reconciles_failed_reports_but_not_rejections(self):
+        url = "https://www.instagram.com/p/ABC/"
+        self.index["by_url"][url] = ["evt_1"]
+        for status in ("not_event", "manual", "error", "rejected"):
+            sub = self.store.create("u1", url + "?stkn=tracking")
+            self.store.update(sub["id"], status, "舊結果")
+            process_submissions.settle_indexed_submissions(self.store, self.index)
+            got = self.store.get(sub["id"])
+            self.assertEqual(got["status"], "rejected" if status == "rejected" else "published")
 
     def test_untracked_profile_is_added_without_human_review(self):
         added = []

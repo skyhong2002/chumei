@@ -93,11 +93,15 @@ def load_events_index():
     by_id, by_source, by_url = {}, {}, {}
     for e in events:
         by_id[e["id"]] = e
-        src = e.get("source") or {}
-        by_source.setdefault((src.get("source_id"), src.get("post_id")), []).append(e["id"])
-        nu = normalize_url(src.get("url"))
-        if nu:
-            by_url.setdefault(nu, []).append(e["id"])
+        for src in [e.get("source") or {}, *(e.get("alt_posts") or [])]:
+            by_source.setdefault((src.get("source_id"), src.get("post_id")), []).append(e["id"])
+            nu = normalize_url(src.get("url"))
+            if nu:
+                by_url.setdefault(nu, []).append(e["id"])
+        for url in e.get("alt_sources") or []:
+            nu = normalize_url(url)
+            if nu:
+                by_url.setdefault(nu, []).append(e["id"])
     return {"by_id": by_id, "by_source": by_source, "by_url": by_url, "events": events,
             "generated_at": data.get("generated_at", "")}
 
@@ -144,7 +148,7 @@ def load_org_index():
 
 
 def source_id_for(info):
-    prefix = {"instagram": "ig", "facebook": "fb", "threads": "threads", "twitter": "twitter"}.get(info["platform"])
+    prefix = {"instagram": "ig", "facebook": "fb", "threads": "threads", "twitter": "x"}.get(info["platform"])
     return f"{prefix}_{info['handle']}" if prefix and info.get("handle") else None
 
 
@@ -531,6 +535,9 @@ def process_one(store, sub, ctx, dry_run=False):
             return finish("manual", "一直讀不到這個帳號的內容，已交給站長確認。", bump_attempts=True)
 
     # 單篇內容：已在 inbox／events 裡就直接對回
+    ids = index["by_url"].get(url) or []
+    if ids:
+        return finish("existing", "這則內容已經收錄在竹梅。", event_url=event_url(ids[0]))
     key = inbox_by_url.get(url) or (inbox_by_sc.get(info["post_id"]) if info["kind"] == "ig_post" else None)
     if key:
         ids = index["by_source"].get(key) or []
@@ -642,6 +649,17 @@ def settle_source_added(store, orgs):
             store.update(sub["id"], "source_added", sub.get("reason") or "", event_url=link)
 
 
+def settle_indexed_submissions(store, index):
+    """Later pipeline runs can publish a post that previously failed extraction."""
+    for sub in store.list_by_status(["not_event", "error", "manual"], limit=10000):
+        url = normalize_url(sub["url"])
+        ids = index["by_url"].get(url) or []
+        if ids:
+            event = index["by_id"][ids[0]]
+            store.update(sub["id"], "published", f"已上線：{event['title']}",
+                         event_url=event_url(ids[0]))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=20)
@@ -677,6 +695,7 @@ def main():
         run_extract()
     settle_accepted(store, ctx["events"])
     settle_source_added(store, ctx["orgs"])
+    settle_indexed_submissions(store, ctx["events"])
     return 0
 
 

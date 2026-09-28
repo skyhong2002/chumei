@@ -1434,7 +1434,7 @@ def _error_page(title: str, message: str, status_code: int = 400) -> HTMLRespons
 SUBMIT_NOTICES = {
     "ok": ("已收到，系統會在幾分鐘到一小時內判讀這個連結。", False),
     "dup": ("這個連結已經有人回報過了，下面可以看到它的狀態。", False),
-    "invalid": ("看起來不是有效的網址，請貼完整的 http(s) 連結。", True),
+    "invalid": ("請每次貼一個完整的 http(s) 連結；多個連結請分開回報。", True),
     "self": ("這已經是竹梅站內的頁面囉，請貼原始貼文或公告的連結。", True),
     "limit": (f"一天最多回報 {DAILY_LIMIT} 個連結，明天再來吧。", True),
 }

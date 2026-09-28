@@ -1481,13 +1481,18 @@ def build_sources_data(events):
 
     norms = [_norm_org(e["name"]) for e in entries]
 
-    def attach(name, school, org_type, platform, url, label, sid, note=None, fallback_kind=None):
+    def attach(name, school, org_type, platform, url, label, sid, note=None, fallback_kind=None,
+               exact_match=False):
         n = _norm_org(name)
         src_campus = _org_campus(name) if school == "nycu" else None
         brand = bool(BRAND_NAME_RE.match(name))
         best_i, best = -1, 0.55
         for i, e in enumerate(entries):
             if e["school"] != school:
+                continue
+            # Reviewed ambiguous names (a center vs its volunteer club, for
+            # example) must not be merged solely by substring similarity.
+            if exact_match and n != norms[i]:
                 continue
             # 陽明與交通的社團是兩套系統：兩邊校區皆已知且不同 → 不配對
             if school == "nycu" and src_campus and e.get("campus") and e["campus"] != src_campus:
@@ -1528,7 +1533,8 @@ def build_sources_data(events):
         page = r["page"].strip()
         url = page if page.startswith("http") else f"https://www.facebook.com/{page}"
         attach(r["name"], r.get("school") or "other", r.get("org_type"), "facebook",
-               url, "Facebook", f"fb_{page_slug(page)}")
+               url, "Facebook", f"fb_{page_slug(page)}",
+               exact_match=r.get("directory_match") == "exact")
     for r in read_sources_csv("social_accounts.csv"):
         if r.get("active", "true").lower() == "false" or r["platform"] != "website":
             continue
