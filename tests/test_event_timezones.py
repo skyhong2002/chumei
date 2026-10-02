@@ -35,7 +35,7 @@ class TimezoneTests(unittest.TestCase):
                 'source_name': '校友會', 'org_type': 'department', 'platform': 'facebook',
                 'url': 'https://example.com/post', 'text': '活動於 9/25 舉辦',
                 'posted_at': '2026-09-21T06:28:00+00:00'}
-        with mock.patch.object(x, 'call_llm', return_value=json.dumps({'events': [ev]})):
+        with mock.patch.object(x, 'call_llm', return_value=(json.dumps({'events': [ev]}), 'test-model')):
             return x.process_item({}, item, None, {})[2]['events'][0]
 
     def test_valid_overseas_time_preserves_instant_and_source_zone(self):

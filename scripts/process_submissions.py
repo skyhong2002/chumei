@@ -2,10 +2,10 @@
 
 每一筆 pending：
 1. 先用程式比對：已在 inbox／events 裡的貼文直接回「已收錄」。帳號主頁比對名錄，
-   已追蹤的回「已收錄」；沒追蹤的抓最近貼文交給 Codex 審，過了就直接寫進 registry CSV
+   已追蹤的回「已收錄」；沒追蹤的抓最近貼文交給模型審，過了就直接寫進 registry CSV
    （站長不用再確認一次），下一輪抓取就開始收錄。
 2. 抓頁面內容（IG 貼文走 instaloader，其餘 og tags＋正文；文字太少就截圖）。
-3. Codex 判讀：相關嗎？新活動、對上既有活動、還是不收。信心不足留人工。
+3. 模型判讀（AI gateway sky-quality）：相關嗎？新活動、對上既有活動、還是不收。信心不足留人工。
 4. new_event → append data/feeds/inbox/user_submission.jsonl，接著只對這個來源跑
    extract_events；抽到活動就「已收錄，等待上線」，等下次 build 後對回 events.json 換成「已上線」。
 
@@ -31,6 +31,7 @@ from urllib.parse import urlsplit
 import requests
 
 from chumei_lib import ROOT, TZ_TAIPEI, append_inbox, iter_inbox, load_env, now_iso, read_sources_csv
+from llm_gateway import chat_json, file_data_url, load_schema, review_model
 from submissions import MAX_ATTEMPTS, SubmissionStore, classify_url, normalize_url
 
 SOURCE_ID = "user_submission"
@@ -268,7 +269,7 @@ def fetch_content(url, info):
     return fetch_generic(url)
 
 
-# ---------- Codex 判讀 ----------
+# ---------- 模型判讀 ----------
 
 def _bigrams(s):
     s = re.sub(r"[\W_]+", "", (s or "").lower())
@@ -293,7 +294,15 @@ def candidate_events(index, content, limit=12):
     return [e for _, e in scored[:limit]]
 
 
-def triage_with_codex(env, url, info, content, candidates, image_paths):
+def _review(env, system, user, schema_path, schema_name, images=()):
+    """經 AI gateway 判讀；verdict 附上請求的別名與實際作答的模型。"""
+    alias = review_model(env)
+    raw, model = chat_json(env, alias, system, user, images=images,
+                           schema=load_schema(schema_path), schema_name=schema_name)
+    return {**json.loads(raw), "llm": {"alias": alias, "model": model}}
+
+
+def triage_with_llm(env, url, info, content, candidates, images):
     cand_lines = "\n".join(
         f"- {e['id']}｜{(e.get('start_at') or '')[:10]}｜{e['title']}｜{e.get('organizer') or ''}"
         for e in candidates
@@ -306,19 +315,7 @@ def triage_with_codex(env, url, info, content, candidates, image_paths):
         f"頁面內容：\n{(content.get('text') or '（抓不到文字）')[:6000]}\n\n"
         f"候選的既有活動：\n{cand_lines}"
     )
-    with tempfile.TemporaryDirectory(prefix="chumei-sub-") as td:
-        cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
-               "--output-schema", str(SCHEMA), "-o", f"{td}/out.json"]
-        model = env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna"
-        cmd += ["-m", model]
-        for p in image_paths[:3]:
-            cmd += ["-i", p]
-        # prompt 走 stdin：-i 是變長參數會吞掉 positional prompt
-        r = subprocess.run(cmd, cwd=td, capture_output=True, text=True, timeout=420,
-                           input=TRIAGE_PROMPT + "\n\n---\n" + user)
-        if r.returncode != 0:
-            raise RuntimeError(f"codex exec rc={r.returncode}: {r.stderr[-200:]}")
-        return json.loads(Path(f"{td}/out.json").read_text())
+    return _review(env, TRIAGE_PROMPT, user, SCHEMA, "submission_triage", images)
 
 
 # ---------- 帳號主頁：自動審核並收進追蹤名單 ----------
@@ -372,23 +369,14 @@ def fetch_account_preview(url, info, env):
     return (page.get("title") or ""), ([body] if body else [])
 
 
-def review_source_with_codex(env, url, info, name, posts, note):
+def review_source_with_llm(env, url, info, name, posts, note):
     listing = "\n".join(f"- {p}" for p in posts[:8]) or "（抓不到貼文）"
     user = (
         f"回報的帳號：{url}\n平台：{info['platform']}\n帳號代號：@{info['handle']}\n"
         f"顯示名稱：{name or '（抓不到）'}\n"
         f"{('回報者備註：' + note) if note else ''}\n\n最近的貼文：\n{listing[:6000]}"
     )
-    with tempfile.TemporaryDirectory(prefix="chumei-src-") as td:
-        cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
-               "--output-schema", str(SOURCE_SCHEMA), "-o", f"{td}/out.json"]
-        model = env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna"
-        cmd += ["-m", model]
-        r = subprocess.run(cmd, cwd=td, capture_output=True, text=True, timeout=420,
-                           input=SOURCE_PROMPT + "\n\n---\n" + user)
-        if r.returncode != 0:
-            raise RuntimeError(f"codex exec rc={r.returncode}: {r.stderr[-200:]}")
-        return json.loads(Path(f"{td}/out.json").read_text())
+    return _review(env, SOURCE_PROMPT, user, SOURCE_SCHEMA, "source_review")
 
 
 def add_tracked_source(info, verdict, sub_id):
@@ -416,7 +404,7 @@ def review_account(sub, url, info, ctx, finish, dry_run):
         return finish("rejected", "找不到這個帳號，可能已改名、刪除或設為不公開。")
     if not name and not posts:
         return finish("rejected", "抓不到這個帳號的公開內容，沒辦法判斷。")
-    verdict = review_source_with_codex(env, url, info, name, posts, sub.get("note"))
+    verdict = review_source_with_llm(env, url, info, name, posts, sub.get("note"))
     verdict_json = json.dumps(verdict, ensure_ascii=False)
     reason = (verdict.get("reason") or "").strip() or "系統判讀完成。"
     conf = float(verdict.get("confidence") or 0)
@@ -549,7 +537,7 @@ def process_one(store, sub, ctx, dry_run=False):
             return finish("not_event", "這則內容竹梅之前已經看過，但沒有辨識出有明確時間的活動。",
                           event_url=f"/org/{ctx['orgs'][key[0]]}/" if key[0] in ctx["orgs"] else None)
 
-    # 抓內容 → Codex 判讀
+    # 抓內容 → 模型判讀
     try:
         content = fetch_content(url, info)
     except Exception as exc:  # noqa: BLE001
@@ -557,20 +545,16 @@ def process_one(store, sub, ctx, dry_run=False):
                       f"無法讀取這個連結（{str(exc)[:80]}）。", bump_attempts=True)
 
     with tempfile.TemporaryDirectory(prefix="chumei-subimg-") as td:
-        images = []
-        from extract_events import fetch_image_file
-        for i, u in enumerate((content.get("images") or [])[:2]):
-            p = fetch_image_file(u, td, i)
-            if p:
-                images.append(p)
+        from extract_events import fetch_image_b64
+        images = [b64 for b64 in map(fetch_image_b64, (content.get("images") or [])[:2]) if b64]
         if len(content.get("text") or "") < MIN_TEXT_FOR_NO_SCREENSHOT and info["kind"] != "ig_post":
             shot = screenshot(url, td)
             if shot:
-                images.append(shot)
+                images.append(file_data_url(shot))
                 content["note"] = (content.get("note") or "") + "（文字很少，附整頁截圖）"
         candidates = candidate_events(index, content)
         try:
-            verdict = triage_with_codex(env, url, info, content, candidates, images)
+            verdict = triage_with_llm(env, url, info, content, candidates, images)
         except Exception as exc:  # noqa: BLE001
             return finish("pending" if sub["attempts"] + 1 < MAX_ATTEMPTS else "error",
                           f"判讀時發生錯誤（{str(exc)[:80]}）。", bump_attempts=True)

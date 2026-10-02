@@ -104,7 +104,7 @@ class EventCategoryTests(unittest.TestCase):
                 "text": "測試", "posted_at": "2026-09-23T10:00:00+08:00"}
         for category in ["講座", "學術"]:
             ev = {**self.event(category), "confidence": 1, "source_timezone": "Asia/Taipei"}
-            with mock.patch.object(extract_events, "call_llm", return_value=json.dumps({"events": [ev]})):
+            with mock.patch.object(extract_events, "call_llm", return_value=(json.dumps({"events": [ev]}), "test-model")):
                 out = extract_events.process_item({}, item, None, {})[2]["events"][0]
             self.assertEqual(out["category"], "演講" if category == "講座" else "其他")
             self.assertEqual(out["category_original"], category)
