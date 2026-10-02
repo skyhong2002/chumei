@@ -133,7 +133,7 @@ class SafeOutboundTests(unittest.TestCase):
         with mock.patch.object(so, "get", side_effect=so.UnsafeURL("blocked")) as get:
             with self.assertRaises(so.UnsafeURL):
                 process_submissions.fetch_generic("https://127.0.0.1/")
-            self.assertIsNone(extract_events.fetch_image_file("https://127.0.0.1/img", "/unused", 0))
+            self.assertIsNone(extract_events.fetch_image_b64("https://127.0.0.1/img"))
         self.assertEqual(get.call_count, 2)
 
 

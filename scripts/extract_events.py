@@ -1,7 +1,8 @@
 """LLM 活動抽取：inbox 貼文/公告 → 結構化 events。
 
-- 文字＋最多兩張海報圖（base64）一起送 vision 模型。
-- 快取鍵 (source_id, post_id, prompt_version)，存 state/extraction/<source_id>.json。
+- 文字＋最多兩張海報圖（data URL）經 AI gateway 送 sky-fast，strict JSON schema。
+- 快取鍵 (source_id, post_id, prompt_version)，存 state/extraction/<source_id>.json；
+  記錄請求的模型別名與實際作答的模型。
 - 非活動貼文快取為空 events，不重複花錢。
 """
 
@@ -11,17 +12,16 @@ import hashlib
 import json
 import sys
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import requests
-
 from event_categories import normalize_event_category
 from chumei_lib import iter_inbox, load_env, now_iso, ROOT, TZ_TAIPEI
+from llm_gateway import chat_json, extraction_model, load_schema
 
 PROMPT_VERSION = 3
 EXTRACT_DIR = ROOT / "state" / "extraction"
+SCHEMA = ROOT / "scripts" / "extract_schema.json"
 
 SYSTEM_PROMPT = """你是「竹梅」（清大＋交大校園活動聚合站）的資料抽取引擎。輸入是一則校園社群貼文或公告（含海報圖片），你要判斷它是否在宣傳「有明確時間的實體或線上活動」，並抽出結構化欄位。
 
@@ -216,98 +216,24 @@ def user_prompt(item, retry_note=None):
     )
 
 
-def fetch_image_file(url, dest_dir, idx, max_bytes=8_000_000):
-    """下載並縮圖成 jpg 檔（給 codex exec -i 用）。回傳路徑或 None。"""
-    try:
-        from safe_outbound import get
-        r = get(url, timeout=20, max_bytes=max_bytes, headers={"User-Agent": "Mozilla/5.0 (chumei.observe.tw fetcher)"})
-        r.raise_for_status()
-        if len(r.content) > max_bytes or not r.headers.get("content-type", "").startswith("image/"):
-            return None
-        import io
-        from pathlib import Path
-        from PIL import Image
-        im = Image.open(io.BytesIO(r.content)).convert("RGB")
-        im.thumbnail((1024, 1024))
-        path = Path(dest_dir) / f"img{idx}.jpg"
-        im.save(path, "JPEG", quality=80)
-        return str(path)
-    except Exception:
-        return None
-
-
-def call_llm_codex(env, item, retry_note=None):
-    """走 Codex CLI（訂閱制），--output-schema 強制結構化輸出。"""
-    import subprocess
-    import tempfile
-    schema = str(ROOT / "scripts" / "extract_schema.json")
-    with tempfile.TemporaryDirectory(prefix="chumei-ext-") as td:
-        cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only",
-               "--output-schema", schema, "-o", f"{td}/out.json"]
-        model = env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna"
-        cmd += ["-m", model]
-        for idx, img_url in enumerate((item.get("images") or [])[:2]):
-            p = fetch_image_file(img_url, td, idx)
-            if p:
-                cmd += ["-i", p]
-        # prompt 走 stdin：-i 是變長參數，positional prompt 會被它吞掉
-        prompt = SYSTEM_PROMPT + "\n\n---\n" + user_prompt(item, retry_note)
-        r = subprocess.run(cmd, cwd=td, capture_output=True, text=True,
-                           timeout=420, input=prompt)
-        if r.returncode != 0:
-            raise RuntimeError(f"codex exec rc={r.returncode}: {r.stderr[-200:]}")
-        with open(f"{td}/out.json") as f:
-            return f.read()
-
-
 def call_llm(env, item, retry_note=None):
-    if env.get("CHUMEI_LLM_BACKEND") == "codex":
-        return call_llm_codex(env, item, retry_note)
-    content = [{"type": "text", "text": user_prompt(item, retry_note)}]
-    for img_url in (item.get("images") or [])[:2]:
-        b64 = fetch_image_b64(img_url)
-        if b64:
-            content.append({"type": "image_url", "image_url": {"url": b64}})
-    payload = {
-        "model": (env.get("CHUMEI_LLM_MODEL") or "gpt-5.6-luna"),
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": content},
-        ],
-        "response_format": {"type": "json_object"},
-    }
-    for attempt in range(5):
-        resp = requests.post(
-            f"{env['CHUMEI_LLM_BASE_URL']}/chat/completions",
-            headers={"Authorization": f"Bearer {env['CHUMEI_LLM_API_KEY']}"},
-            json=payload, timeout=180,
-        )
-        if resp.status_code in (429, 500, 502, 503) and attempt < 4:
-            import random
-            time.sleep(min(120, 8 * (2 ** attempt)) + random.uniform(0, 4))
-            continue
-        if resp.status_code == 400:
-            raise RuntimeError(f"400: {resp.text[:200]}")
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-    raise RuntimeError("rate-limited after retries")
-
-
-def model_name(env):
-    if env.get("CHUMEI_LLM_BACKEND") == "codex":
-        return "codex/" + (env.get("CHUMEI_CODEX_MODEL") or "gpt-5.6-luna")
-    return env.get("CHUMEI_LLM_MODEL") or "gpt-5.6-luna"
+    """回傳 (JSON 字串, 實際作答的模型)。"""
+    images = [b64 for b64 in map(fetch_image_b64, (item.get("images") or [])[:2]) if b64]
+    return chat_json(env, extraction_model(env), SYSTEM_PROMPT, user_prompt(item, retry_note),
+                     images=images, schema=load_schema(SCHEMA), schema_name="extraction")
 
 
 def process_item(env, item, lock, caches):
     source_id, post_id = item["source_id"], item["post_id"]
     raw = None
+    alias = extraction_model(env)
     try:
-        raw = call_llm(env, item)
+        raw, model = call_llm(env, item)
         parsed = json.loads(raw)
     except json.JSONDecodeError:
         try:
-            parsed = json.loads(call_llm(env, item, retry_note="請輸出合法 JSON"))
+            raw, model = call_llm(env, item, retry_note="請輸出合法 JSON")
+            parsed = json.loads(raw)
         except Exception as e:
             return source_id, post_id, {"error": f"{e} raw={str(raw)[:200]}", "prompt_version": PROMPT_VERSION, "ts": now_iso()}
     except Exception as e:
@@ -352,7 +278,7 @@ def process_item(env, item, lock, caches):
             "source": {"platform": item["platform"], "url": item["url"], "source_id": source_id, "post_id": post_id},
             "poster_image": item.get("image_url"),
             "extraction": {
-                "model": model_name(env), "confidence": conf,
+                "model": model, "model_alias": alias, "confidence": conf,
                 "needs_review": needs_review, "prompt_version": PROMPT_VERSION,
                 **({"review_reason": review_reason} if review_reason else {}),
                 **({"unverified_times": unverified_times} if unverified_times else {}),
@@ -375,7 +301,7 @@ def process_item(env, item, lock, caches):
                                           "source_id": source_id, "post_id": post_id}})
     return source_id, post_id, {
         "prompt_version": PROMPT_VERSION, "ts": now_iso(),
-        "model": model_name(env), "events": events, "recurrings": recurrings,
+        "model": model, "model_alias": alias, "events": events, "recurrings": recurrings,
     }
 
 

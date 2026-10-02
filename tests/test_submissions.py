@@ -292,7 +292,7 @@ class ProcessTests(unittest.TestCase):
         got = self._run(
             "https://www.instagram.com/newclub/",
             fetch_account_preview=lambda url, info, env: ("新社團", ["9/20 迎新茶會"]),
-            review_source_with_codex=lambda *a: {
+            review_source_with_llm=lambda *a: {
                 "relevant": True, "name": "清大新社團", "school": "nthu", "org_type": "club",
                 "category_hint": "學術性", "reason": "清大社團，持續發活動資訊。", "confidence": 0.9},
             add_tracked_source=fake_add,
@@ -313,7 +313,7 @@ class ProcessTests(unittest.TestCase):
         got = self._run(
             "https://www.threads.net/@nthu_sa/",
             fetch_account_preview=lambda url, info, env: ("清大學生會", ["9/20 迎新"]),
-            review_source_with_codex=lambda *a: {
+            review_source_with_llm=lambda *a: {
                 "relevant": True, "name": "清大學生會", "school": "nthu", "org_type": "gov",
                 "category_hint": "", "reason": "官方帳號。", "confidence": 0.95},
             add_tracked_source=lambda info, verdict, sub_id: "social_accounts.csv",
@@ -354,7 +354,7 @@ class ProcessTests(unittest.TestCase):
     def test_irrelevant_profile_is_rejected(self):
         got = self._run("https://www.instagram.com/someshop/",
                         fetch_account_preview=lambda url, info, env: ("某某商家", ["全面八折"]),
-                        review_source_with_codex=lambda *a: {
+                        review_source_with_llm=lambda *a: {
                             "relevant": False, "name": "某某商家", "school": "external",
                             "org_type": "external", "category_hint": None,
                             "reason": "與清交校園活動無關。", "confidence": 0.9})
@@ -363,7 +363,7 @@ class ProcessTests(unittest.TestCase):
     def test_low_confidence_profile_still_goes_to_a_human(self):
         got = self._run("https://www.instagram.com/maybe/",
                         fetch_account_preview=lambda url, info, env: ("？", ["嗯"]),
-                        review_source_with_codex=lambda *a: {
+                        review_source_with_llm=lambda *a: {
                             "relevant": True, "name": "不確定", "school": "both", "org_type": "club",
                             "category_hint": None, "reason": "看不出跟兩校的關係。", "confidence": 0.2},
                         MANUAL_REVIEW=Path(self.tempdir.name) / "manual.jsonl")
@@ -383,7 +383,7 @@ class ProcessTests(unittest.TestCase):
         got = self._run(
             "https://infonews.nycu.edu.tw/p/123/",
             fetch_content=lambda url, info: content,
-            triage_with_codex=lambda *a, **k: verdict,
+            triage_with_llm=lambda *a, **k: verdict,
             append_inbox=lambda src, items: written.extend(items),
         )
         self.assertEqual(got["status"], "accepted")
@@ -399,14 +399,14 @@ class ProcessTests(unittest.TestCase):
                 "school": "nthu", "org_type": "club", "posted_at": None}
         with mock.patch.object(process_submissions, "MANUAL_REVIEW", Path(self.tempdir.name) / "m.jsonl"):
             attach = self._run("https://example.org/a", fetch_content=lambda u, i: content,
-                               triage_with_codex=lambda *a, **k: {**base, "action": "attach_to_existing",
+                               triage_with_llm=lambda *a, **k: {**base, "action": "attach_to_existing",
                                                                    "matched_event_id": "evt_1", "confidence": 0.8})
             self.assertEqual((attach["status"], attach["event_url"]), ("existing", "/event/evt_1/"))
             reject = self._run("https://example.org/b", fetch_content=lambda u, i: content,
-                               triage_with_codex=lambda *a, **k: {**base, "relevant": False, "action": "reject", "confidence": 0.9})
+                               triage_with_llm=lambda *a, **k: {**base, "relevant": False, "action": "reject", "confidence": 0.9})
             self.assertEqual(reject["status"], "rejected")
             low = self._run("https://example.org/c", fetch_content=lambda u, i: content,
-                            triage_with_codex=lambda *a, **k: {**base, "action": "new_event", "confidence": 0.3})
+                            triage_with_llm=lambda *a, **k: {**base, "action": "new_event", "confidence": 0.3})
             self.assertEqual(low["status"], "manual")
             self.assertFalse(self.ctx["needs_extract"])
 
