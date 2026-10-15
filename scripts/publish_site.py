@@ -51,8 +51,10 @@ def run_build_step(script, stage, root=ROOT, *, offline=False):
     if offline:
         env["CHUMEI_BUILD_OFFLINE"] = "1"
     python = root / ".venv" / "bin" / "python"
+    # Stay below run_pipeline's 7200s step limit so a hung build times out here
+    # and the staging directory is removed instead of being orphaned by SIGKILL.
     subprocess.run([str(python), str(root / "scripts" / script)], env=env,
-                   check=True, timeout=7200)
+                   check=True, timeout=3600)
 
 
 def _managed_target(link, releases):
