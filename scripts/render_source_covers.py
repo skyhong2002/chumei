@@ -57,6 +57,16 @@ def cached_source_cover(url):
     return None
 
 
+HIDE_CHROME_CSS = "header, nav, .cookie, .cookie-banner { display:none !important; }"
+
+
+def _hide_page_chrome(page):
+    # 截圖 context 關閉 JavaScript；page.add_style_tag 會等 <style> 的 onload，
+    # 而 JS 關閉時永遠等不到（也沒有 timeout），整個建站會卡死。直接插入即可。
+    page.evaluate("css => { const s = document.createElement('style'); s.textContent = css;"
+                  " (document.head || document.documentElement).append(s); }", HIDE_CHROME_CSS)
+
+
 def _save_element_cover(page, selector, destination):
     from PIL import Image
 
@@ -135,7 +145,7 @@ def attach_source_screenshots(events, limit=20):
             try:
                 page.goto(url, wait_until="domcontentloaded")
                 page.wait_for_timeout(900)
-                page.add_style_tag(content="header, nav, .cookie, .cookie-banner { display:none !important; }")
+                _hide_page_chrome(page)
                 _save_element_cover(page, DOMAIN_SELECTORS[urlparse(url).hostname], destination)
                 produced += 1
             except Exception as exc:
