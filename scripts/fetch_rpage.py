@@ -34,6 +34,8 @@ TAIPEI_TZ = timezone(timedelta(hours=8))
 USER_AGENT = "chumei-rpage-crawler/1.0 (+https://github.com/)"
 REQUEST_INTERVAL_SECONDS = 1.0
 MAX_REDIRECTS = 10
+# seen values are fetch timestamps, except for links that can never be fetched.
+REJECTED_OFFSITE = "rejected:offsite-redirect"
 BLOCK_TAGS = {
     "address", "article", "aside", "blockquote", "div", "dl", "dt", "dd",
     "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
@@ -629,7 +631,13 @@ def main() -> int:
                 try:
                     detail_html, final_url = fetch_detail(session, entry["url"])
                     body, images = parse_detail(detail_html, final_url)
+                except OffsiteRedirect as exc:
+                    # Same answer on every run: remember it so the link is not refetched.
+                    warning(source_id, entry["post_id"], f"{exc}; not retrying")
+                    seen[key] = REJECTED_OFFSITE
+                    continue
                 except (requests.RequestException, ValueError) as exc:
+                    # Network, HTTP and parse failures may be transient; retry next run.
                     warning(source_id, entry["post_id"], exc)
                     continue
 

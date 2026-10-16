@@ -1,4 +1,7 @@
+import io
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -75,6 +78,65 @@ class FetchDetailTests(unittest.TestCase):
         with self.assertRaises(requests.TooManyRedirects):
             fetch_rpage.fetch_detail(session, DETAIL_URL)
         self.assertEqual(len(session.requested), fetch_rpage.MAX_REDIRECTS + 1)
+
+
+class SeenStateTests(unittest.TestCase):
+    """Runs main() twice against canned pages to observe what the second run requests."""
+
+    OFFSITE_URL = "https://dsa.site.nthu.edu.tw/p/406-1000-2,r1.php"
+    FLAKY_URL = "https://dsa.site.nthu.edu.tw/p/406-1000-3,r1.php"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        sources = root / "bulletin_sources.csv"
+        sources.write_text("source_id,name,type,school,org_type,url,extra\n"
+                           f"nthu_dsa,清大課外組,rpage_list,nthu,official,{LIST_URL},\n")
+        self.seen_path = root / "seen" / "rpage.json"
+        self.inbox_path = root / "inbox" / "rpage.jsonl"
+        list_html = "".join(
+            f"<div class='mbox'><a href='{url}'>{title}</a><i class='mdate'>2026-10-0{index}</i></div>"
+            for index, (url, title) in enumerate(
+                [(DETAIL_URL, "社團博覽會"), (self.OFFSITE_URL, "報名表單"), (self.FLAKY_URL, "講座")], 1)
+        )
+        # FLAKY_URL is absent from the canned pages, so it always fails with a network error.
+        self.pages = {
+            LIST_URL: response(LIST_URL, body=list_html),
+            DETAIL_URL: response(DETAIL_URL, body=DETAIL_HTML),
+            self.OFFSITE_URL: response(self.OFFSITE_URL, 302, location="https://reurl.cc/abc"),
+        }
+        for patcher in (
+            mock.patch.object(fetch_rpage, "SOURCES_PATH", sources),
+            mock.patch.object(fetch_rpage, "SEEN_PATH", self.seen_path),
+            mock.patch.object(fetch_rpage, "INBOX_PATH", self.inbox_path),
+            mock.patch.object(fetch_rpage, "_last_request_at", None),
+            mock.patch.object(fetch_rpage.time, "sleep"),
+            mock.patch("source_status.record_fetch"),
+            mock.patch.object(sys, "argv", ["fetch_rpage.py", "--max-pages", "1"]),
+            mock.patch("sys.stderr", new_callable=io.StringIO),
+            mock.patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def run_main(self):
+        session = FakeSession(self.pages)
+        with mock.patch.object(fetch_rpage.requests, "Session", return_value=session):
+            self.assertEqual(fetch_rpage.main(), 0)
+        return session.requested
+
+    def test_offsite_rejection_is_remembered_but_transient_failures_retry(self):
+        self.assertEqual(self.run_main(), [LIST_URL, DETAIL_URL, self.OFFSITE_URL, self.FLAKY_URL])
+        seen = json.loads(self.seen_path.read_text())
+        self.assertEqual(seen["nthu_dsa|2"], fetch_rpage.REJECTED_OFFSITE)
+        self.assertNotIn("nthu_dsa|3", seen)
+        self.assertEqual(len(self.inbox_path.read_text().splitlines()), 1)
+
+        self.assertEqual(self.run_main(), [LIST_URL, self.FLAKY_URL])
+        self.assertEqual(len(self.inbox_path.read_text().splitlines()), 1)
+        self.assertEqual(fetch_rpage.load_seen(self.seen_path)["nthu_dsa|2"],
+                         fetch_rpage.REJECTED_OFFSITE)
 
 
 if __name__ == "__main__":
