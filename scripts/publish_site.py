@@ -46,6 +46,24 @@ def atomic_link(link, target):
         temporary.unlink(missing_ok=True)
 
 
+def copy_tree(source, target):
+    """Overlay source onto target as independent files (never hardlinks).
+
+    On macOS, APFS clones share blocks copy-on-write, so a release costs almost
+    no SSD writes yet later writes to either tree never reach the other. cp falls
+    back to a real copy on filesystems without cloning; copytree covers other
+    platforms or any cp failure, overwriting whatever a partial cp left behind.
+    """
+    if sys.platform == "darwin":
+        # -L follows symlinks like copytree(symlinks=False); -p matches copy2.
+        result = subprocess.run(["/bin/cp", "-c", "-p", "-R", "-L", f"{source}/.", f"{target}/"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            return
+        print(f"Clone copy failed, using a full copy: {result.stderr.strip()}", file=sys.stderr)
+    shutil.copytree(source, target, dirs_exist_ok=True)
+
+
 def run_build_step(script, stage, root=ROOT, *, offline=False):
     env = dict(os.environ, CHUMEI_BUILD_DIR=str(stage))
     if offline:
@@ -83,12 +101,12 @@ def publish(root=ROOT, *, runner=None, offline=False):
         stage = Path(tempfile.mkdtemp(prefix=".staging-", dir=releases))
         candidate = None
         try:
-            # Real copies (never hardlinks) keep builds from mutating live files.
-            # Preserve historic event URLs and generated image caches, then overlay
-            # repository templates/assets and the latest fetcher outputs.
+            # Independent copies (never hardlinks) keep builds from mutating live
+            # files. Preserve historic event URLs and generated image caches, then
+            # overlay repository templates/assets and the latest fetcher outputs.
             if old:
-                shutil.copytree(old, stage, dirs_exist_ok=True)
-            shutil.copytree(root / "site", stage, dirs_exist_ok=True)
+                copy_tree(old, stage)
+            copy_tree(root / "site", stage)
             (stage / ".release.json").unlink(missing_ok=True)
             for script in BUILD_STEPS:
                 runner(script, stage)

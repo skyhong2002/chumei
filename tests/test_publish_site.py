@@ -169,6 +169,59 @@ assert all(path == stage or stage in path.parents for path in paths), paths
         result = subprocess.run([sys.executable, "-c", code, str(Path(publish_site.__file__).parent), str(stage)], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def make_copy_fixture(self):
+        source, target = self.root / "copy-source", self.root / "copy-target"
+        (source / "nested").mkdir(parents=True)
+        (source / "nested" / "page.html").write_text("source page")
+        (source / "shared.txt").write_text("source shared")
+        (source / "link.txt").symlink_to("shared.txt")
+        target.mkdir()
+        (target / "shared.txt").write_text("stale shared")
+        (target / "historic.html").write_text("historic")
+        return source, target
+
+    def assert_independent_overlay(self, source, target):
+        self.assertEqual((target / "nested" / "page.html").read_text(), "source page")
+        self.assertEqual((target / "shared.txt").read_text(), "source shared")
+        self.assertEqual((target / "historic.html").read_text(), "historic")
+        # Like copytree(symlinks=False), symlinks become regular files.
+        self.assertFalse((target / "link.txt").is_symlink())
+        self.assertEqual((target / "link.txt").read_text(), "source shared")
+        for name in ("nested/page.html", "shared.txt"):
+            self.assertNotEqual((source / name).stat().st_ino, (target / name).stat().st_ino)
+        # Later writes to either tree must never reach the other.
+        (target / "shared.txt").write_text("stage rewrite")
+        with (target / "nested" / "page.html").open("a") as handle:
+            handle.write(" + stage append")
+        (source / "link.txt").unlink()
+        (source / "shared.txt").write_text("source rewrite")
+        self.assertEqual((source / "nested" / "page.html").read_text(), "source page")
+        self.assertEqual((target / "shared.txt").read_text(), "stage rewrite")
+        self.assertEqual((target / "link.txt").read_text(), "source shared")
+
+    def test_copy_tree_overlays_independent_files(self):
+        source, target = self.make_copy_fixture()
+        publish_site.copy_tree(source, target)
+        self.assert_independent_overlay(source, target)
+
+    @unittest.skipUnless(sys.platform == "darwin", "APFS clones are only attempted on macOS")
+    def test_copy_tree_uses_clone_copy_on_macos(self):
+        source, target = self.make_copy_fixture()
+        with mock.patch.object(publish_site.shutil, "copytree") as copytree:
+            publish_site.copy_tree(source, target)
+        copytree.assert_not_called()
+        self.assert_independent_overlay(source, target)
+
+    def test_copy_tree_falls_back_to_full_copy_when_cloning_fails(self):
+        source, target = self.make_copy_fixture()
+        failed = subprocess.CompletedProcess([], 1, stderr="cp: clonefile failed")
+        with mock.patch.object(publish_site.sys, "platform", "darwin"), \
+             mock.patch.object(publish_site.subprocess, "run", return_value=failed) as run, \
+             mock.patch("sys.stderr"):
+            publish_site.copy_tree(source, target)
+        self.assertIn("-c", run.call_args.args[0])
+        self.assert_independent_overlay(source, target)
+
     def test_subprocess_receives_isolated_output_and_offline_flag(self):
         with mock.patch.object(publish_site.subprocess, "run") as run:
             publish_site.run_build_step("build_site.py", self.root / "stage", self.root, offline=True)
