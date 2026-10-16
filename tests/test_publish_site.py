@@ -228,6 +228,24 @@ assert all(path == stage or stage in path.parents for path in paths), paths
         self.assertEqual(run.call_args.kwargs["env"]["CHUMEI_BUILD_DIR"], str(self.root / "stage"))
         self.assertEqual(run.call_args.kwargs["env"]["CHUMEI_BUILD_OFFLINE"], "1")
         self.assertTrue(run.call_args.kwargs["check"])
+        self.assertEqual(run.call_args.kwargs["timeout"], publish_site.STEP_TIMEOUT)
+
+    def test_build_limits_stay_below_pipeline_step_limit(self):
+        # run_pipeline SIGKILLs publish_site.py after 7200s, which would orphan staging.
+        self.assertLess(publish_site.STEP_TIMEOUT, publish_site.PUBLISH_BUDGET)
+        self.assertLessEqual(publish_site.PUBLISH_BUDGET, 7200 / 2)
+
+    def test_default_runner_caps_each_step_by_remaining_budget(self):
+        clock = iter([0, 0, publish_site.PUBLISH_BUDGET - 60, publish_site.PUBLISH_BUDGET])
+        with mock.patch.object(publish_site.time, "monotonic", side_effect=lambda: next(clock)), \
+             mock.patch.object(publish_site, "run_build_step") as step:
+            with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                publish_site.publish(self.root)
+        self.assertEqual(raised.exception.cmd, publish_site.BUILD_STEPS[2])
+        self.assertEqual([call.kwargs["timeout"] for call in step.call_args_list],
+                         [publish_site.STEP_TIMEOUT, 60])
+        self.assertFalse(self.current.exists())
+        self.assertEqual(list((self.root / "published" / "releases").iterdir()), [])
 
 
 if __name__ == "__main__":

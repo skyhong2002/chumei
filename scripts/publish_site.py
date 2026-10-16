@@ -15,10 +15,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_STEPS = ("build_map_data.py", "build_site.py", "build_status_page.py", "validate_outputs.py")
+# A publication normally takes ~4 minutes; the slowest seen took ~14, almost all
+# of it in build_site.py. Both limits stay well below run_pipeline's 7200s step
+# limit so a hung build times out here and removes its own staging directory
+# instead of being SIGKILLed with the staging copy orphaned.
+STEP_TIMEOUT = 1800
+PUBLISH_BUDGET = 3600
 
 
 @contextmanager
@@ -64,15 +71,21 @@ def copy_tree(source, target):
     shutil.copytree(source, target, dirs_exist_ok=True)
 
 
-def run_build_step(script, stage, root=ROOT, *, offline=False):
+def step_timeout(script, deadline):
+    """Per-step limit, capped by what is left of the whole publication's budget."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired(script, 0)
+    return min(STEP_TIMEOUT, remaining)
+
+
+def run_build_step(script, stage, root=ROOT, *, offline=False, timeout=STEP_TIMEOUT):
     env = dict(os.environ, CHUMEI_BUILD_DIR=str(stage))
     if offline:
         env["CHUMEI_BUILD_OFFLINE"] = "1"
     python = root / ".venv" / "bin" / "python"
-    # Stay below run_pipeline's 7200s step limit so a hung build times out here
-    # and the staging directory is removed instead of being orphaned by SIGKILL.
     subprocess.run([str(python), str(root / "scripts" / script)], env=env,
-                   check=True, timeout=3600)
+                   check=True, timeout=timeout)
 
 
 def _managed_target(link, releases):
@@ -92,7 +105,9 @@ def publish(root=ROOT, *, runner=None, offline=False):
     publication = root / "published"
     releases = publication / "releases"
     releases.mkdir(parents=True, exist_ok=True)
-    runner = runner or (lambda script, stage: run_build_step(script, stage, root, offline=offline))
+    deadline = time.monotonic() + PUBLISH_BUDGET
+    runner = runner or (lambda script, stage: run_build_step(
+        script, stage, root, offline=offline, timeout=step_timeout(script, deadline)))
     with exclusive_lock(root / "state" / "publish.lock"):
         current = publication / "current"
         previous = publication / "previous"
