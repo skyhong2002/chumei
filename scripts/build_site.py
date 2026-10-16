@@ -1009,6 +1009,7 @@ def calendar_details(e):
     return "\n".join(lines).strip()
 
 
+@lru_cache(maxsize=None)
 def _related_title(t):
     """Normalize titles for recommendations without treating school/year boilerplate as similarity."""
     t = norm_title(t).replace("社博", "社團博覽會")
@@ -1017,14 +1018,41 @@ def _related_title(t):
     return re.sub(r"\d+", "", t)
 
 
+# related_events compares every event with every other one, so the per-string work
+# below is memoized: each title, venue and start time is processed once per build.
+_related_venue = lru_cache(maxsize=None)(norm_title)
+_related_start = lru_cache(maxsize=None)(datetime.fromisoformat)
+
+
+@lru_cache(maxsize=None)
+def _related_pairs(t):
+    return frozenset(_bigrams(t))
+
+
+@lru_cache(maxsize=None)
+def _related_grams(t, n):
+    return frozenset(t[i:i + n] for i in range(len(t) - n + 1))
+
+
+def _longest_match_at_least(a, b, n):
+    """SequenceMatcher(None, a, b).find_longest_match().size >= n, without the O(len²) scan.
+
+    Two strings share a run of n characters exactly when their n-gram sets intersect.
+    SequenceMatcher's autojunk changes its answer once b has 200+ characters, so those
+    rare titles still go through it."""
+    if len(b) >= 200:
+        return SequenceMatcher(None, a, b).find_longest_match().size >= n
+    return not _related_grams(a, n).isdisjoint(_related_grams(b, n))
+
+
 def related_events(event, events, limit=8):
     """Conservative event recommendations with a short, user-visible relation reason."""
     try:
-        base_dt = datetime.fromisoformat(event["start_at"])
+        base_dt = _related_start(event["start_at"])
     except (KeyError, TypeError, ValueError):
         return []
     base_title = _related_title(event.get("title"))
-    base_venue = norm_title(event.get("venue"))
+    base_venue = _related_venue(event.get("venue"))
     base_org = event.get("org_id")
     ranked = []
     for candidate in events:
@@ -1033,7 +1061,7 @@ def related_events(event, events, limit=8):
         if base_org is not None and candidate.get("org_id") == base_org:
             continue  # already represented by the existing "more from this organizer" section
         try:
-            candidate_dt = datetime.fromisoformat(candidate["start_at"])
+            candidate_dt = _related_start(candidate["start_at"])
         except (KeyError, TypeError, ValueError):
             continue
         day_gap = abs((candidate_dt.date() - base_dt.date()).days)
@@ -1043,12 +1071,13 @@ def related_events(event, events, limit=8):
         candidate_title = _related_title(candidate.get("title"))
         if not base_title or not candidate_title:
             continue
-        longest = SequenceMatcher(None, base_title, candidate_title).find_longest_match().size
-        base_pairs, candidate_pairs = _bigrams(base_title), _bigrams(candidate_title)
+        shares_4 = _longest_match_at_least(base_title, candidate_title, 4)
+        shares_6 = shares_4 and _longest_match_at_least(base_title, candidate_title, 6)
+        base_pairs, candidate_pairs = _related_pairs(base_title), _related_pairs(candidate_title)
         title_jaccard = len(base_pairs & candidate_pairs) / max(1, len(base_pairs | candidate_pairs))
-        title_related = longest >= 4 or title_jaccard >= 0.35
+        title_related = shares_4 or title_jaccard >= 0.35
 
-        candidate_venue = norm_title(candidate.get("venue"))
+        candidate_venue = _related_venue(candidate.get("venue"))
         same_venue = bool(
             base_venue and candidate_venue
             and (base_venue in candidate_venue or candidate_venue in base_venue or _similar(base_venue, candidate_venue))
@@ -1057,7 +1086,7 @@ def related_events(event, events, limit=8):
         if not title_related and not (same_day and same_venue):
             continue
 
-        score = 6 if longest >= 6 else 4 if longest >= 4 else 2
+        score = 6 if shares_6 else 4 if shares_4 else 2
         if same_day:
             score += 3
         elif day_gap <= 7:
