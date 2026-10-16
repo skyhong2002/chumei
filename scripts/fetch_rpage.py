@@ -33,6 +33,7 @@ SEEN_PATH = ROOT / "state" / "seen" / "rpage.json"
 TAIPEI_TZ = timezone(timedelta(hours=8))
 USER_AGENT = "chumei-rpage-crawler/1.0 (+https://github.com/)"
 REQUEST_INTERVAL_SECONDS = 1.0
+MAX_REDIRECTS = 10
 BLOCK_TAGS = {
     "address", "article", "aside", "blockquote", "div", "dl", "dt", "dd",
     "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
@@ -232,16 +233,27 @@ def parse_posted_at(value: str) -> str:
     )
 
 
-def _request(session: requests.Session, url: str) -> requests.Response:
+class OffsiteRedirect(ValueError):
+    """A detail link that leaves NTHU RPage; retrying always gives the same answer."""
+
+
+def _get(session: requests.Session, url: str, *, allow_redirects: bool = True) -> requests.Response:
     global _last_request_at
     if _last_request_at is not None:
         delay = REQUEST_INTERVAL_SECONDS - (time.monotonic() - _last_request_at)
         if delay > 0:
             time.sleep(delay)
     try:
-        response = session.get(url, timeout=30, allow_redirects=True)
+        return session.get(url, timeout=30, allow_redirects=allow_redirects)
     finally:
         _last_request_at = time.monotonic()
+
+
+def _request(session: requests.Session, url: str) -> requests.Response:
+    return _checked(_get(session, url))
+
+
+def _checked(response: requests.Response) -> requests.Response:
     response.raise_for_status()
     content_type = response.headers.get("content-type", "").lower()
     if "html" not in content_type and not response.content.lstrip().startswith(b"<"):
@@ -303,8 +315,16 @@ def parse_list_page(document: str, base_url: str) -> list[dict[str, str]]:
 
 
 def fetch_detail(session: requests.Session, url: str) -> tuple[str, str]:
-    response = _request(session, url)
-    return response.text, response.url
+    """Follow redirects only within NTHU RPage; off-site targets are never fetched."""
+    for _ in range(MAX_REDIRECTS + 1):
+        response = _get(session, url, allow_redirects=False)
+        target = session.get_redirect_target(response)
+        if not target:
+            return _checked(response).text, response.url
+        url = urljoin(response.url, target)
+        if not is_nthu_rpage_host(urlsplit(url).hostname):
+            raise OffsiteRedirect(f"detail redirects outside NTHU RPage to {url}")
+    raise requests.TooManyRedirects(f"exceeded {MAX_REDIRECTS} redirects", response=response)
 
 
 def image_source(node: Node) -> str:
@@ -608,8 +628,6 @@ def main() -> int:
                     continue
                 try:
                     detail_html, final_url = fetch_detail(session, entry["url"])
-                    if not is_nthu_rpage_host(urlsplit(final_url).hostname):
-                        raise ValueError(f"detail redirects outside NTHU RPage to {final_url}")
                     body, images = parse_detail(detail_html, final_url)
                 except (requests.RequestException, ValueError) as exc:
                     warning(source_id, entry["post_id"], exc)
