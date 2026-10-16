@@ -259,7 +259,7 @@ def main() -> int:
     try:
         run, raw_items = run_actor(token, sources, args.limit)
     except RuntimeError as exc:
-        record_run(account_label, cost_usd=None, source_count=len(sources), ok=False)
+        record_run(account_label, consumer="facebook", cost_usd=None, source_count=len(sources), ok=False)
         for source in sources:
             record_fetch(f"facebook:{page_slug(source['page'])}", backend="Apify", ok=False, error=exc)
             # 批次層級失敗（Apify 端），短退避讓這些頁下輪就能再排上
@@ -292,7 +292,7 @@ def main() -> int:
     written = append_inbox(RAW_SOURCE, fresh)
     seen.save()
     cost = usage_usd(run)
-    record_run(account_label, cost_usd=cost, source_count=len(sources), ok=True)
+    record_run(account_label, consumer="facebook", cost_usd=cost, source_count=len(sources), ok=True)
     record_api_call("Apify", operation="facebook actor batch", source_count=len(sources), request_count=0, ok=True, cost_usd=cost)
     items_by_source = {}
     for item in raw_items:

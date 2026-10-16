@@ -6,9 +6,8 @@ most 10 items and 10 scanned profiles per run. Each pipeline invocation
 therefore rotates through the token pool: every run takes a fresh batch of due
 profiles on the account with the most allowance left today, spread across the
 day so live Stories are caught before they expire. Runs still charge the
-account's monthly credit, so each account's daily Story spend is capped at
-half of its evenly paced remaining credit; the Facebook collector's own
-pacing takes the rest.
+account's monthly credit, so Stories only spend their equal share of the
+pool's evenly paced daily credit (see ``apify_pool.apify_allocation``).
 """
 
 from __future__ import annotations
@@ -239,7 +238,7 @@ def main() -> int:
                 mark_failure(schedule, username, base_hours=6, cap_hours=48)
                 record_fetch(f"story:{username}", backend="Apify Stories", ok=False, error=exc)
             save_schedule(SCHEDULE_STATE, schedule)
-            record_run(label, cost_usd=None, source_count=len(selected), ok=False)
+            record_run(label, consumer="story", cost_usd=None, source_count=len(selected), ok=False)
             print(f"stories (Apify): ERROR {exc}", file=sys.stderr)
             return 1
 
@@ -295,7 +294,7 @@ def main() -> int:
         cost = usage_usd(run)
         budget = record_story_run(label, delivered=delivered, cost_usd=cost)
         total_cost += cost or 0.0
-        record_run(label, cost_usd=cost, source_count=len(scanned_now), ok=True)
+        record_run(label, consumer="story", cost_usd=cost, source_count=len(scanned_now), ok=True)
         record_api_call("Apify", operation="instagram story actor", source_count=len(scanned_now),
                         request_count=0, ok=True, cost_usd=cost)
         scanned += len(scanned_now)

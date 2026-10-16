@@ -86,7 +86,7 @@ class SourceStatusTests(unittest.TestCase):
             {"kind": "instagram_story", "username": "test", "targetIntervalHours": 168},
         ]
         pool = {"usableAccountCount": 1, "accounts": [
-            {"available": True, "community": True, "remainingUsd": 5, "cycleEnd": "1970-01-25T00:00:00Z"}
+            {"available": True, "community": True, "remainingUsd": 0.5, "cycleEnd": "1970-01-25T00:00:00Z"}
         ]}
         with tempfile.TemporaryDirectory() as td, \
              patch.object(apify_pool, "POOL_STATE_PATH", Path(td) / "pool.json"), \
@@ -241,7 +241,8 @@ class SourceStatusTests(unittest.TestCase):
         )
         self.assertEqual(incidents[0]["id"], "apify-slow-pacing")
         self.assertIn("Instagram 限時動態", incidents[0]["detail"])
-        self.assertIn("US$10", incidents[0]["detail"])
+        self.assertIn("平分", incidents[0]["detail"])
+        self.assertNotIn("US$10", incidents[0]["detail"])
 
 
 if __name__ == "__main__":
