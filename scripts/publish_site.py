@@ -15,10 +15,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_STEPS = ("build_map_data.py", "build_site.py", "build_status_page.py", "validate_outputs.py")
+# A publication normally takes ~4 minutes; the slowest seen took ~14, almost all
+# of it in build_site.py. Both limits stay well below run_pipeline's 7200s step
+# limit so a hung build times out here and removes its own staging directory
+# instead of being SIGKILLed with the staging copy orphaned.
+STEP_TIMEOUT = 1800
+PUBLISH_BUDGET = 3600
 
 
 @contextmanager
@@ -46,15 +53,39 @@ def atomic_link(link, target):
         temporary.unlink(missing_ok=True)
 
 
-def run_build_step(script, stage, root=ROOT, *, offline=False):
+def copy_tree(source, target):
+    """Overlay source onto target as independent files (never hardlinks).
+
+    On macOS, APFS clones share blocks copy-on-write, so a release costs almost
+    no SSD writes yet later writes to either tree never reach the other. cp falls
+    back to a real copy on filesystems without cloning; copytree covers other
+    platforms or any cp failure, overwriting whatever a partial cp left behind.
+    """
+    if sys.platform == "darwin":
+        # -L follows symlinks like copytree(symlinks=False); -p matches copy2.
+        result = subprocess.run(["/bin/cp", "-c", "-p", "-R", "-L", f"{source}/.", f"{target}/"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            return
+        print(f"Clone copy failed, using a full copy: {result.stderr.strip()}", file=sys.stderr)
+    shutil.copytree(source, target, dirs_exist_ok=True)
+
+
+def step_timeout(script, deadline):
+    """Per-step limit, capped by what is left of the whole publication's budget."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired(script, 0)
+    return min(STEP_TIMEOUT, remaining)
+
+
+def run_build_step(script, stage, root=ROOT, *, offline=False, timeout=STEP_TIMEOUT):
     env = dict(os.environ, CHUMEI_BUILD_DIR=str(stage))
     if offline:
         env["CHUMEI_BUILD_OFFLINE"] = "1"
     python = root / ".venv" / "bin" / "python"
-    # Stay below run_pipeline's 7200s step limit so a hung build times out here
-    # and the staging directory is removed instead of being orphaned by SIGKILL.
     subprocess.run([str(python), str(root / "scripts" / script)], env=env,
-                   check=True, timeout=3600)
+                   check=True, timeout=timeout)
 
 
 def _managed_target(link, releases):
@@ -74,7 +105,9 @@ def publish(root=ROOT, *, runner=None, offline=False):
     publication = root / "published"
     releases = publication / "releases"
     releases.mkdir(parents=True, exist_ok=True)
-    runner = runner or (lambda script, stage: run_build_step(script, stage, root, offline=offline))
+    deadline = time.monotonic() + PUBLISH_BUDGET
+    runner = runner or (lambda script, stage: run_build_step(
+        script, stage, root, offline=offline, timeout=step_timeout(script, deadline)))
     with exclusive_lock(root / "state" / "publish.lock"):
         current = publication / "current"
         previous = publication / "previous"
@@ -83,12 +116,12 @@ def publish(root=ROOT, *, runner=None, offline=False):
         stage = Path(tempfile.mkdtemp(prefix=".staging-", dir=releases))
         candidate = None
         try:
-            # Real copies (never hardlinks) keep builds from mutating live files.
-            # Preserve historic event URLs and generated image caches, then overlay
-            # repository templates/assets and the latest fetcher outputs.
+            # Independent copies (never hardlinks) keep builds from mutating live
+            # files. Preserve historic event URLs and generated image caches, then
+            # overlay repository templates/assets and the latest fetcher outputs.
             if old:
-                shutil.copytree(old, stage, dirs_exist_ok=True)
-            shutil.copytree(root / "site", stage, dirs_exist_ok=True)
+                copy_tree(old, stage)
+            copy_tree(root / "site", stage)
             (stage / ".release.json").unlink(missing_ok=True)
             for script in BUILD_STEPS:
                 runner(script, stage)
