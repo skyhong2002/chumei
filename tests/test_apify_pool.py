@@ -108,18 +108,20 @@ class ApifyPoolTests(unittest.TestCase):
         invalidate.assert_called_once_with(None, "contrib_1", "401 Client Error")
         self.assertFalse(status["accounts"][0]["available"])
 
-    def test_recommended_interval_spends_capacity_before_reset(self):
+    def test_recommended_interval_paces_facebook_within_its_share(self):
         status = {
             "accounts": [
-                {"available": True, "remainingUsd": 5.0, "cycleEnd": "1970-01-25T00:00:00Z"}
-                for _ in range(4)
+                {"label": f"A{i}", "available": True, "remainingUsd": 5.02,
+                 "cycleEnd": "1970-01-25T00:00:00Z"}
+                for i in range(4)
             ]
         }
         with tempfile.TemporaryDirectory() as td, patch.object(
             apify_pool, "POOL_STATE_PATH", Path(td) / "pool.json"
         ):
-            interval = apify_pool.recommended_interval_hours(status, source_count=327, now=0)
-        self.assertEqual(interval, 115.2)
+            interval = apify_pool.recommended_interval_hours(status, source_count=100, now=0)
+        # 20.00 over 24 days; with no history Facebook counts on a third of it.
+        self.assertEqual(interval, round(24 * 100 * 0.013 / (20 / 24 / 3), 2))
 
     def test_local_pool_immediately_includes_verified_registration_without_network(self):
         cached = {"accounts": [{"label": "EXISTING", "available": True, "checkedAt": 100,

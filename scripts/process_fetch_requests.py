@@ -12,6 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
+from apify_pool import SOURCE_COST_ESTIMATE_USD, apify_allocation
 from chumei_lib import ROOT, load_env
 from source_status import apify_quota, source_registry
 
@@ -133,6 +134,11 @@ def process_one(path: Path, request: dict, registry: dict[str, dict], *, dry_run
             except (TypeError, ValueError):
                 retry = int(time.time()) + 6 * 3600
             finish(path, request, "deferred", "Apify 本期額度已用完", retry)
+            return "deferred"
+        share = apify_allocation(quota)["consumers"]["facebook"]["availableUsd"]
+        if share < SOURCE_COST_ESTIMATE_USD["facebook"]:
+            # Other collectors' unused shares are released over the day.
+            finish(path, request, "deferred", "Facebook 今日分到的 Apify 額度已用完", int(time.time()) + 3 * 3600)
             return "deferred"
     command = command_for(source)
     if not command:

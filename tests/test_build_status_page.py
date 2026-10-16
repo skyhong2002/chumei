@@ -33,6 +33,13 @@ class BuildStatusPageTests(unittest.TestCase):
         self.assertIn("含臨時贈額", build_status_page.SCRIPT)
         self.assertIn("本期已用盡", build_status_page.SCRIPT)
 
+    def test_apify_allocation_lists_every_consumer_including_facebook(self):
+        script = build_status_page.SCRIPT
+        for text in ("每日額度平均分配", "'Facebook 粉專'", "'Instagram 限時動態'",
+                     "'Instagram 貼文備援'", "spent30dUsd", "保障"):
+            self.assertIn(text, script)
+        self.assertNotIn("US$10", script)
+
     def test_priority_controls_and_quota_updates(self):
         result = subprocess.run(
             ["node", str(ROOT / "tests" / "status_page_ui.cjs")],

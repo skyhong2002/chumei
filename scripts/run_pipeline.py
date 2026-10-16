@@ -13,7 +13,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from apify_pool import pool_status, recommended_interval_hours
+from apify_pool import (SOURCE_COST_ESTIMATE_USD, pool_status, recommended_interval_hours,
+                        round_budget_usd)
 from chumei_lib import read_sources_csv
 from publish_site import exclusive_lock
 
@@ -98,21 +99,25 @@ def run_pipeline():
                                                        "--account-interval-hours", str(IG_MIN_INTERVAL_H)])
             state["last_social_run"] = time.time()
 
-        # FB 走 Apify 按結果計費；依額度配速決定單頁間隔，每輪滾動抓一小批。
+        # FB 走 Apify 按結果計費；與限動、IG 貼文備援平分每日額度。單頁間隔依
+        # FB 可預期的每日額度配速，每輪批量另受本輪可用額度限制。
         fb_script = ROOT / "scripts" / "fetch_facebook.py"
         fb_count = sum(
             row.get("active", "true").strip().lower() not in {"false", "link"}
             for row in read_sources_csv("fb_pages.csv")
         )
-        fb_quota = apify_status
-        fb_interval_h = recommended_interval_hours(fb_quota, source_count=fb_count)
+        fb_interval_h = recommended_interval_hours(apify_status, source_count=fb_count)
         state["facebook_interval_hours"] = fb_interval_h
-        if fb_script.exists() and not fb_quota.get("exhausted"):
-            fb_batch = max(1, math.ceil(fb_count * PIPELINE_INTERVAL_H / fb_interval_h))
+        fb_budget = round_budget_usd("facebook", apify_status, round_hours=PIPELINE_INTERVAL_H)
+        fb_batch = min(math.ceil(fb_count * PIPELINE_INTERVAL_H / fb_interval_h),
+                       math.floor(fb_budget / SOURCE_COST_ESTIMATE_USD["facebook"]))
+        if fb_script.exists() and fb_batch > 0:
             results["facebook"] = run_step("facebook", ["fetch_facebook.py", "--limit", "5",
                                                        "--max-pages-per-run", str(fb_batch),
                                                        "--account-interval-hours", f"{fb_interval_h:g}"])
             state["last_fb_run"] = time.time()
+        elif fb_script.exists():
+            print(f"facebook: skipped; this round's Apify share is US${fb_budget:.3f}")
 
         # 限時動態改走不使用本站 IG 帳號的 Actor；每輪掃活躍度最高的
         # 到期帳號，社群每貢獻一個可用帳號就增加三個處理槽位。

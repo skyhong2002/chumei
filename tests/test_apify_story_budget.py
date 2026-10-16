@@ -66,7 +66,7 @@ class StoryBudgetTests(_PoolFixture):
     def test_allowance_caps_last_run_and_counts_runs_available(self):
         apify_pool.record_story_run("A", delivered=34, now=DAY)
         self.assertEqual(apify_pool.choose_story_token(now=DAY, exclude={"B"})[3], 6)
-        # Credit pacing is generous here (5.0 left over ten days => 5 runs/day).
+        # The Story share is generous here (5.0 x 2 left over ten days => 14 runs).
         status = _status(("A", 5.0), ("B", 5.0), ("C", 0.0))
         self.assertEqual(apify_pool.story_runs_available(status, now=DAY), 1 + 4)
         self.assertEqual(auto_max_runs(status), 1)
@@ -80,28 +80,25 @@ class StoryBudgetTests(_PoolFixture):
         self.assertEqual((stored["results"], stored["runs"]), (7, 1))
 
 
-class StoryCreditPacingTests(_PoolFixture):
-    def test_daily_story_spend_is_half_of_even_pacing(self):
-        row = _status(("A", 2.02))["accounts"][0]
-        budget = apify_pool.story_budget(None, now=DAY)
-        # (2.02 - 0.02 reserve) / 10 days * 50% = 0.10 per day => 2 runs at 0.045.
-        self.assertAlmostEqual(apify_pool.story_daily_credit_usd(row, budget, now=DAY), 0.10)
-        self.assertEqual(apify_pool.story_runs_left(row, budget, now=DAY), 2)
-        apify_pool.record_story_run("A", delivered=3, cost_usd=0.04, now=DAY)
-        apify_pool.record_story_run("A", delivered=3, cost_usd=0.04, now=DAY)
-        stored = apify_pool.story_budget(json.loads(self.state_path.read_text())["accounts"]["A"], now=DAY)
-        # remainingUsd in a fresh status already reflects today's spend.
-        row_after = dict(row, remainingUsd=2.02 - 0.08)
-        self.assertEqual(apify_pool.story_runs_left(row_after, stored, now=DAY), 0)
-        with patch.object(apify_pool, "pool_status", return_value={"accounts": [row_after]}):
-            with self.assertRaises(RuntimeError):
-                apify_pool.choose_story_token(now=DAY)
-        self.assertEqual(apify_pool.story_runs_left(row_after, apify_pool.story_budget(
-            json.loads(self.state_path.read_text())["accounts"]["A"], now=DAY + 86400), now=DAY + 86400), 2)
+class StoryCreditShareTests(_PoolFixture):
+    def test_stories_stop_when_their_share_of_todays_pool_credit_is_spent(self):
+        # (2.0 + 2.0 - 0.04 reserve) / 11 days = 0.36/day; one third is 0.12.
+        status = _status(("A", 2.0), ("B", 2.0))
+        midnight = DAY - 43200
+        self.assertEqual(apify_pool.story_runs_available(status, now=midnight), 2)
+        apify_pool.record_run("A", consumer="story", cost_usd=0.09, source_count=10, ok=True, now=midnight)
+        self.assertEqual(apify_pool.story_runs_available(status, now=midnight), 0)
+        with self.assertRaisesRegex(RuntimeError, "Story share"):
+            apify_pool.choose_story_token(now=midnight)
+        # Next day: Facebook spending within its own share leaves the new
+        # Story share (4.09 / 10 days / 3 = 0.136) untouched.
+        apify_pool.record_run("B", consumer="facebook", cost_usd=0.13, source_count=10, ok=True,
+                              now=DAY + 86400 - 43200)
+        self.assertEqual(apify_pool.story_runs_available(status, now=DAY + 86400 - 43200), 3)
 
-    def test_nearly_empty_account_yields_to_facebook(self):
-        row = _status(("A", 0.3))["accounts"][0]
-        self.assertEqual(apify_pool.story_runs_left(row, apify_pool.story_budget(None, now=DAY), now=DAY), 0)
+    def test_nearly_empty_account_cannot_start_a_story_run(self):
+        row = _status(("A", 0.05))["accounts"][0]
+        self.assertEqual(apify_pool.story_runs_left(row, apify_pool.story_budget(None, now=DAY)), 0)
 
 
 class AttemptedTargetsTests(unittest.TestCase):

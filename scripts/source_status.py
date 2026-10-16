@@ -12,14 +12,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from apify_pool import pool_status, recommended_interval_hours
+from apify_pool import apify_allocation, pool_status, recommended_interval_hours
 from chumei_lib import INBOX_DIR, ROOT, read_sources_csv
 
 
 LEDGER_PATH = ROOT / "state" / "source_fetch_ledger.json"
 USAGE_PATH = ROOT / "state" / "api_usage.jsonl"
 HISTORY_LIMIT = 20
-APIFY_RESERVE_USD = 10.0
+APIFY_CONSUMER_OPERATIONS = {
+    "facebook": "facebook actor batch",
+    "story": "instagram story actor",
+    "instagram": "instagram profile actor",
+}
 SNAPSHOT_MAX_AGE_HOURS = 9.0  # Three missed publication cycles.
 
 
@@ -248,14 +252,32 @@ def _current_ledger_entry(source: dict, entry: dict) -> dict:
     }
 
 
-def api_usage_summary(now: float | None = None) -> dict:
-    now = float(now or time.time())
+def _usage_rows() -> list[dict]:
     rows: list[dict] = []
     try:
         for line in USAGE_PATH.read_text(encoding="utf-8").splitlines()[-10000:]:
             rows.append(json.loads(line))
     except (OSError, ValueError):
         pass
+    return rows
+
+
+def apify_spend_summary(apify: dict, *, now: float) -> dict:
+    """Today's equal-share allocation plus what each consumer spent in 30 days."""
+    allocation = apify_allocation(apify, now=now)
+    since = now - 30 * 86400
+    for consumer, operation in APIFY_CONSUMER_OPERATIONS.items():
+        allocation["consumers"][consumer]["spent30dUsd"] = round(sum(
+            float(row.get("costUsd") or 0) for row in _usage_rows()
+            if row.get("service") == "Apify" and row.get("operation") == operation
+            and float(row.get("ts") or 0) >= since
+        ), 6)
+    return allocation
+
+
+def api_usage_summary(now: float | None = None) -> dict:
+    now = float(now or time.time())
+    rows = _usage_rows()
     out = {}
     for service in ("Instagram public web", "Apify Instagram", "RSSHub", "Instaloader", "Apify"):
         selected = [r for r in rows if r.get("service") == service]
@@ -421,9 +443,9 @@ def detect_incidents(*, now: float, profile_schedule: dict, story_schedule: dict
         incidents.append({
             "id": "apify-slow-pacing", "severity": "minor", "until": None,
             "title": "Apify 共用額度節流中",
-            "detail": f"為了讓剩餘 Apify 額度（US${remaining:.2f}）撐到重置日，"
-                      f"Facebook 每個粉專約每 {facebook_interval_hours / 24:.1f} 天輪抓一次；"
-                      f"Instagram 限時動態與貼文備援只會使用保留 US${APIFY_RESERVE_USD:.0f} 以上的額度。"})
+            "detail": f"為了讓剩餘 Apify 額度（US${remaining:.2f}）撐到重置日，每天只花平均分攤的額度，"
+                      "並由 Facebook 粉專、Instagram 限時動態與 Instagram 貼文備援平分；"
+                      f"Facebook 每個粉專約每 {facebook_interval_hours / 24:.1f} 天輪抓一次。"})
     return incidents
 
 
@@ -551,6 +573,7 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
         "fresh": sum(r["status"] == "ok" for r in rows),
     }
     usage = api_usage_summary(now)
+    apify = {**apify, "allocation": apify_spend_summary(apify, now=now)}
     payload = {
         "generatedAt": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
         "snapshotMaxAgeHours": SNAPSHOT_MAX_AGE_HOURS,

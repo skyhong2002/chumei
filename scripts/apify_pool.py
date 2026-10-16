@@ -20,7 +20,6 @@ from chumei_lib import ROOT, load_env
 APIFY_BASE = "https://api.apify.com/v2"
 CACHE_PATH = ROOT / "state" / "apify_quota.json"
 POOL_STATE_PATH = ROOT / "state" / "apify_pool.json"
-DEFAULT_COST_PER_SOURCE_USD = 0.015
 MIN_ACCOUNT_RESERVE_USD = 0.02
 MIN_INTERVAL_HOURS = 24.0
 MAX_INTERVAL_HOURS = 168.0
@@ -33,11 +32,18 @@ STORY_DAILY_RESULT_LIMIT = 40
 STORY_RUN_RESULT_LIMIT = 10
 STORY_RUN_TARGET_LIMIT = 10
 STORY_DENIAL_COOLDOWN_HOURS = 1.0
-# Stories and the Facebook collector share each account's monthly credit
-# evenly: per day, Stories may spend at most this share of the account's
-# remaining credit divided by the days left in its billing cycle.
-STORY_CREDIT_SHARE = 0.5
 STORY_RUN_COST_ESTIMATE_USD = 0.045
+# Every Apify consumer shares the pool's monthly credit equally. Each UTC day
+# the pool may spend its remaining credit spread evenly over the days left in
+# each account's cycle, and each consumer is guaranteed an equal share of that.
+# A share that has not been spent expires gradually over the day, so others may
+# use what a consumer no longer needs, but never what it could still claim.
+CONSUMERS = ("facebook", "story", "instagram")
+# Observed mean cost per scanned source, used to size batches before a run and
+# to charge runs whose cost Apify did not report.
+SOURCE_COST_ESTIMATE_USD = {"facebook": 0.013, "story": 0.0045, "instagram": 0.0025}
+SPEND_HISTORY_DAYS = 14
+PIPELINE_ROUND_HOURS = 3.0  # launchd pipeline cadence
 # These free accounts can receive a one-cycle US$5 social-account promotion on
 # top of their recurring US$5 allowance. Keep temporary credit spendable, but
 # do not present it as a permanent plan upgrade.
@@ -278,36 +284,124 @@ def choose_token(*, refresh: bool = True, exclude: set[str] | None = None) -> tu
     return selected["label"], accounts[selected["label"]]["token"], selected
 
 
-def record_run(label: str, *, cost_usd: float | None, source_count: int, ok: bool) -> None:
-    """Record sanitized run telemetry used for the full-batch moving cost estimate."""
-    row = {
-        "ts": time.time(), "label": label, "sourceCount": max(0, int(source_count)),
-        "ok": bool(ok), "costUsd": float(cost_usd) if cost_usd is not None else None,
-    }
-    with _locked_state() as state:
-        runs = state.setdefault("runs", [])
-        runs.append(row)
-        state["runs"] = runs[-100:]
-        if ok and cost_usd is not None and source_count >= 50:
-            previous = state.get("fullBatchCostPerSourceEmaUsd")
-            unit = float(cost_usd) / source_count
-            state["fullBatchCostPerSourceEmaUsd"] = unit if previous is None else 0.35 * unit + 0.65 * float(previous)
-
-
-def _story_day(now: float) -> str:
+def _utc_day(now: float) -> str:
     return datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
-def _next_story_day(now: float) -> float:
+def _next_utc_day(now: float) -> float:
     today = datetime.fromtimestamp(now, tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     return (today + timedelta(days=1)).timestamp()
+
+
+def record_run(label: str, *, consumer: str, cost_usd: float | None, source_count: int,
+               ok: bool, now: float | None = None) -> None:
+    """Record sanitized run telemetry and charge the run to its consumer's share."""
+    if consumer not in CONSUMERS:
+        raise ValueError(f"unknown Apify consumer {consumer!r}")
+    now = time.time() if now is None else float(now)
+    source_count = max(0, int(source_count))
+    row = {
+        "ts": now, "label": label, "consumer": consumer, "sourceCount": source_count,
+        "ok": bool(ok), "costUsd": float(cost_usd) if cost_usd is not None else None,
+    }
+    spent = float(cost_usd) if cost_usd is not None else (
+        SOURCE_COST_ESTIMATE_USD[consumer] * source_count if ok else 0.0)
+    day = _utc_day(now)
+    with _locked_state() as state:
+        state.pop("fullBatchCostPerSourceEmaUsd", None)
+        runs = state.setdefault("runs", [])
+        runs.append(row)
+        state["runs"] = runs[-100:]
+        spend = state.get("spend") or {}
+        if spend.get("day") != day:
+            spend = {"day": day, "events": []}
+        spend["events"].append([round(now, 3), label, consumer, round(spent, 6)])
+        state["spend"] = spend
+        history = state.setdefault("spendHistory", {})
+        totals = history.setdefault(day, {})
+        totals[consumer] = round(float(totals.get(consumer) or 0) + spent, 6)
+        for old in sorted(history)[:-SPEND_HISTORY_DAYS]:
+            del history[old]
+
+
+def _today_events(state: dict, now: float) -> list:
+    spend = state.get("spend") or {}
+    return list(spend.get("events") or []) if spend.get("day") == _utc_day(now) else []
+
+
+def _days_left(row: dict, now: float) -> float:
+    cycle_end = _timestamp(row.get("cycleEnd"))
+    return 1.0 if not math.isfinite(cycle_end) else max(1.0, math.ceil((cycle_end - now) / 86400))
+
+
+def daily_pace_usd(status: dict, *, now: float, events: list) -> float:
+    """Credit the pool may spend today if every account spreads its credit evenly."""
+    total = 0.0
+    for row in status.get("accounts", []):
+        if not row.get("available"):
+            continue
+        # The quota snapshot already reflects spend recorded before it was taken.
+        checked_at = float(row.get("checkedAt") or now)
+        spent_before = sum(float(cost) for ts, label, _, cost in events
+                           if label == row.get("label") and float(ts) <= checked_at)
+        at_day_start = float(row.get("remainingUsd") or 0) + spent_before
+        total += max(0.0, at_day_start - MIN_ACCOUNT_RESERVE_USD) / _days_left(row, now)
+    return total
+
+
+def apify_allocation(status: dict, *, now: float | None = None) -> dict:
+    """Split today's evenly paced pool credit equally between Apify consumers."""
+    now = time.time() if now is None else float(now)
+    state = _read_json(POOL_STATE_PATH)
+    events = _today_events(state, now)
+    pace = daily_pace_usd(status, now=now, events=events)
+    share = pace / len(CONSUMERS)
+    day_start = _next_utc_day(now) - 86400
+    elapsed = min(1.0, max(0.0, (now - day_start) / 86400))
+    spent = {consumer: 0.0 for consumer in CONSUMERS}
+    for _, _, consumer, cost in events:
+        if consumer in spent:
+            spent[consumer] += float(cost)
+    # What a consumer can still claim today: its unspent share, shrinking as the day passes.
+    held = {consumer: max(0.0, min(share - spent[consumer], share * (1 - elapsed)))
+            for consumer in CONSUMERS}
+    pool_left = sum(
+        max(0.0, float(row.get("remainingUsd") or 0) - MIN_ACCOUNT_RESERVE_USD)
+        for row in status.get("accounts", []) if row.get("available")
+    )
+    unspent_today = max(0.0, min(pool_left, pace - sum(spent.values())))
+    history = state.get("spendHistory") or {}
+    past_days = [day for day in sorted(history) if day < _utc_day(now)][-7:]
+    consumers = {}
+    for consumer in CONSUMERS:
+        others_held = sum(value for other, value in held.items() if other != consumer)
+        recent = [float((history[day] or {}).get(consumer) or 0) for day in past_days]
+        consumers[consumer] = {
+            "spentUsd": round(spent[consumer], 6),
+            "heldUsd": round(held[consumer], 6),
+            "availableUsd": round(max(0.0, unspent_today - others_held), 6),
+            "averageDailyUsd": round(sum(recent) / len(recent), 6) if recent else None,
+        }
+    return {
+        "day": _utc_day(now), "paceUsd": round(pace, 6), "shareUsd": round(share, 6),
+        "resetsAt": _next_utc_day(now), "consumers": consumers,
+    }
+
+
+def round_budget_usd(consumer: str, status: dict, *, round_hours: float = PIPELINE_ROUND_HOURS,
+                     now: float | None = None) -> float:
+    """Spread a consumer's allowance over the pipeline rounds left today."""
+    now = time.time() if now is None else float(now)
+    available = apify_allocation(status, now=now)["consumers"][consumer]["availableUsd"]
+    hours_left = max(1e-6, (_next_utc_day(now) - now) / 3600)
+    return available * min(1.0, round_hours / hours_left)
 
 
 def story_budget(entry: dict | None, *, now: float) -> dict:
     """Return the account's Story allowance for the current UTC day."""
     budget = dict((entry or {}).get("story") or {})
-    if budget.get("day") != _story_day(now):
-        budget = {"day": _story_day(now), "results": 0, "runs": 0}
+    if budget.get("day") != _utc_day(now):
+        budget = {"day": _utc_day(now), "results": 0, "runs": 0}
     budget.setdefault("results", 0)
     budget.setdefault("runs", 0)
     budget.setdefault("costUsd", 0.0)
@@ -317,23 +411,19 @@ def story_budget(entry: dict | None, *, now: float) -> dict:
     return budget
 
 
-def story_daily_credit_usd(row: dict, budget: dict, *, now: float) -> float:
-    """Today's fair Story spending cap for one account (half of its even pacing)."""
-    remaining_at_day_start = (float(row.get("remainingUsd") or 0) - MIN_ACCOUNT_RESERVE_USD
-                              + float(budget.get("costUsd") or 0))
-    cycle_end = _timestamp(row.get("cycleEnd"))
-    days_left = 1.0 if not math.isfinite(cycle_end) else max(1.0, math.ceil((cycle_end - now) / 86400))
-    return max(0.0, STORY_CREDIT_SHARE * remaining_at_day_start / days_left)
-
-
-def story_runs_left(row: dict, budget: dict, *, now: float) -> int:
-    """Runs this account can still start today under both allowance and credit pacing."""
+def story_runs_left(row: dict, budget: dict) -> int:
+    """Runs this account can still start today under its result allowance and credit."""
     if budget.get("deniedUntil"):
         return 0
     by_allowance = math.ceil((STORY_DAILY_RESULT_LIMIT - int(budget["results"])) / STORY_RUN_RESULT_LIMIT)
-    credit_left = story_daily_credit_usd(row, budget, now=now) - float(budget.get("costUsd") or 0)
+    credit_left = float(row.get("remainingUsd") or 0) - MIN_ACCOUNT_RESERVE_USD
     by_credit = math.floor(credit_left / STORY_RUN_COST_ESTIMATE_USD + 1e-9)
     return max(0, min(by_allowance, by_credit))
+
+
+def _story_share_runs(status: dict, now: float) -> int:
+    available = apify_allocation(status, now=now)["consumers"]["story"]["availableUsd"]
+    return math.floor(available / STORY_RUN_COST_ESTIMATE_USD + 1e-9)
 
 
 def choose_story_token(*, refresh: bool = False, exclude: set[str] | None = None,
@@ -350,6 +440,8 @@ def choose_story_token(*, refresh: bool = False, exclude: set[str] | None = None
     excluded = exclude or set()
     state = _read_json(POOL_STATE_PATH)
     account_state = state.get("accounts") or {}
+    if _story_share_runs(status, now) <= 0:
+        raise RuntimeError("Apify Story share of today's pool credit is used up")
     candidates = []
     for row in status.get("accounts", []):
         label = row.get("label")
@@ -358,7 +450,7 @@ def choose_story_token(*, refresh: bool = False, exclude: set[str] | None = None
             continue
         budget = story_budget(account_state.get(label), now=now)
         left = STORY_DAILY_RESULT_LIMIT - int(budget["results"])
-        if story_runs_left(row, budget, now=now) <= 0:
+        if story_runs_left(row, budget) <= 0:
             continue
         candidates.append((row, budget, left))
     if not candidates:
@@ -390,7 +482,7 @@ def record_story_run(label: str, *, delivered: int, denied_reason: str | None = 
             budget["deniedReason"] = denied_reason
             if denied_reason == "user_daily_exhausted":
                 budget["results"] = STORY_DAILY_RESULT_LIMIT
-                budget["deniedUntil"] = _next_story_day(now)
+                budget["deniedUntil"] = _next_utc_day(now)
             else:
                 budget["deniedUntil"] = now + STORY_DENIAL_COOLDOWN_HOURS * 3600
         else:
@@ -403,7 +495,7 @@ def record_story_run(label: str, *, delivered: int, denied_reason: str | None = 
 
 
 def story_runs_available(status: dict, *, now: float | None = None) -> int:
-    """Count Story runs the pool can still start today (money and allowance)."""
+    """Count Story runs the pool can still start today (share, credit and allowance)."""
     now = time.time() if now is None else float(now)
     account_state = _read_json(POOL_STATE_PATH).get("accounts") or {}
     total = 0
@@ -412,30 +504,25 @@ def story_runs_available(status: dict, *, now: float | None = None) -> int:
                 or float(row.get("remainingUsd") or 0) <= MIN_ACCOUNT_RESERVE_USD):
             continue
         budget = story_budget(account_state.get(row.get("label")), now=now)
-        total += story_runs_left(row, budget, now=now)
-    return max(0, total)
+        total += story_runs_left(row, budget)
+    return max(0, min(total, _story_share_runs(status, now)))
 
 
 def recommended_interval_hours(status: dict, *, source_count: int, now: float | None = None) -> float:
-    """Spend remaining quota evenly before the latest usable account resets."""
+    """Facebook page revisit interval that its expected daily credit can sustain.
+
+    Facebook gets its equal share plus whatever the other consumers have
+    recently left unused (judged by their last week, never more than a share).
+    """
     now = time.time() if now is None else float(now)
-    state = _read_json(POOL_STATE_PATH)
-    unit_cost = float(state.get("fullBatchCostPerSourceEmaUsd") or DEFAULT_COST_PER_SOURCE_USD)
-    estimated_run_cost = max(0.5, unit_cost * max(1, source_count))
-    usable = []
-    capacity = 0
-    for row in status.get("accounts", []):
-        remaining = max(0.0, float(row.get("remainingUsd") or 0) - MIN_ACCOUNT_RESERVE_USD)
-        runs = math.floor(remaining / estimated_run_cost)
-        if row.get("available") and runs > 0:
-            capacity += runs
-            usable.append(row)
-    if capacity <= 0:
+    allocation = apify_allocation(status, now=now)
+    share = allocation["shareUsd"]
+    others = sum(
+        share if row["averageDailyUsd"] is None else min(share, row["averageDailyUsd"])
+        for consumer, row in allocation["consumers"].items() if consumer != "facebook"
+    )
+    daily = allocation["paceUsd"] - others
+    if daily <= 0:
         return MAX_INTERVAL_HOURS
-    deadlines = [_timestamp(row.get("cycleEnd")) for row in usable]
-    deadlines = [value for value in deadlines if math.isfinite(value) and value > now]
-    if not deadlines:
-        return MAX_INTERVAL_HOURS
-    horizon_hours = (max(deadlines) - now) / 3600
-    interval = horizon_hours / (capacity + 1)
+    interval = 24 * max(1, source_count) * SOURCE_COST_ESTIMATE_USD["facebook"] / daily
     return round(min(MAX_INTERVAL_HOURS, max(MIN_INTERVAL_HOURS, interval)), 2)

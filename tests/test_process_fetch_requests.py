@@ -60,6 +60,23 @@ class PriorityFetchProcessorTests(unittest.TestCase):
         run.assert_not_called()
         self.assertIn("Apify", self._status("facebook:test")[1])
 
+    def test_spent_facebook_share_defers_priority_fetch(self):
+        source = {"id": "facebook:test", "kind": "facebook", "username": "test", "sourceId": "fb_test"}
+        request = {"source_id": "facebook:test", "last_run_at": 0, "weight": 3}
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("UPDATE source_priority_weights SET source_id='facebook:test'")
+        allocation = {"consumers": {"facebook": {"availableUsd": 0.001}}}
+        with patch.object(processor, "apify_quota", return_value={"available": True, "exhausted": False}), \
+             patch.object(processor, "apify_allocation", return_value=allocation), \
+             patch.object(processor.time, "time", return_value=1000), \
+             patch.object(processor.subprocess, "run") as run:
+            outcome = processor.process_one(self.db, request, {source["id"]: source})
+        self.assertEqual(outcome, "deferred")
+        run.assert_not_called()
+        status, reason, next_attempt = self._status("facebook:test")
+        self.assertIn("Facebook", reason)
+        self.assertEqual(next_attempt, 1000 + 3 * 3600)
+
     def test_claim_uses_persistent_weighted_fair_order(self):
         with sqlite3.connect(self.db) as conn:
             conn.execute(
