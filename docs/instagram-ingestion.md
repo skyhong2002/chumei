@@ -13,11 +13,12 @@ returns the latest posts without any Instagram account. The older
 `api/v1/users/web_profile_info` endpoint now answers logged-out server IPs
 with 401 `require_login` and is no longer used.
 
-From this host Instagram still serves very few logged-out queries: popular
-profiles usually answer, but most club accounts get 401 "Please wait a few
-minutes" / `require_login` after the first query or two, and the block can
-outlast an hour of one probe per minute (measured 2026-10-16). The direct path
-is therefore a free best-effort first try, not the main collector.
+From this host Instagram still serves very few logged-out queries. On
+2026-10-16, after 15 idle minutes, one query succeeded and the next got 401
+"Please wait a few minutes" / `require_login`; every club account probed once
+a minute over the following half hour was refused too. Popular profiles answer
+more often than small ones. The direct path is therefore a free best-effort
+first try, not the main collector.
 
 Chumei and Harmonica run on the same host and share that per-IP allowance, so
 both pace logged-out queries through `scripts/ig_public_host.py` (state in
