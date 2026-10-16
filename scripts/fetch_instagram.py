@@ -30,6 +30,13 @@ ERROR_LOG = ROOT / "state" / "seen" / "instagram_errors.jsonl"
 AUTH_SCHEDULE_STATE = ROOT / "state" / "instagram_profile_schedule.json"
 PUBLIC_SCHEDULE_STATE = ROOT / "state" / "instagram_public_profile_schedule.json"
 PUBLIC_APP_ID = "936619743392459"
+PUBLIC_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+)
+# Logged-out PolarisProfilePostsQuery. Instagram rotates these ids with web
+# releases; CHUMEI_IG_PROFILE_POSTS_DOC_ID overrides it without a deploy.
+PROFILE_POSTS_DOC_ID = "9310670392322965"
 
 
 def strip_html(s):
@@ -92,66 +99,119 @@ def fetch_rsshub(base, username, limit):
     return (html.unescape(m_av.group(1)) if m_av else None), list(parse_feed(resp.text))
 
 
-def fetch_public_web(base, username, limit):
-    """Fetch a public profile without cookies or an Instagram login.
+class PublicWebClient:
+    """Logged-out instagram.com client; needs no cookie or Instagram login.
 
-    This is the same logged-out ``web_profile_info`` surface used by the
-    open-source FxEmbed Instagram provider.  Instagram may reject a server IP;
-    callers therefore keep a separate cooldown from account-bound backends.
+    The profile page hands every anonymous visitor an LSD token plus
+    ``csrftoken``/``mid`` cookies. With them, the web app's own profile-posts
+    GraphQL query answers without an account. The older ``web_profile_info``
+    API now answers logged-out server IPs with 401 ``require_login``.
     """
-    response = requests.get(
-        f"{base.rstrip('/')}/api/v1/users/web_profile_info/",
-        params={"username": username},
-        headers={
-            "Accept": "application/json",
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140 Safari/537.36"
-            ),
-            "X-IG-App-ID": PUBLIC_APP_ID,
-        },
-        timeout=(10, 30),
-    )
-    if response.status_code >= 400:
-        raise requests.HTTPError(
-            f"Instagram public web HTTP {response.status_code} for @{username}",
-            response=response,
-        )
-    try:
-        user = response.json()["data"]["user"]
-    except (KeyError, TypeError, ValueError) as exc:
-        raise RuntimeError(f"Instagram public web returned no profile for @{username}") from exc
 
-    media = (user.get("edge_owner_to_timeline_media") or {}).get("edges") or []
+    def __init__(self, base, doc_id=None):
+        self.base = base.rstrip("/")
+        self.doc_id = doc_id or PROFILE_POSTS_DOC_ID
+        self.session = requests.Session()
+        self.session.headers["User-Agent"] = PUBLIC_USER_AGENT
+        self.lsd = None
+
+    def _bootstrap(self, username):
+        response = self.session.get(
+            f"{self.base}/{username}/",
+            headers={"Accept": "text/html", "Accept-Language": "en"},
+            timeout=(10, 30),
+        )
+        if response.status_code >= 400:
+            raise requests.HTTPError(
+                f"Instagram public web HTTP {response.status_code} for @{username} page",
+                response=response,
+            )
+        match = re.search(r'"LSD",\[\],\{"token":"([^"]+)"', response.text)
+        if not match or not self.session.cookies.get("csrftoken"):
+            raise RuntimeError("Instagram public web page carried no anonymous LSD/csrf token")
+        self.lsd = match.group(1)
+
+    def fetch(self, username, limit):
+        if self.lsd is None:
+            self._bootstrap(username)
+        variables = {
+            "data": {
+                "count": max(12, limit),
+                "include_reel_media_seen_timestamp": True,
+                "include_relationship_info": True,
+                "latest_besties_reel_media": True,
+                "latest_reel_media": True,
+            },
+            "username": username,
+            "__relay_internal__pv__PolarisIsLoggedInrelayprovider": False,
+            "__relay_internal__pv__PolarisShareSheetV3relayprovider": True,
+        }
+        response = self.session.post(
+            f"{self.base}/graphql/query",
+            data={"lsd": self.lsd, "doc_id": self.doc_id, "variables": json.dumps(variables)},
+            headers={
+                "Accept": "*/*",
+                "Origin": self.base,
+                "Referer": f"{self.base}/{username}/",
+                "Sec-Fetch-Site": "same-origin",
+                "X-CSRFToken": self.session.cookies.get("csrftoken", ""),
+                "X-FB-LSD": self.lsd,
+                "X-IG-App-ID": PUBLIC_APP_ID,
+            },
+            timeout=(10, 30),
+        )
+        if response.status_code >= 400:
+            raise requests.HTTPError(
+                f"Instagram public web HTTP {response.status_code} for @{username}: "
+                f"{response.text[:120]}",
+                response=response,
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Instagram public web returned no JSON for @{username}") from exc
+        connection = (payload.get("data") or {}).get("xdt_api__v1__feed__user_timeline_graphql_connection")
+        if connection is None:
+            errors = "; ".join(str(e.get("message")) for e in payload.get("errors") or [])
+            raise RuntimeError(f"Instagram public web query failed for @{username}: {errors or 'no timeline'}")
+        return parse_public_timeline(connection, limit)
+
+
+def _best_image(media):
+    candidates = (media.get("image_versions2") or {}).get("candidates") or []
+    if candidates and candidates[0].get("url"):
+        return candidates[0]["url"]
+    return media.get("display_uri")
+
+
+def parse_public_timeline(connection, limit):
+    nodes = [edge.get("node") or {} for edge in connection.get("edges") or []]
+    unpinned = [node for node in nodes if not node.get("timeline_pinned_user_ids")]
+    nodes = sorted(unpinned or nodes, key=lambda node: node.get("taken_at") or 0, reverse=True)
     posts = []
-    for edge in media[:limit]:
-        node = edge.get("node") or {}
-        shortcode = node.get("shortcode")
-        if not shortcode:
+    for node in nodes[:limit]:
+        code = node.get("code")
+        if not code:
             continue
-        captions = (node.get("edge_media_to_caption") or {}).get("edges") or []
-        caption = ""
-        if captions:
-            caption = ((captions[0].get("node") or {}).get("text") or "").strip()
-        children = (node.get("edge_sidecar_to_children") or {}).get("edges") or []
-        images = [
-            child.get("node", {}).get("display_url")
-            for child in children[:2]
-            if child.get("node", {}).get("display_url")
-        ]
-        if not images and node.get("display_url"):
-            images = [node["display_url"]]
+        caption = ((node.get("caption") or {}).get("text") or "").strip()
+        images = [url for url in map(_best_image, (node.get("carousel_media") or [node])[:2]) if url]
         posts.append({
-            "post_id": shortcode,
-            "url": f"https://www.instagram.com/p/{shortcode}/",
+            "post_id": code,
+            "url": f"https://www.instagram.com/p/{code}/",
             "posted_at": datetime.fromtimestamp(
-                node.get("taken_at_timestamp") or 0, timezone.utc
+                node.get("taken_at") or 0, timezone.utc
             ).isoformat(timespec="seconds"),
             "text": caption or "（純圖片貼文，內容見海報）",
             "images": images,
         })
-    avatar = user.get("profile_pic_url_hd") or user.get("profile_pic_url")
+    user = next((node.get("user") for node in nodes if node.get("user")), None) or {}
+    avatar = (user.get("hd_profile_pic_url_info") or {}).get("url") or user.get("profile_pic_url")
     return avatar, posts
+
+
+def fetch_public_web(base, username, limit, client=None):
+    """Fetch a public profile's posts without cookies or an Instagram login."""
+    return (client or PublicWebClient(base)).fetch(username, limit)
 
 
 _instaloader_session = None
