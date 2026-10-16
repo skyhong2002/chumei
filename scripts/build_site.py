@@ -556,8 +556,17 @@ def attach_reg_status(events):
     print(f"reg status: {n_reg}/{len(events)} | fee status: {n_fee}/{len(events)}")
 
 
+POSTER_FAILURES = ROOT / "state" / "poster_failures.json"
+# Candidate images that failed (expired signed CDN links, non-images, tiny images)
+# are not requested again on every build: ~400 past events kept re-fetching dead
+# Instagram/Facebook URLs eight times a day. Upcoming events retry sooner.
+POSTER_RETRY_SECONDS = 7 * 86400
+POSTER_RETRY_UPCOMING_SECONDS = 6 * 3600
+
+
 def cache_posters(events):
     """保留原始海報；失效或缺圖時再從原始活動頁找公開主圖。"""
+    import time as _time
     from PIL import Image
     from fetch_infonews import HttpClient, parse_detail, _RelaxedAdapter
     from render_source_covers import cached_source_cover
@@ -624,10 +633,25 @@ def cache_posters(events):
     session.headers.update({"User-Agent": "Mozilla/5.0 (chumei.observe.tw)"})
     session.mount("https://", _RelaxedAdapter())
     source_cache = {}
+    offline = load_env().get("CHUMEI_BUILD_OFFLINE") == "1"
+    now = _time.time()
+    try:
+        failures = json.loads(POSTER_FAILURES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        failures = {}
+    failures = {url: at for url, at in failures.items() if now - at < POSTER_RETRY_SECONDS}
+    loaded_failures = dict(failures)
 
-    def save_candidate(url, dest):
-        if load_env().get("CHUMEI_BUILD_OFFLINE") == "1":
+    def save_candidate(url, dest, retry_seconds):
+        if offline or now - failures.get(url, 0) < retry_seconds:
             return False
+        if fetch_candidate(url, dest):
+            failures.pop(url, None)
+            return True
+        failures[url] = now
+        return False
+
+    def fetch_candidate(url, dest):
         try:
             r = session.get(html.unescape(url), timeout=25)
             r.raise_for_status()
@@ -662,8 +686,9 @@ def cache_posters(events):
             if source_url not in source_cache:
                 source_cache[source_url] = discover(source_url)
             candidates.extend(source_cache[source_url])
+        retry_seconds = POSTER_RETRY_UPCOMING_SECONDS if e.get("start_at", "")[:10] >= today else POSTER_RETRY_SECONDS
         for candidate in dict.fromkeys(candidates):
-            if save_candidate(candidate, dest):
+            if save_candidate(candidate, dest, retry_seconds):
                 break
         if dest.exists():
             e["poster_image"] = f"/assets/posters/{e['id']}.jpg"
@@ -673,6 +698,12 @@ def cache_posters(events):
             e["poster_image"] = None
             e["image_kind"] = "illustration"
             e["cover_image"] = "/assets/fallback/event-cover.webp"
+
+    if not offline and failures != loaded_failures:
+        POSTER_FAILURES.parent.mkdir(parents=True, exist_ok=True)
+        tmp = POSTER_FAILURES.with_suffix(".tmp")
+        tmp.write_text(json.dumps(failures, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(POSTER_FAILURES)
 
 
 def esc(s):
