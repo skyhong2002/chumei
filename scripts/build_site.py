@@ -54,7 +54,8 @@ CAMPUS_GEO = {
 }
 
 
-def load_events():
+def load_events(now=None):
+    now = now if now is not None else now_iso()
     events = []
     nl = ROOT / "state" / "nycu_life_activities.json"
     if nl.exists():
@@ -65,13 +66,17 @@ def load_events():
         for ev in nl_events:
             pid = (ev.get("source") or {}).get("post_id")
             ts = seen.get(f"nycu_life_api\t{pid}")
-            if ts:
-                ev.setdefault("first_seen", ts)
+            ev["first_seen"] = first_valid_evidence_time((
+                ev.get("first_seen"), ev.get("first_seen_at"), ts,
+            ), now)
         events += nl_events
     for path in sorted(EXTRACT_DIR.glob("*.json")):
         for pid, rec in json.loads(path.read_text()).items():
             for ev in rec.get("events", []):
-                ev.setdefault("first_seen", rec.get("first_seen") or rec.get("ts"))
+                ev["first_seen"] = first_valid_evidence_time((
+                    ev.get("first_seen"), ev.get("first_seen_at"),
+                    rec.get("first_seen"), rec.get("ts"),
+                ), now)
                 # 同貼文的例行時段（社課），Telegram 推播時附一行
                 if rec.get("recurrings"):
                     ev["post_recurrings"] = [
@@ -1537,22 +1542,46 @@ def post_publication_time(post, now, structured=None):
     return post_time_details(post, now, structured)["posted_at"]
 
 
-def event_post_records(events):
-    """Index source evidence; never copy a primary publication to an alt post."""
+def event_post_records(events, now):
+    """Validate before merging evidence; event fields belong to the primary post."""
     records = {}
+    time_fields = {"first_seen", "first_seen_at", "published_at", "posted_at", "publication_time_basis"}
     for event in events:
         primary = event.get("source") or {}
         for src in [primary] + event.get("alt_posts", []):
             key = (src.get("source_id"), src.get("post_id"))
             record = dict(src)
-            if src is primary:
-                for field in ("first_seen", "first_seen_at", "published_at", "publication_time_basis"):
-                    if not record.get(field) and event.get(field):
-                        record[field] = event[field]
+            owner = event if src is primary else {}
+            # Resolve aliases and fallback candidates independently, before any
+            # raw source value can discard valid event evidence (or vice versa).
+            record["first_seen"] = first_valid_evidence_time((
+                src.get("first_seen"), src.get("first_seen_at"),
+                owner.get("first_seen"), owner.get("first_seen_at"),
+            ), now)
+            nycu = src.get("source_id") == "nycu_life_api" or src.get("raw_source") == "nycu-life-api"
+            record["published_at"] = next((stamp for raw in (
+                src.get("published_at"), owner.get("published_at"),
+            ) if (stamp := validated_evidence_time(raw, now, require_zone=nycu))), "")
+            if src is primary and not record.get("publication_time_basis"):
+                record["publication_time_basis"] = event.get("publication_time_basis")
+            times = post_time_details({}, now, record)
             previous = records.setdefault(key, {})
             for field, value in record.items():
-                if not previous.get(field) and value is not None:
+                if field not in time_fields and not previous.get(field) and value is not None:
                     previous[field] = value
+            # Keep explicit publication separate from legacy publication so a
+            # later explicit duplicate still beats an earlier legacy posted_at.
+            # Validate legacy evidence with its own basis, never another row's.
+            candidates = {
+                "published_at": record["published_at"],
+                "posted_at": validated_evidence_time(src.get("posted_at"), now)
+                if not nycu and record.get("publication_time_basis") not in ("first_seen", "unknown") else "",
+                "first_seen": times["first_seen"],
+            }
+            for field, value in candidates.items():
+                previous[field] = first_valid_evidence_time((previous.get(field), value), now)
+    # Preserve explicit versus legacy publication until the consumer also knows
+    # the inbox adapter identity. Structured fetched_at remains metadata only.
     return records
 
 
@@ -1560,8 +1589,8 @@ def attach_source_post_times(events):
     """Attach effective posted_at plus explicit basis, preserving source evidence."""
     from chumei_lib import iter_inbox
     inbox = {(p["source_id"], p["post_id"]): p for p in iter_inbox()}
-    records = event_post_records(events)
     now = now_iso()
+    records = event_post_records(events, now)
     for event in events:
         for src in [event.get("source") or {}] + event.get("alt_posts", []):
             key = (src.get("source_id"), src.get("post_id"))
@@ -1580,7 +1609,7 @@ def build_sources_data(events):
     from chumei_lib import iter_inbox
     now = now_iso()
     latest = {}
-    records = event_post_records(events)
+    records = event_post_records(events, now)
     inbox = {(p["source_id"], p["post_id"]): p for p in iter_inbox()}
     for key in records.keys() | inbox.keys():
         sid = key[0]
@@ -1795,7 +1824,7 @@ def org_pages(entries, events):
     # 收錄貼文（含沒抽出活動的），各來源合流
     from chumei_lib import iter_inbox
     now_text = now_iso()
-    records = event_post_records(events)
+    records = event_post_records(events, now_text)
     posts_by_sid, ev_per_post = {}, {}
     for it in iter_inbox():
         posts_by_sid.setdefault(it["source_id"], []).append(it)
@@ -2028,7 +2057,8 @@ def build_posts_data(events, sid_to_entry=None):
     for e in events:
         src = e["source"]
         groups.setdefault((src["source_id"], src["post_id"]), []).append(e)
-    records = event_post_records(events)
+    now = now_iso()
+    records = event_post_records(events, now)
 
     inbox = {}
     for it in iter_inbox():
@@ -2041,7 +2071,6 @@ def build_posts_data(events, sid_to_entry=None):
                           "school": lead.get("school"), "org_type": lead.get("organizer_type"),
                           "url": lead["source"].get("url"),
                           "text": lead.get("summary") or ""}
-    now = now_iso()
     times = {key: post_time_details(it, now, records.get(key)) for key, it in inbox.items()}
 
     def post_time(key):
