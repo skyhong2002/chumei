@@ -33,12 +33,16 @@ import requests
 from chumei_lib import ROOT, TZ_TAIPEI, append_inbox, iter_inbox, load_env, now_iso, read_sources_csv
 from llm_gateway import chat_json, file_data_url, load_schema, review_model
 from submissions import MAX_ATTEMPTS, SubmissionStore, classify_url, normalize_url
+from extraction_retry import error_record, gateway_blocked, record_gateway_failure, retry_due
+from pipeline_state import LockBusy, file_lock, read_json
+from extract_events import PROMPT_VERSION
 
 SOURCE_ID = "user_submission"
 EVENTS_JSON = published_site_dir() / "api" / "events.json"
 STATE_DIR = ROOT / "state" / "submissions"
 MANUAL_REVIEW = STATE_DIR / "manual_review.jsonl"
 EXTRACT_CACHE = ROOT / "state" / "extraction" / f"{SOURCE_ID}.json"
+GATEWAY_STATE = ROOT / "state" / "extraction_gateway.json"
 SCHEMA = ROOT / "scripts" / "submission_schema.json"
 SOURCE_SCHEMA = ROOT / "scripts" / "source_schema.json"
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36 chumei.observe.tw"
@@ -297,8 +301,13 @@ def candidate_events(index, content, limit=12):
 def _review(env, system, user, schema_path, schema_name, images=()):
     """經 AI gateway 判讀；verdict 附上請求的別名與實際作答的模型。"""
     alias = review_model(env)
-    raw, model = chat_json(env, alias, system, user, images=images,
-                           schema=load_schema(schema_path), schema_name=schema_name)
+    try:
+        raw, model = chat_json(env, alias, system, user, images=images,
+                               schema=load_schema(schema_path), schema_name=schema_name, attempts=1)
+    except Exception as exc:
+        if not env.get("_submission_dry_run"):
+            record_gateway_failure(GATEWAY_STATE, error_record(exc))
+        raise RuntimeError("判讀服務暫時無法使用") from None
     return {**json.loads(raw), "llm": {"alias": alias, "model": model}}
 
 
@@ -445,7 +454,8 @@ def _valid_iso(value):
 
 def write_inbox_item(sub, url, info, content, verdict):
     posted = verdict.get("posted_at") if _valid_iso(verdict.get("posted_at")) else None
-    posted = posted or (content.get("posted_at") if _valid_iso(content.get("posted_at")) else None) or now_iso()
+    posted = posted or (content.get("posted_at") if _valid_iso(content.get("posted_at")) else None)
+    fetched = now_iso()
     text = content.get("text") or ""
     if content.get("title") and content["title"] not in text[:200]:
         text = f"{content['title']}\n\n{text}"
@@ -460,9 +470,12 @@ def write_inbox_item(sub, url, info, content, verdict):
         "org_type": verdict.get("org_type") or "club",
         "post_id": sub["id"],
         "url": url,
-        "posted_at": posted,
+        "posted_at": posted or fetched,
+        "published_at": posted,
+        "publication_time_basis": "source" if posted else "first_seen",
+        "first_seen": fetched,
         "text": text[:8000],
-        "fetched_at": now_iso(),
+        "fetched_at": fetched,
         "images": [u for u in (content.get("images") or []) if u.startswith("http")][:4],
     }
     append_inbox(SOURCE_ID, [item])
@@ -485,6 +498,13 @@ def extracted_events_for(sub_id):
     if not rec or "error" in rec:
         return None
     return rec.get("events", [])
+
+
+def accepted_needs_extract(store):
+    """An accepted report can need another extraction even with no new reports."""
+    cache = read_json(EXTRACT_CACHE, {})
+    return any(retry_due(cache.get(sub["id"]), PROMPT_VERSION)
+               for sub in store.list_by_status(["accepted"], limit=200))
 
 
 # ---------- 主流程 ----------
@@ -534,6 +554,9 @@ def process_one(store, sub, ctx, dry_run=False):
         if key[0] == SOURCE_ID:
             pass  # 前一次回報寫進 inbox 但還沒建站，往下走正常流程會再次 dedupe
         else:
+            rec = read_json(EXTRACT_CACHE.parent / f"{key[0]}.json", {}).get(key[1])
+            if not rec or "error" in rec or rec.get("events"):
+                return finish("manual", "這則內容已在收錄流程中，但尚無可確認的活動結果，已交給站長確認。")
             return finish("not_event", "這則內容竹梅之前已經看過，但沒有辨識出有明確時間的活動。",
                           event_url=f"/org/{ctx['orgs'][key[0]]}/" if key[0] in ctx["orgs"] else None)
 
@@ -597,6 +620,10 @@ def settle_accepted(store, index):
     for sub in store.list_by_status(["accepted"], limit=200):
         events = extracted_events_for(sub["id"])
         if events is None:
+            rec = read_json(EXTRACT_CACHE, {}).get(sub["id"]) or {}
+            if rec.get("error") and not retry_due(rec, PROMPT_VERSION) and (
+                    rec.get("exhausted") or rec.get("retryable") is False):
+                store.update(sub["id"], "manual", "活動判讀未能完成，已交給站長確認。")
             continue
         if not events:
             store.update(sub["id"], "not_event", "系統讀過這則內容，但沒有辨識出有明確時間的活動。")
@@ -644,7 +671,7 @@ def settle_indexed_submissions(store, index):
                          event_url=event_url(ids[0]))
 
 
-def main():
+def process_submissions():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--dry-run", action="store_true", help="只判讀、不寫入任何狀態")
@@ -653,6 +680,7 @@ def main():
 
     sys.path.insert(0, str(ROOT / "scripts"))
     env = load_env()
+    env["_submission_dry_run"] = args.dry_run
     db = Path(env.get("CHUMEI_AUTH_DATABASE", ROOT / "state" / "auth.sqlite3"))
     store = SubmissionStore(db)
     if args.id:
@@ -663,6 +691,9 @@ def main():
            "orgs": load_org_index(), "env": env, "needs_extract": False}
     print(f"{len(todo)} submissions to process")
     for sub in todo:
+        if gateway_blocked(read_json(GATEWAY_STATE, {})):
+            print("submissions deferred: gateway cooldown")
+            break
         print(f"- {sub['id']} {sub['url']}")
         if not args.dry_run:
             store.update(sub["id"], "processing", "")
@@ -675,12 +706,21 @@ def main():
                              "處理時發生錯誤，稍後會再試。", bump_attempts=True)
     if args.dry_run:
         return 0
-    if ctx["needs_extract"]:
+    if ctx["needs_extract"] or accepted_needs_extract(store):
         run_extract()
     settle_accepted(store, ctx["events"])
     settle_source_added(store, ctx["orgs"])
     settle_indexed_submissions(store, ctx["events"])
     return 0
+
+
+def main():
+    try:
+        with file_lock(STATE_DIR / "processor.lock", blocking=False):
+            return process_submissions()
+    except LockBusy:
+        print("submissions deferred: another processor is running")
+        return 0
 
 
 if __name__ == "__main__":

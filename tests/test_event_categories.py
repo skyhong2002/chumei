@@ -114,8 +114,11 @@ class EventCategoryTests(unittest.TestCase):
             dest = Path(tmp) / "activities.json"
             response = mock.Mock()
             response.json.return_value = {"data": [{"publicId": "abc", "category": "社交"}]}
+            seen = mock.Mock(data={}, path=Path(tmp) / "seen.json")
+            seen.has.return_value = False
             with mock.patch.object(fetch_nycu_life.requests, "get", return_value=response), \
-                 mock.patch.object(fetch_nycu_life, "SeenState"), \
+                 mock.patch.object(fetch_nycu_life, "SeenState", return_value=seen), \
+                 mock.patch.object(fetch_nycu_life, "iter_inbox", return_value=iter([])), \
                  mock.patch.object(fetch_nycu_life, "append_inbox"), \
                  mock.patch.object(fetch_nycu_life, "record_fetch"), \
                  mock.patch.object(fetch_nycu_life, "STRUCTURED", dest):

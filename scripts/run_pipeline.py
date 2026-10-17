@@ -17,6 +17,7 @@ from apify_pool import (SOURCE_COST_ESTIMATE_USD, pool_status, recommended_inter
                         round_budget_usd)
 from chumei_lib import read_sources_csv
 from publish_site import exclusive_lock
+from pipeline_state import atomic_json
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / ".venv" / "bin" / "python"
@@ -133,8 +134,7 @@ def run_pipeline():
 
     state["last_run"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state["last_results"] = results
-    STATE.parent.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps(state, indent=1))
+    atomic_json(STATE, state)
 
     # fetcher 局部失敗只記錄；公開輸出與通知投遞需成功。
     return 0 if results.get("build") and results.get("telegram", True) else 1
