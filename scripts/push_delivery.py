@@ -110,12 +110,23 @@ def group(state, kind, event_id, user_id=None):
     return bucket.setdefault(identifier, {"status": "queued", "devices": {}})
 
 
-def enqueue(state, kind, device, event_ids, *, user_id=None, digest=False):
+def legacy_fence(bucket, identifiers):
+    # All outbox-created index entries have devices. Older memberships,
+    # including empty records, cannot prove which device missed a delivery.
+    return any(identifier in bucket and (
+        "devices" not in bucket[identifier]
+        or "baselined_at" in bucket[identifier] or "sent_at" in bucket[identifier])
+        for identifier in identifiers)
+
+
+def enqueue(state, kind, device, event_ids, *, user_id=None, digest=False,
+            recipient_user_id=None):
     identity = json.dumps([kind, user_id, device, sorted(event_ids)], separators=(",", ":"))
     delivery_id = hashlib.sha256(identity.encode()).hexdigest()[:32]
     job = state["deliveries"].setdefault(delivery_id, {
         "id": delivery_id, "kind": kind, "device": device, "event_ids": list(event_ids),
         "user_id": user_id, "digest": digest, "status": "pending", "attempts": 0,
+        "recipient_user_id": user_id if kind == "reminder" else recipient_user_id,
     })
     for event_id in event_ids:
         group(state, kind, event_id, user_id)["devices"].setdefault(

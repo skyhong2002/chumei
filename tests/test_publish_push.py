@@ -1,6 +1,7 @@
 """Offline delivery faults: synthetic subscriptions, private temp state, no pushes."""
 
 import contextlib
+import copy
 import io
 import json
 import os
@@ -45,6 +46,10 @@ class DeliveryTest(unittest.TestCase):
         self.events = [event()]
         self.subs = subscriptions("a", "b")
         self.now = 10000
+        self.real_load_subs = pc.load_subs
+        patch = mock.patch.object(pc, "load_subs", side_effect=lambda: {"subs": self.subs})
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def save(self, state):
         pd.save(state, self.path)
@@ -53,12 +58,12 @@ class DeliveryTest(unittest.TestCase):
         pp.queue_events(self.subs, pp.pending_events(self.events, self.state), self.state, {}, {})
         self.save(self.state)
 
-    def deliver(self, sender=None, **changes):
+    def deliver(self, sender=None, *, going=None, **changes):
         options = dict(today=TODAY, clock=lambda: self.now, checkpoint=self.save)
         options.update(changes)
         with mock.patch.object(pc, "send_push", side_effect=sender) as send, \
                 contextlib.redirect_stderr(io.StringIO()):
-            stats = pp.send_deliveries(self.subs, self.events, self.state, {}, **options)
+            stats = pp.send_deliveries(self.subs, self.events, self.state, going or {}, **options)
         return stats, send
 
     def reload(self):
@@ -400,6 +405,219 @@ class DeliveryTest(unittest.TestCase):
         text = self.path.read_text() + captured.getvalue()
         self.assertNotIn(secret_marker, text)
         self.assertNotIn(self.subs["a"]["sub"]["endpoint"], text)
+
+    def test_reminder_alias_retry_inherits_success_for_same_user_and_device(self):
+        self.subs = subscriptions("a", user_id="fixture-user")
+        self.events = [event("old-one"), event("old-two")]
+        going = {"fixture-user": ["old-one", "old-two"]}
+        pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+
+        def partial(record, payload, **kwargs):
+            if "/old-two/" in payload["url"]:
+                raise TimeoutError()
+
+        self.deliver(partial, going=going)
+        self.reload()
+        self.events = [event("canonical", merged_event_ids=["old-one", "old-two"])]
+        self.now += pd.RETRY_BASE_SECONDS
+        _, send = self.deliver(going=going)
+        send.assert_not_called()
+        self.reload()
+        self.assertEqual(self.state["reminders"]["fixture-user:old-two"]["devices"]["a"]["status"], "sent")
+
+    def test_pending_reminder_aliases_merge_to_one_send_per_device(self):
+        self.subs = subscriptions("a", "b", user_id="fixture-user")
+        self.events = [event("old-one"), event("old-two")]
+        going = {"fixture-user": ["old-one", "old-two"]}
+        pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+        self.events = [event("canonical", merged_event_ids=["old-one", "old-two"])]
+        _, send = self.deliver(going=going)
+        self.assertEqual([c.args[0]["name"] for c in send.call_args_list], ["a", "b"])
+        self.assertEqual({c.args[1]["tag"] for c in send.call_args_list}, {"chumei-remind-canonical"})
+
+    def test_reminder_alias_success_is_scoped_to_user_and_device(self):
+        self.subs = subscriptions("a", "b", user_id="fixture-user")
+        self.events = [event("old-one"), event("old-two")]
+        going = {"fixture-user": ["old-one", "old-two"]}
+        pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+        self.state["reminders"]["other-user:old-one"] = {"sent_at": "old"}
+
+        def fail_b(record, payload, **kwargs):
+            if record["name"] == "b":
+                raise TimeoutError()
+
+        self.deliver(fail_b, going=going)
+        self.reload()
+        self.events = [event("canonical", merged_event_ids=["old-one", "old-two"])]
+        self.now += pd.RETRY_BASE_SECONDS
+        _, send = self.deliver(going=going)
+        self.assertEqual([c.args[0]["name"] for c in send.call_args_list], ["b"])
+
+    def test_queued_merge_respects_all_legacy_memberships_for_events_and_reminders(self):
+        for kind in ("event", "reminder"):
+            for legacy in ({}, {"sent_at": "old"}, {"baselined_at": "old"}):
+                for version in (1, 2):
+                    with self.subTest(kind=kind, legacy=legacy, version=version):
+                        bucket = "sent" if kind == "event" else "reminders"
+                        identifier = "old-one" if kind == "event" else "fixture-user:old-one"
+                        self.state = pd.migrate({"version": version, bucket: {identifier: copy.deepcopy(legacy)}})
+                        self.subs = subscriptions("a", user_id="fixture-user")
+                        self.events = [event("old-two")]
+                        going = {"fixture-user": ["old-two"]}
+                        if kind == "event":
+                            self.queue()
+                        else:
+                            pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+                        self.save(self.state)
+                        self.reload()
+                        self.events = [event("canonical", merged_event_ids=["old-one", "old-two"])]
+                        _, send = self.deliver(going=going)
+                        send.assert_not_called()
+                        self.assertEqual(self.jobs()[0]["status"], "cancelled")
+                        self.assertEqual(self.state[bucket][identifier], legacy)
+
+    def test_subscription_revocations_during_batch_are_read_from_current_store(self):
+        for kind in ("event", "reminder"):
+            for change in ("unsubscribe", "unlink", "rebind"):
+                with self.subTest(kind=kind, change=change):
+                    self.state = pd.migrate({})
+                    self.subs = subscriptions("a", "b", user_id="fixture-user")
+                    self.events = [event()]
+                    going = {"fixture-user": ["event-a"]}
+                    if kind == "event":
+                        self.queue()
+                    else:
+                        pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+                    store = Path(self.tmp.name) / "subscriptions.json"
+                    store.write_text(json.dumps({"subs": self.subs}))
+
+                    def revoke_b(record, payload, **kwargs):
+                        current = json.loads(store.read_text())
+                        if change == "unsubscribe":
+                            current["subs"].pop("b")
+                        elif change == "unlink":
+                            current["subs"]["b"].pop("user_id")
+                        else:
+                            current["subs"]["b"]["user_id"] = "another-user"
+                        store.write_text(json.dumps(current))
+
+                    with mock.patch.object(pc, "SUBS_PATH", store), \
+                            mock.patch.object(pc, "load_subs", side_effect=self.real_load_subs):
+                        _, send = self.deliver(revoke_b, going=going)
+                    self.assertEqual([c.args[0]["name"] for c in send.call_args_list], ["a"])
+                    self.assertIn("b", self.subs)  # Initial snapshot was never mutated.
+                    self.reload()
+                    self.assertEqual(self.jobs()[1]["status"], "cancelled")
+
+    def test_revalidation_follows_intent_checkpoint_and_does_not_add_new_devices(self):
+        self.subs = subscriptions("a", user_id="fixture-user")
+        self.queue()
+
+        def checkpoint(state):
+            self.save(state)
+            self.subs = subscriptions("new-device", user_id="fixture-user")
+
+        _, send = self.deliver(checkpoint=checkpoint)
+        send.assert_not_called()
+        self.assertEqual(self.jobs()[0]["status"], "cancelled")
+        self.assertEqual(len(self.jobs()), 1)
+
+    def test_subscription_read_failure_stops_batch_without_sending(self):
+        self.queue()
+        with mock.patch.object(pc, "load_subs", side_effect=OSError("synthetic read failure")), \
+                mock.patch.object(pc, "send_push") as send:
+            with self.assertRaises(OSError):
+                pp.send_deliveries(self.subs, self.events, self.state, {}, checkpoint=self.save)
+        send.assert_not_called()
+        self.reload()
+        self.assertEqual([j["status"] for j in self.jobs()], ["sending", "pending"])
+
+    def test_retry_payload_survives_restart_and_metadata_changes(self):
+        for kind in ("event", "digest", "reminder"):
+            with self.subTest(kind=kind):
+                self.state = pd.migrate({})
+                self.subs = subscriptions("a", user_id="fixture-user")
+                self.events = [event(str(n)) for n in range(4 if kind == "digest" else 1)]
+                going = {"fixture-user": ["0"]}
+                if kind == "reminder":
+                    pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+                else:
+                    self.queue()
+
+                def timeout(record, payload, **kwargs):
+                    # Payload is durable before any transport can observe it.
+                    persisted = next(iter(pd.load(self.path)["deliveries"].values()))
+                    self.assertEqual(persisted["payload"], payload)
+                    raise TimeoutError()
+
+                _, first = self.deliver(timeout, going=going)
+                original = copy.deepcopy(first.call_args.args[1])
+                self.reload()
+                for item in self.events:
+                    item.update(title="CHANGED TITLE", venue="CHANGED VENUE", summary="CHANGED SUMMARY",
+                                start_at=item["start_at"].replace("19:00", "20:00"))
+                self.now += pd.RETRY_BASE_SECONDS
+                _, retry = self.deliver(going=going)
+                retry.assert_called_once()
+                self.assertEqual(retry.call_args.args[1], original)
+                self.assertEqual(self.jobs()[0]["payload"], original)
+
+    def test_digest_retry_removes_cancelled_member_using_frozen_content(self):
+        self.subs = subscriptions("a")
+        self.events = [event(str(n)) for n in range(4)]
+        original = copy.deepcopy(self.events)
+        self.queue()
+        self.deliver(lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError()))
+        self.reload()
+        self.events[0]["status"] = "rejected"
+        for item in self.events:
+            item["title"] = "CHANGED TITLE"
+        self.events.append(event("later"))
+        self.now += pd.RETRY_BASE_SECONDS
+        _, send = self.deliver()
+        expected = pp.digest_payload(original[1:])
+        expected["tag"] = f"chumei-digest-{self.jobs()[0]['id']}"
+        self.assertEqual(send.call_args.args[1], expected)
+        self.assertEqual(self.state["sent"]["0"]["devices"]["a"]["status"], "cancelled")
+        self.assertNotIn("later", self.state["sent"])
+
+    def test_reminder_rollover_changes_only_day_wording_in_frozen_payload(self):
+        self.subs = subscriptions("a", user_id="fixture-user")
+        going = {"fixture-user": ["event-a"]}
+        pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+        _, first = self.deliver(lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError()), going=going)
+        original = copy.deepcopy(first.call_args.args[1])
+        self.reload()
+        self.events[0].update(title="CHANGED TITLE", venue="CHANGED VENUE")
+        self.now += pd.RETRY_BASE_SECONDS
+        _, send = self.deliver(going=going, today=TODAY + timedelta(days=1))
+        original["title"] = "今天" + original["title"][2:]
+        self.assertEqual(send.call_args.args[1], original)
+
+    def test_older_attempt_without_payload_is_held_unresolved_not_rebuilt(self):
+        self.queue()
+        job = self.jobs()[0]
+        job.update(status="retry", attempts=1)
+        self.save(self.state)
+        self.reload()
+        _, send = self.deliver()
+        self.assertEqual([c.args[0]["name"] for c in send.call_args_list], ["b"])
+        self.reload()
+        held = self.jobs()[0]
+        self.assertEqual((held["status"], held["reason"], held["attempts"]),
+                         ("exhausted", "missing_frozen_payload", 1))
+        self.assertNotIn("payload", held)
+
+    def test_older_unattempted_job_can_freeze_once_and_send(self):
+        self.subs = subscriptions("a")
+        self.queue()
+        self.jobs()[0].pop("recipient_user_id")  # Earlier v2 job schema.
+        self.save(self.state)
+        self.reload()
+        _, send = self.deliver()
+        send.assert_called_once()
+        self.reload()
+        self.assertEqual(self.jobs()[0]["payload"], send.call_args.args[1])
 
 
 class PublisherBoundaryTest(unittest.TestCase):

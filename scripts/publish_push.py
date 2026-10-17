@@ -12,6 +12,7 @@ launchd: tw.observe.chumei.push-drip（每 30 分鐘）。
 """
 
 import argparse
+import copy
 import sys
 import time
 from contextlib import nullcontext
@@ -162,12 +163,14 @@ def queue_events(subs, pending, state, org_sids, follows):
     """Freeze each event's recipient cohort and each digest's membership once."""
     for event in pending:
         pd.group(state, "event", event["id"])
-    for key, _record, matched in matched_events(subs, pending, org_sids, follows):
+    for key, record, matched in matched_events(subs, pending, org_sids, follows):
         if len(matched) > DIGEST_THRESHOLD:
-            pd.enqueue(state, "event", key, [e["id"] for e in matched], digest=True)
+            pd.enqueue(state, "event", key, [e["id"] for e in matched], digest=True,
+                       recipient_user_id=record.get("user_id"))
         else:
             for event in matched:
-                pd.enqueue(state, "event", key, [event["id"]])
+                pd.enqueue(state, "event", key, [event["id"]],
+                           recipient_user_id=record.get("user_id"))
     for event in pending:
         entry = state["sent"][event["id"]]
         if not entry["devices"]:
@@ -180,6 +183,38 @@ def queue_reminders(subs, events, going, state, today=None):
         for key, _record in devices:
             pd.enqueue(state, "reminder", key, [event_id], user_id=user_id)
     return len(plan)
+
+
+def frozen_payload(job, active, active_ids, today):
+    """Freeze before transport; only subtract digest members / update day wording."""
+    if "payload" not in job:
+        if job["kind"] == "reminder":
+            when = "今天" if active[0]["start_at"][:10] == today.isoformat() else "明天"
+            job["payload"] = reminder_payload(active[0], when)
+            job["payload_when"] = when
+        elif job["digest"]:
+            # Minimal immutable projection, not a second copy of event metadata.
+            job["payload_members"] = {
+                event_id: {field: event.get(field) for field in ("title", "start_at", "all_day")}
+                for event_id, event in zip(active_ids, active)}
+            job["payload"] = digest_payload(active)
+            job["payload"]["tag"] = f"chumei-digest-{job['id']}"
+        else:
+            job["payload"] = event_payload(active[0])
+        job["payload_event_ids"] = list(active_ids)
+    elif job["digest"] and job["payload_event_ids"] != active_ids:
+        if not set(active_ids).issubset(job["payload_event_ids"]):
+            raise ValueError("cannot expand frozen push payload")
+        payload = digest_payload([job["payload_members"][eid] for eid in active_ids])
+        payload["tag"] = job["payload"]["tag"]
+        job["payload"] = payload
+        job["payload_event_ids"] = list(active_ids)
+    if job["kind"] == "reminder":
+        when = "今天" if active[0]["start_at"][:10] == today.isoformat() else "明天"
+        if when != job["payload_when"]:
+            job["payload"]["title"] = when + job["payload"]["title"][len(job["payload_when"]):]
+            job["payload_when"] = when
+    return copy.deepcopy(job["payload"])
 
 
 def send_deliveries(subs, events, state, going, *, today=None, clock=None, checkpoint=None):
@@ -215,17 +250,21 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
             checkpoint(state)
             continue
         active = []
+        active_ids = []
         for event_id in job["event_ids"]:
             device = pd.group(state, job["kind"], event_id, job.get("user_id"))["devices"][key]
             if device["status"] in pd.TERMINAL:
                 continue
             event = by_id.get(event_id)
-            if event and job["kind"] == "event":
+            if event:
                 aliases = [event["id"], *event.get("merged_event_ids", [])]
-                prior = [state["sent"].get(alias) or {} for alias in aliases]
-                if any(entry.get("baselined_at") or entry.get("sent_at") for entry in prior):
+                bucket = state["sent"] if job["kind"] == "event" else state["reminders"]
+                identifiers = aliases if job["kind"] == "event" else [
+                    f"{job['user_id']}:{alias}" for alias in aliases]
+                if pd.legacy_fence(bucket, identifiers):
                     pd.receipt(state, job, event_id, "cancelled", stamp)
                     continue
+                prior = [bucket.get(identifier, {}) for identifier in identifiers]
                 if any((entry.get("devices", {}).get(key) or {}).get("status") == "sent" for entry in prior):
                     pd.receipt(state, job, event_id, "sent", stamp)
                     continue
@@ -242,11 +281,19 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
             if valid:
                 if event["id"] not in {e["id"] for e in active}:
                     active.append(event)
+                    active_ids.append(event_id)
             else:
                 pd.receipt(state, job, event_id, "cancelled", stamp)
         if not active:
             pd.finish(state, job, "cancelled", stamp)
             stats["cancelled"] += 1
+            checkpoint(state)
+            continue
+        if job["attempts"] and "payload" not in job:
+            # Upgrading an uncertain older attempt cannot recover its bytes.
+            # Keep it unresolved for review rather than inventing retry content.
+            job["reason"] = "missing_frozen_payload"
+            pd.finish(state, job, "exhausted", stamp)
             checkpoint(state)
             continue
         if job["attempts"] >= pd.MAX_ATTEMPTS:
@@ -256,20 +303,23 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
         now = clock()
         if job.get("next_attempt_at", 0) > now:
             continue
-        if job["kind"] == "reminder":
-            when = "今天" if active[0]["start_at"][:10] == today.isoformat() else "明天"
-            payload = reminder_payload(active[0], when)
-        elif job["digest"]:
-            payload = digest_payload(active)
-            # Distinct queued batches must not replace one another on-device;
-            # uncertain retries of this batch retain the same notification tag.
-            payload["tag"] = f"chumei-digest-{job['id']}"
-        else:
-            payload = event_payload(active[0])
+        payload = frozen_payload(job, active, active_ids, today)
         job["attempts"] += 1
         job.update(attempted_at=stamp, next_attempt_at=now + pd.retry_delay(job["attempts"]))
         pd.finish(state, job, "sending", stamp)
         checkpoint(state)  # No network call if durable intent cannot be saved.
+        # Reload after checkpoint I/O and immediately before transport. A frozen
+        # cohort never grants permission to contact a revoked/rebound device.
+        # Atomic subscription replacement gives a complete snapshot; requests
+        # already in flight may finish after a later unsubscribe.
+        current = pc.load_subs()["subs"].get(key)
+        binding = job.get("recipient_user_id", record.get("user_id"))
+        if current is None or current.get("user_id") != binding:
+            pd.finish(state, job, "cancelled", now_iso())
+            stats["cancelled"] += 1
+            checkpoint(state)
+            continue
+        record = current
         try:
             pc.send_push(record, payload, ttl=6 * 3600 if job["kind"] == "reminder" else 43200)
         except pc.PushGone:
