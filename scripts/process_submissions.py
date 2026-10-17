@@ -33,7 +33,8 @@ import requests
 from chumei_lib import ROOT, TZ_TAIPEI, append_inbox, iter_inbox, load_env, now_iso, read_sources_csv
 from llm_gateway import chat_json, file_data_url, load_schema, review_model
 from submissions import MAX_ATTEMPTS, SubmissionStore, classify_url, normalize_url
-from extraction_retry import error_record, gateway_blocked, record_gateway_failure, retry_due
+from extraction_retry import (RequestDeferred, admit_gateway_request, error_record,
+                              gateway_blocked, record_gateway_failure, retry_due, retry_terminal)
 from pipeline_state import LockBusy, file_lock, read_json
 from extract_events import PROMPT_VERSION
 
@@ -301,9 +302,11 @@ def candidate_events(index, content, limit=12):
 def _review(env, system, user, schema_path, schema_name, images=()):
     """經 AI gateway 判讀；verdict 附上請求的別名與實際作答的模型。"""
     alias = review_model(env)
+    schema = load_schema(schema_path)
+    admit_gateway_request(GATEWAY_STATE)
     try:
         raw, model = chat_json(env, alias, system, user, images=images,
-                               schema=load_schema(schema_path), schema_name=schema_name, attempts=1)
+                               schema=schema, schema_name=schema_name, attempts=1)
     except Exception as exc:
         if not env.get("_submission_dry_run"):
             record_gateway_failure(GATEWAY_STATE, error_record(exc))
@@ -532,6 +535,8 @@ def process_one(store, sub, ctx, dry_run=False):
                           event_url=org_url(ctx["orgs"], info))
         try:
             return review_account(sub, url, info, ctx, finish, dry_run)
+        except RequestDeferred:
+            return finish("pending", "判讀服務冷卻中，稍後會再試。")
         except Exception as exc:  # noqa: BLE001
             if sub["attempts"] + 1 < MAX_ATTEMPTS:
                 return finish("pending", f"暫時讀不到這個帳號（{str(exc)[:80]}），稍後重試。",
@@ -578,6 +583,8 @@ def process_one(store, sub, ctx, dry_run=False):
         candidates = candidate_events(index, content)
         try:
             verdict = triage_with_llm(env, url, info, content, candidates, images)
+        except RequestDeferred:
+            return finish("pending", "判讀服務冷卻中，稍後會再試。")
         except Exception as exc:  # noqa: BLE001
             return finish("pending" if sub["attempts"] + 1 < MAX_ATTEMPTS else "error",
                           f"判讀時發生錯誤（{str(exc)[:80]}）。", bump_attempts=True)
@@ -621,8 +628,7 @@ def settle_accepted(store, index):
         events = extracted_events_for(sub["id"])
         if events is None:
             rec = read_json(EXTRACT_CACHE, {}).get(sub["id"]) or {}
-            if rec.get("error") and not retry_due(rec, PROMPT_VERSION) and (
-                    rec.get("exhausted") or rec.get("retryable") is False):
+            if retry_terminal(rec):
                 store.update(sub["id"], "manual", "活動判讀未能完成，已交給站長確認。")
             continue
         if not events:

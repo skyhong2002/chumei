@@ -34,6 +34,28 @@ def http_error(status, body="", headers=None):
 
 
 class RetryTests(unittest.TestCase):
+    def test_parser_positions_never_open_http_circuits(self):
+        for length in (400, 402, 428, 502):
+            with self.subTest(length=length):
+                try:
+                    json.loads(" " * length)
+                except json.JSONDecodeError as exc:
+                    record = retry.error_record(exc, now=NOW)
+                self.assertEqual(record["error_kind"], "invalid_response")
+                self.assertTrue(record["retryable"])
+                self.assertNotIn(record["error_kind"], retry.GLOBAL_FAILURES)
+        for text, kind in [("gateway unavailable after 1 attempts (HTTP 503)", "unavailable"),
+                           ("HTTP 401", "authentication"), ("403: forbidden", "authentication"),
+                           ("400: bad request", "permanent"), ("HTTP 429", "rate_limit"),
+                           ("payload column 401 char 429 item 503", "unknown")]:
+            self.assertEqual(retry.classify_error(RuntimeError(text)), kind)
+
+    def test_prompt_changes_cannot_reset_completed_or_pending_budgets(self):
+        for record in [{"events": [], "attempts": 4, "prompt_version": 1},
+                       retry.pending_record({"attempts": 3}, 1, now=NOW)]:
+            self.assertFalse(retry.retry_due(record, 999, now=NOW + timedelta(days=100),
+                                             retry_errors=True))
+
     def test_classification_and_safe_persisted_errors(self):
         for error, kind in [(requests.Timeout("secret transport"), "timeout"),
                             (requests.ConnectionError("secret host"), "connection"),
@@ -138,14 +160,14 @@ class ExtractionTests(unittest.TestCase):
                                           "ts": "2020-01-01T00:00:00+00:00"},
                                    "cached": {"events": [], "prompt_version": x.PROMPT_VERSION}})
         with mock.patch.object(x, "iter_inbox", return_value=iter([item(), item(), item("cached")])), \
-             mock.patch.object(x, "call_llm", return_value=('{"events":[]}', "fixture-model")) as call:
+             mock.patch.object(x, "chat_json", return_value=('{"events":[]}', "fixture-model")) as call:
             self.assertEqual(x.extract(self.args), 0)
         self.assertEqual(call.call_count, 1)
         self.assertEqual(x._load_cache("fixture")["one"]["attempts"], 2)
 
     def test_quota_stops_unscheduled_work_and_cooldown_survives_next_run(self):
         with mock.patch.object(x, "iter_inbox", side_effect=lambda: iter([item(str(i)) for i in range(30)])), \
-             mock.patch.object(x, "call_llm", side_effect=http_error(429, "insufficient_quota")) as call:
+             mock.patch.object(x, "chat_json", side_effect=http_error(429, "insufficient_quota")) as call:
             self.assertEqual(x.extract(self.args), 0)
             self.assertEqual(call.call_count, 1)
             self.assertEqual(x.extract(self.args), 0)
@@ -158,9 +180,52 @@ class ExtractionTests(unittest.TestCase):
         record = retry.error_record(http_error(429), now=NOW)
         x._save_cache("fixture", {"one": {**record, "attempts": 4, "exhausted": True}})
         self.args.retry_errors = True
-        with mock.patch.object(x, "iter_inbox", return_value=iter([item()])), mock.patch.object(x, "call_llm") as call:
+        with mock.patch.object(x, "iter_inbox", return_value=iter([item()])), mock.patch.object(x, "chat_json") as call:
             x.extract(self.args)
         call.assert_not_called()
+
+    def test_circuit_opened_during_images_refuses_provider_and_does_not_charge(self):
+        def image(_):
+            retry.record_gateway_failure(x.GATEWAY_STATE, retry.error_record(requests.Timeout()))
+            return None
+
+        with mock.patch.object(x, "iter_inbox", return_value=iter([{**item(), "images": ["fixture"]}])), \
+             mock.patch.object(x, "fetch_image_b64", side_effect=image), \
+             mock.patch.object(x, "chat_json") as call:
+            self.assertEqual(x.extract(self.args), 0)
+        call.assert_not_called()
+        self.assertEqual(x._load_cache("fixture"), {})
+
+    def test_failed_reservation_never_enters_provider(self):
+        with mock.patch.object(x, "iter_inbox", side_effect=lambda: iter([item()])), \
+             mock.patch("pipeline_state.os.replace", side_effect=OSError("fixture disk failure")), \
+             mock.patch.object(x, "chat_json") as call:
+            for _ in range(5):
+                with self.assertRaises(OSError):
+                    x.extract(self.args)
+        call.assert_not_called()
+        self.assertEqual(x._load_cache("fixture"), {})
+
+    def test_failed_result_save_retains_reservation_history_and_publishes_circuit(self):
+        history = {"events": [{"id": "history"}], "prompt_version": 1,
+                   "first_seen": "2020-01-01T00:00:00+00:00"}
+        x._save_cache("fixture", {"one": history, "other": {"events": []}})
+        with mock.patch.object(x, "iter_inbox", side_effect=lambda: iter([item()])), \
+             mock.patch.object(x, "_save_cache", side_effect=OSError("fixture completion failure")), \
+             mock.patch.object(x, "chat_json", side_effect=requests.Timeout()) as call:
+            with self.assertRaises(OSError):
+                x.extract(self.args)
+            for _ in range(4):
+                self.assertEqual(x.extract(self.args), 0)
+        call.assert_called_once()
+        cache = x._load_cache("fixture")
+        self.assertIn("other", cache)
+        pending = cache["one"]
+        self.assertEqual(pending["attempts"], 1)
+        self.assertTrue(pending["in_progress"])
+        self.assertEqual(pending["events"], history["events"])
+        self.assertEqual(pending["first_seen"], history["first_seen"])
+        self.assertTrue(retry.gateway_blocked(read_json(x.GATEWAY_STATE)))
 
     def test_longest_global_cooldown_wins(self):
         long = retry.error_record(http_error(429, "insufficient_quota"), now=NOW)

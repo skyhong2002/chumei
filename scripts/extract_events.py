@@ -17,9 +17,10 @@ from pathlib import Path
 from event_categories import normalize_event_category
 from chumei_lib import iter_inbox, load_env, now_iso, ROOT, TZ_TAIPEI
 from llm_gateway import chat_json, extraction_model, load_schema
-from extraction_retry import (GLOBAL_FAILURES, error_record, gateway_blocked,
+from extraction_retry import (GLOBAL_FAILURES, RequestDeferred, admit_gateway_request,
+                              attempt_count, error_record, gateway_blocked, pending_record,
                               record_gateway_failure, retry_due)
-from pipeline_state import LockBusy, file_lock, merge_json, read_json
+from pipeline_state import LockBusy, atomic_json, file_lock, merge_json, read_json
 
 PROMPT_VERSION = 3
 EXTRACT_DIR = ROOT / "state" / "extraction"
@@ -215,17 +216,20 @@ def user_prompt(item, retry_note=None):
     )
 
 
-def call_llm(env, item, retry_note=None):
+def call_llm(env, item, retry_note=None, *, before_request=None):
     """回傳 (JSON 字串, 實際作答的模型)。"""
     images = [b64 for b64 in map(fetch_image_b64, (item.get("images") or [])[:2]) if b64]
-    return chat_json(env, extraction_model(env), SYSTEM_PROMPT, user_prompt(item, retry_note),
-                     images=images, schema=load_schema(SCHEMA), schema_name="extraction", attempts=1)
+    schema, prompt = load_schema(SCHEMA), user_prompt(item, retry_note)
+    # Preparation can be slow: another process may have opened the circuit.
+    (before_request or (lambda: admit_gateway_request(GATEWAY_STATE)))()
+    return chat_json(env, extraction_model(env), SYSTEM_PROMPT, prompt,
+                     images=images, schema=schema, schema_name="extraction", attempts=1)
 
 
-def _extract_item(env, item):
+def _extract_item(env, item, *, before_request=None):
     source_id, post_id = item["source_id"], item["post_id"]
     alias = extraction_model(env)
-    raw, model = call_llm(env, item)
+    raw, model = call_llm(env, item, before_request=before_request)
     parsed = json.loads(raw)
     if (not isinstance(parsed, dict) or not isinstance(parsed.get("events"), list)
             or not isinstance(parsed.get("recurrings", []), list)):
@@ -297,15 +301,47 @@ def _extract_item(env, item):
     }
 
 
-def process_item(env, item, lock=None, caches=None):
+def _reserve_attempt(item, *, retry_errors=False):
+    """Reload and charge under the cache lock, before entering the provider."""
+    path = EXTRACT_DIR / f"{item['source_id']}.json"
+    pid = item["post_id"]
+    with file_lock(path.with_suffix(path.suffix + ".lock")):
+        cache = read_json(path, {})
+        previous = cache.get(pid) or {}
+        if not retry_due(previous, PROMPT_VERSION, retry_errors=retry_errors):
+            raise RequestDeferred("item cooldown or exhausted budget")
+        reserved = pending_record(previous, PROMPT_VERSION)
+        reserved["first_seen"] = (previous.get("first_seen") or item.get("first_seen")
+                                  or item.get("fetched_at") or previous.get("ts") or reserved["ts"])
+        cache[pid] = reserved
+        # A failed write refuses admission; no request can spend an unsaved slot.
+        atomic_json(path, cache)
+        return reserved
+
+
+def process_item(env, item, lock=None, caches=None, *, reserve=None):
     """One provider attempt; every failure becomes a bounded, safe cache record."""
     sid, pid = item["source_id"], item["post_id"]
     previous = (caches or {}).get(sid, {}).get(pid) or {}
+    reserved = False
+
+    def before_request():
+        nonlocal previous, reserved
+        charged = admit_gateway_request(GATEWAY_STATE, reserve)
+        if reserve is not None:
+            previous, reserved = charged, True
+
     try:
-        _, _, result = _extract_item(env, item)
-        result["attempts"] = int(previous.get("attempts", 1 if previous.get("error") else 0)) + 1
+        _, _, result = _extract_item(env, item, before_request=before_request)
+        result["attempts"] = attempt_count(previous) + (0 if reserved else 1)
+    except RequestDeferred:
+        raise
     except Exception as exc:
-        result = {**error_record(exc, previous), "prompt_version": PROMPT_VERSION}
+        if reserve is not None and not reserved:
+            raise  # Preparation/reservation failed before any provider admission.
+        result = {**error_record(exc, previous, reserved=reserved), "prompt_version": PROMPT_VERSION}
+        # Publish independently of the result-cache save (which can fail/crash).
+        record_gateway_failure(GATEWAY_STATE, result)
         # A failed prompt upgrade must not remove existing historical activities.
         for field in ("events", "recurrings"):
             if field in previous:
@@ -356,17 +392,26 @@ def extract(args):
         pending = set()
 
         def fill():
+            nonlocal stopped
             while not stopped and len(pending) < args.workers:
+                if gateway_blocked(read_json(GATEWAY_STATE, {})):
+                    stopped = True
+                    break
                 item = next(items, None)
                 if item is None:
                     break
-                pending.add(pool.submit(process_item, env, item, None, caches))
+                pending.add(pool.submit(process_item, env, item, None, caches,
+                                        reserve=lambda item=item: _reserve_attempt(
+                                            item, retry_errors=args.retry_errors)))
 
         fill()
         while pending:
             done, pending = wait(pending, return_when=FIRST_COMPLETED)
             for future in done:
-                sid, pid, result = future.result()
+                try:
+                    sid, pid, result = future.result()
+                except RequestDeferred:
+                    continue
                 caches[sid][pid] = result
                 _save_cache(sid, {pid: result})
                 completed += 1
@@ -375,7 +420,6 @@ def extract(args):
                     print(f"  [{completed}/{len(todo)}] {sid}/{pid}: ERROR {result['error_kind']}", file=sys.stderr)
                     if result["error_kind"] in GLOBAL_FAILURES:
                         stopped = True
-                        record_gateway_failure(GATEWAY_STATE, result)
                 else:
                     k = len(result["events"])
                     n_events += k

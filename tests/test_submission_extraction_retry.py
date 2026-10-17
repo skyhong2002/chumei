@@ -10,6 +10,9 @@ import process_submissions as s
 from pipeline_state import atomic_json, read_json
 from submissions import SubmissionStore
 from test_extraction_retry import http_error
+import extraction_retry as retry
+from datetime import timedelta
+import requests
 
 
 class SubmissionRetryTests(unittest.TestCase):
@@ -51,6 +54,56 @@ class SubmissionRetryTests(unittest.TestCase):
         self.assertFalse(s.accepted_needs_extract(self.store))
         s.settle_accepted(self.store, self.index)
         self.assertEqual(self.store.get(sub["id"])["status"], "manual")
+
+    def test_legacy_terminal_errors_settle_without_resetting_budgets(self):
+        for record in [{"error": "400: bad request"}, {"error": "unknown failure"},
+                       {"error": "timeout", "attempts": 4},
+                       {"error": "timeout", "retryable": False}]:
+            with self.subTest(record=record):
+                sub = self.accepted()
+                atomic_json(s.EXTRACT_CACHE, {**read_json(s.EXTRACT_CACHE, {}), sub["id"]: record})
+                self.assertFalse(s.accepted_needs_extract(self.store))
+                s.settle_accepted(self.store, self.index)
+                self.assertEqual(self.store.get(sub["id"])["status"], "manual")
+                self.assertEqual(read_json(s.EXTRACT_CACHE)[sub["id"]], record)
+
+    def test_cooling_legacy_transient_and_interrupted_errors_remain_accepted(self):
+        now = retry.utcnow()
+        for record in [{"error": "timeout", "ts": now.isoformat()},
+                       retry.pending_record({"attempts": 1}, 1, now=now),
+                       {"error": "timeout", "attempts": 2,
+                        "retry_after": (now + timedelta(hours=1)).isoformat()}]:
+            with self.subTest(record=record):
+                sub = self.accepted()
+                atomic_json(s.EXTRACT_CACHE, {**read_json(s.EXTRACT_CACHE, {}), sub["id"]: record})
+                self.assertFalse(s.accepted_needs_extract(self.store))
+                s.settle_accepted(self.store, self.index)
+                self.assertEqual(self.store.get(sub["id"])["status"], "accepted")
+
+    def test_circuit_opened_during_content_preparation_does_not_spend_review_attempt(self):
+        sub = self.store.create("fixture-user", "https://example.org/fixture")
+        ctx = {"events": self.index, "inbox": ({}, {}), "handles": {}, "env": {}, "orgs": {}}
+
+        def content(*_):
+            retry.record_gateway_failure(s.GATEWAY_STATE, retry.error_record(requests.Timeout()))
+            return {"text": "synthetic content " * 20, "images": []}
+
+        with mock.patch.object(s, "fetch_content", side_effect=content), \
+             mock.patch.object(s, "load_schema", return_value={}), \
+             mock.patch.object(s, "chat_json") as call:
+            s.process_one(self.store, sub, ctx)
+        call.assert_not_called()
+        result = self.store.get(sub["id"])
+        self.assertEqual(result["status"], "pending")
+        self.assertEqual(result["attempts"], sub["attempts"])
+
+    def test_account_review_deferral_keeps_budget(self):
+        sub = self.store.create("fixture-user", "https://www.instagram.com/fixture_club/")
+        ctx = {"events": self.index, "inbox": ({}, {}), "handles": {}, "env": {}, "orgs": {}}
+        with mock.patch.object(s, "review_account", side_effect=retry.RequestDeferred("gateway cooldown")):
+            s.process_one(self.store, sub, ctx)
+        self.assertEqual(self.store.get(sub["id"])["status"], "pending")
+        self.assertEqual(self.store.get(sub["id"])["attempts"], sub["attempts"])
 
     def test_existing_inbox_error_is_not_reported_as_non_event(self):
         sub = self.store.create("fixture-user", "https://example.org/fixture")
