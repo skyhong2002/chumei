@@ -595,7 +595,7 @@
   })();
 
   // 限動資料/燈箱的共享介面：首頁「限時動態」欄也要用（須在提前 return 前賦值）
-  var storyShare = { data: null, open: null, hooks: [] };
+  var storyShare = { data: null, failed: false, open: null, hooks: [] };
 
   var listEl = document.getElementById("event-list");
   var calEl = document.getElementById("cal-months");
@@ -1033,8 +1033,9 @@
         return '<div class="col-agd">' + out + "</div>";
       }
       function storyCards(list, shown) {
+        if (storyShare.failed) return '<p class="empty">限時動態載入失敗，請重新整理再試。</p>';
         if (!storyShare.data) return '<p class="empty">限時動態載入中…</p>';
-        if (!list.length) return '<p class="empty">現在沒有進行中的限時動態。</p>';
+        if (!list.length) return '<p class="empty">目前沒有可顯示的限時動態。</p>';
         var ago = storyShare.data.ago;
         return '<div class="story-wall col-stories">' + list.slice(0, shown).map(function (s) {
           var i = storyShare.data.flat.indexOf(s);
@@ -1459,7 +1460,7 @@
       bindEventHover(feed, ".feed-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
       bindEventHover(feed, ".agd-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
       // 限動資料晚到時補繪限時動態欄
-      if (!storyShare.data) storyShare.hooks.push(function () { updateBodies(); });
+      if (!storyShare.data && !storyShare.failed) storyShare.hooks.push(function () { updateBodies(); });
       render();
     }).catch(function (err) {
       console.error("chumei feed init failed:", err);
@@ -1695,12 +1696,24 @@
     var wall = document.getElementById("story-wall");
     if (!strip && !wall) return;
 
+    function notifyStoryColumns() {
+      var hooks = storyShare.hooks;
+      storyShare.hooks = [];
+      hooks.forEach(function (f) { f(); });
+    }
+
     fetch("/data/stories.json")
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Stories response failed");
+        return r.json();
+      })
       .then(function (data) {
-        var stories = data.stories || [];
+        var stories = data.stories;
+        if (!Array.isArray(stories)) throw new Error("Stories response is invalid");
         if (!stories.length) {
-          if (wall) wall.innerHTML = '<p class="empty">現在沒有進行中的限時動態 — 限動 24 小時後就會消失，晚點再來看看。</p>';
+          storyShare.data = { flat: [] };
+          if (wall) wall.innerHTML = '<p class="empty">目前沒有可顯示的限時動態，晚點再來看看。</p>';
+          notifyStoryColumns();
           return;
         }
         // 依帳號分組，組序 = 該帳號最新限動時間
@@ -2039,10 +2052,13 @@
 
         storyShare.data = { flat: flat, ago: ago };
         storyShare.open = openLightbox;
-        storyShare.hooks.forEach(function (f) { f(); });
-        storyShare.hooks = [];
+        notifyStoryColumns();
       })
-      .catch(function () { if (wall && !wall.firstElementChild) wall.innerHTML = '<p class="empty">限時動態載入失敗。</p>'; });
+      .catch(function () {
+        storyShare.failed = true;
+        if (wall) wall.innerHTML = '<p class="empty">限時動態載入失敗，請重新整理再試。</p>';
+        notifyStoryColumns();
+      });
   }
 
   // ---- 共用活動 hover 預覽卡（日曆格／地圖 popup／河道 chips） ----
