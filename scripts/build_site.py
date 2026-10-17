@@ -1510,7 +1510,8 @@ def post_time_details(post, now, structured=None):
     adapters retain their posted_at contract unless marked as discovery/unknown.
     """
     structured = structured or {}
-    nycu = any(p.get("source_id") == "nycu_life_api" or p.get("raw_source") == "nycu-life-api"
+    nycu = any(p.get("_nycu_publication") or p.get("source_id") == "nycu_life_api"
+               or p.get("raw_source") == "nycu-life-api"
                for p in (structured, post))
 
     def valid(raw, require_zone=False):
@@ -1527,7 +1528,11 @@ def post_time_details(post, now, structured=None):
     ), now)
     published = ""
     for record in (structured, post):
-        published = valid(record.get("published_at"), require_zone=nycu)
+        # The index's normalized projection cannot prove an original timezone.
+        # Recheck raw candidates now that inbox/duplicate identity is available.
+        candidates = record.get("_published_at_candidates", (record.get("published_at"),))
+        published = next((stamp for raw in candidates
+                          if (stamp := valid(raw, require_zone=nycu))), "")
         if not published and not nycu and record.get("publication_time_basis") not in ("first_seen", "unknown"):
             published = valid(record.get("posted_at"))
         if published:
@@ -1545,7 +1550,8 @@ def post_publication_time(post, now, structured=None):
 def event_post_records(events, now):
     """Validate before merging evidence; event fields belong to the primary post."""
     records = {}
-    time_fields = {"first_seen", "first_seen_at", "published_at", "posted_at", "publication_time_basis"}
+    time_fields = {"first_seen", "first_seen_at", "published_at", "posted_at", "publication_time_basis",
+                   "_published_at_candidates", "_nycu_publication"}
     for event in events:
         primary = event.get("source") or {}
         for src in [primary] + event.get("alt_posts", []):
@@ -1569,6 +1575,13 @@ def event_post_records(events, now):
             for field, value in record.items():
                 if field not in time_fields and not previous.get(field) and value is not None:
                     previous[field] = value
+            # Validate without inventing zone evidence or discarding later
+            # aware candidates. Adapter identity may arrive in another row or
+            # only in the inbox; preserve it even if raw_source metadata differs.
+            previous.setdefault("_published_at_candidates", []).extend(raw for raw in (
+                src.get("published_at"), owner.get("published_at"),
+            ) if validated_evidence_time(raw, now))
+            previous["_nycu_publication"] = previous.get("_nycu_publication", False) or nycu
             # Keep explicit publication separate from legacy publication so a
             # later explicit duplicate still beats an earlier legacy posted_at.
             # Validate legacy evidence with its own basis, never another row's.
@@ -1580,8 +1593,8 @@ def event_post_records(events, now):
             }
             for field, value in candidates.items():
                 previous[field] = first_valid_evidence_time((previous.get(field), value), now)
-    # Preserve explicit versus legacy publication until the consumer also knows
-    # the inbox adapter identity. Structured fetched_at remains metadata only.
+    # Preserve raw explicit versus legacy publication until the consumer also
+    # knows the inbox adapter identity. Structured fetched_at is metadata only.
     return records
 
 

@@ -245,6 +245,112 @@ class BuilderTimestampTests(unittest.TestCase):
         self.assertEqual(record["first_seen"], FIRST)
         self.assertEqual(record["published_at"], PUBLISHED)
 
+    def test_publication_timezone_provenance_survives_index_and_all_consumers(self):
+        for identity in ("source_id", "structured_raw_source", "inbox_raw_source", "generic"):
+            for location in ("source", "event"):
+                for raw in ("2026-10-01", "2026-10-01T08:00:00",
+                            "2026-10-01T00:00:00Z", PUBLISHED):
+                    for inbox_publication in ("", "2026-10-03T09:00:00+08:00", "2026-10-03T09:00:00"):
+                        with self.subTest(identity=identity, location=location, raw=raw,
+                                          inbox_publication=inbox_publication):
+                            ev = event(start="2026-11-01T12:00:00+08:00")
+                            sid = "nycu_life_api" if identity == "source_id" else "legacy_api"
+                            ev["source"].update(source_id=sid, custom="keep")
+                            if identity == "structured_raw_source":
+                                ev["source"]["raw_source"] = "nycu-life-api"
+                            (ev["source"] if location == "source" else ev)["published_at"] = raw
+                            inbox = legacy_inbox(ev, published_at=inbox_publication,
+                                                 fetched_at="2026-10-11T09:00:00+08:00")
+                            if identity == "generic":
+                                inbox.pop("raw_source")
+                                inbox["posted_at"] = ""  # explicit publication alone
+                            self.inbox = [inbox]
+                            original = copy.deepcopy(ev)
+                            original_inbox = copy.deepcopy(self.inbox)
+                            structured = {**ev["source"], "first_seen": FIRST, "published_at": raw}
+                            direct = b.post_time_details(inbox, NOW, structured)
+                            aware = raw in ("2026-10-01T00:00:00Z", PUBLISHED)
+                            expected_publication = (
+                                ("2026-10-01T00:00:00+08:00" if len(raw) == 10 else PUBLISHED)
+                                if aware or identity == "generic" else
+                                "2026-10-03T09:00:00+08:00" if inbox_publication.endswith("+08:00") else None)
+                            expected = {"posted_at": expected_publication or FIRST,
+                                        "published_at": expected_publication, "first_seen": FIRST,
+                                        "publication_time_basis": "source" if expected_publication else "first_seen"}
+                            self.assertEqual(direct, expected)
+                            with patch.object(b, "now_iso", side_effect=AssertionError("use supplied clock")):
+                                indexed = b.event_post_records([ev], NOW)[(sid, "past")]
+                                self.assertEqual(b.post_time_details(inbox, NOW, indexed), direct)
+                            self.assertEqual(ev, original)
+                            registry = [{"name": "NYCU LIFE", "school": "nycu", "source_id": sid,
+                                         "url": "https://example.invalid/life"}]
+                            with patch.object(b, "read_sources_csv", side_effect=lambda name:
+                                              registry if name == "bulletin_sources.csv" else []):
+                                with clock_at(NOW):
+                                    posts = b.build_posts_data([ev])
+                                    entries = b.build_sources_data([ev])
+                                    b.org_pages(entries, [ev])
+                                    html = (self.site / "org" / str(entries[0]["id"]) / "index.html").read_text()
+                                result = self.outputs([ev], NOW)
+                                self.assertEqual(result["posts"], posts)
+                                self.assertEqual(result["entries"], entries)
+                                self.assertEqual(result["org"], html)
+                                self.assertEqual(result, self.outputs([copy.deepcopy(original)], LATER))
+                                self.assertEqual(result, self.outputs([ev], NOW))
+                            for record in (posts[0], ev["source"]):
+                                self.assertEqual({key: record[key] for key in direct}, direct)
+                                self.assertNotIn("_published_at_candidates", record)
+                                self.assertNotIn("_nycu_publication", record)
+                            self.assertEqual(ev["source"]["custom"], "keep")
+                            self.assertEqual(entries[0]["updated"], direct["posted_at"])
+                            day = datetime.fromisoformat(direct["posted_at"]).day
+                            self.assertIn(f'org-post-date">10/{day}', html)
+                            for rss in (result["rss"], result["custom_rss"]):
+                                self.assertEqual(ElementTree.fromstring(rss).findtext("./channel/item/pubDate"),
+                                                 "Sat, 10 Oct 2026 09:00:00 +0800")
+                            for ics in (result["ics"].decode(), result["custom_ics"], result["personal_ics"]):
+                                for field in ("DTSTAMP", "CREATED", "LAST-MODIFIED"):
+                                    self.assertIn(field + ":20261010T010000Z", ics)
+                            self.assertEqual(self.inbox, original_inbox)
+
+    def test_late_nycu_identity_keeps_aware_event_fallback_and_alternate_ownership(self):
+        for raw in ("2026-10-01", "2026-10-01T08:00:00", "invalid", "2099-01-01T00:00:00Z"):
+            with self.subTest(raw=raw), clock_at(NOW):
+                ev = event(published_at="2026-10-01T00:00:00Z")
+                ev["source"].update(source_id="legacy_api", published_at=raw)
+                alt = {**ev["source"], "post_id": "alternate"}
+                ev["alt_posts"] = [alt]
+                self.inbox = [legacy_inbox(ev, published_at="2026-10-03T09:00:00+08:00"),
+                              {**alt, "raw_source": "nycu-life-api", "fetched_at": FIRST,
+                               "published_at": ""}]
+                records = b.event_post_records([ev], NOW)
+                self.assertEqual(b.post_time_details(self.inbox[0], NOW,
+                                                    records[("legacy_api", "past")])["published_at"], PUBLISHED)
+                b.attach_source_post_times([ev])
+                self.assertEqual(ev["source"]["published_at"], PUBLISHED)
+                self.assertIsNone(alt["published_at"])
+                self.assertEqual(alt["publication_time_basis"], "first_seen")
+
+    def test_duplicate_nycu_identity_revalidates_all_raw_publication_candidates(self):
+        for fallback_location in (None, "event", "duplicate"):
+            for reverse in (False, True):
+                with self.subTest(fallback_location=fallback_location, reverse=reverse):
+                    naive = event(published_at="2026-10-01T00:00:00Z" if fallback_location == "event" else None)
+                    naive["source"].update(source_id="src", raw_source="old-adapter",
+                                            published_at="2026-09-01T08:00:00")
+                    identity = event()
+                    identity["source"].update(source_id="src", raw_source="nycu-life-api")
+                    if fallback_location == "duplicate":
+                        identity["source"]["published_at"] = "2026-10-01T00:00:00Z"
+                    events = [naive, identity][::(-1 if reverse else 1)]
+                    original = copy.deepcopy(events)
+                    records = b.event_post_records(events, NOW)
+                    resolved = b.post_time_details({}, NOW, records[("src", "past")])
+                    self.assertEqual(resolved["published_at"], PUBLISHED if fallback_location else None)
+                    self.assertEqual(resolved["posted_at"], PUBLISHED if fallback_location else FIRST)
+                    self.assertEqual(resolved["publication_time_basis"], "source" if fallback_location else "first_seen")
+                    self.assertEqual(events, original)
+
     def test_legacy_past_and_future_starts_never_become_publication(self):
         events = [event(), event("future", "2026-11-01T14:00:00+08:00")]
         self.inbox = [legacy_inbox(ev) for ev in events]
