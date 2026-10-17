@@ -76,7 +76,7 @@ from apify_contributions import (
     user_rows as apify_user_rows,
     verify_token as verify_apify_token,
 )
-from event_time import event_has_not_ended
+from event_time import event_has_not_ended, event_discovery_time
 from build_site import event_ics, ics_calendar, page_shell
 from event_categories import CAT_SLUG, SLUG_CAT, canonical_category, normalize_event_category
 from chumei_lib import ROOT, load_env
@@ -1581,6 +1581,7 @@ def _feed_ics(events: list[dict], name: str, url: str) -> str:
 
 
 def _feed_rss(events: list[dict], name: str) -> str:
+    now = datetime.now(timezone.utc)
     items = []
     for event in list(reversed(events))[:80]:
         link = f"https://chumei.observe.tw/event/{event['id']}/"
@@ -1592,9 +1593,7 @@ def _feed_rss(events: list[dict], name: str) -> str:
         description = html.escape(meta + ("\n" if meta else "") + str(event.get("summary") or ""))
         pub = ""
         try:
-            published = datetime.fromisoformat(str(event.get("first_seen") or start))
-            if published.tzinfo is None:
-                published = published.replace(tzinfo=timezone(timedelta(hours=8)))
+            published = datetime.fromisoformat(event_discovery_time(event, now))
             pub = format_datetime(published)
         except (TypeError, ValueError):
             pass

@@ -19,7 +19,8 @@ import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
 from event_categories import CAT_SLUG, normalize_event_category
-from event_time import event_has_not_ended
+from event_time import (event_has_not_ended, event_discovery_time,
+                        first_valid_evidence_time, validated_evidence_time)
 from data_quality import (missing_venue, apply_quality_reviews, event_quality_issues,
                           build_quality_report, write_quality_report)
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
@@ -770,9 +771,10 @@ def ics_calendar(body, name, description="", url="", color="#5B4BDB"):
     return "\r\n".join(l for l in head if l) + "\r\n" + (body + "\r\n" if body else "") + "END:VCALENDAR\r\n"
 
 
-def event_ics(e):
+def event_ics(e, now=None):
     uid = f"{e['id']}@chumei.observe.tw"
-    created = _ics_stamp(e.get("first_seen") or (e.get("source") or {}).get("first_seen"))
+    now = now or datetime.now(TZ_TAIPEI)
+    created = _ics_stamp(event_discovery_time(e, now))
     modified = _ics_stamp(e.get("updated_at")) or created
     # DTSTAMP is required by RFC 5545. A legacy event without observation
     # evidence uses its stable start only here, never as CREATED/publication.
@@ -823,18 +825,19 @@ def event_ics(e):
 
 def write_ics(path, events, name, now=None):
     now = now or datetime.now(TZ_TAIPEI)
-    body = "\r\n".join(filter(None, (event_ics(e) for e in events if event_has_not_ended(e, now))))
+    body = "\r\n".join(filter(None, (event_ics(e, now) for e in events if event_has_not_ended(e, now))))
     path.write_text(ics_calendar(body, name, "竹梅活動觀測站彙整清大與陽明交大的公開活動。",
                                  f"{BASE_URL}/subscribe/"))
 
 
-def write_rss(path, events, title):
+def write_rss(path, events, title, now=None):
+    now = now or datetime.now(TZ_TAIPEI)
     items = []
     for e in events[:80]:
         link = f"{BASE_URL}/event/{e['id']}/"
         desc = esc(f"{fmt_dt(e.get('start_at'), e.get('all_day'))}｜{join_loc(e, ' ')}｜{e.get('organizer')}\n{e.get('summary')}")
         try:
-            observed = e.get("first_seen") or (e.get("source") or {}).get("first_seen")
+            observed = event_discovery_time(e, now)
             pub = datetime.fromisoformat(observed).strftime("%a, %d %b %Y %H:%M:%S %z")
         except (TypeError, ValueError):
             pub = ""
@@ -1502,27 +1505,21 @@ def post_time_details(post, now, structured=None):
     adapters retain their posted_at contract unless marked as discovery/unknown.
     """
     structured = structured or {}
-    ceiling = _iso_dt(now)
     nycu = any(p.get("source_id") == "nycu_life_api" or p.get("raw_source") == "nycu-life-api"
                for p in (structured, post))
 
     def valid(raw, require_zone=False):
-        value = _iso_dt(raw)
-        if value is None or ceiling is None or value > ceiling:
-            return ""
-        if require_zone and datetime.fromisoformat(str(raw).replace("Z", "+00:00")).tzinfo is None:
-            return ""
-        return value.astimezone(TZ_TAIPEI).isoformat(timespec="seconds")
+        return validated_evidence_time(raw, now, require_zone=require_zone)
 
     # Structured fetched_at changes on refresh. Only the append-only inbox's
     # original fetched_at can stand in for discovery when first_seen is absent.
-    discovery = next((ts for raw in (
+    discovery = first_valid_evidence_time((
         structured.get("first_seen"), structured.get("first_seen_at"),
         post.get("first_seen"), post.get("first_seen_at"),
         structured.get("posted_at") if structured.get("publication_time_basis") == "first_seen" else None,
         post.get("posted_at") if post.get("publication_time_basis") == "first_seen" else None,
         post.get("fetched_at"),
-    ) if (ts := valid(raw))), "")
+    ), now)
     published = ""
     for record in (structured, post):
         published = valid(record.get("published_at"), require_zone=nycu)
