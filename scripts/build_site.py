@@ -1487,6 +1487,21 @@ def _org_sim(a, b):
     return len(A & B) / max(1, len(A | B))
 
 
+def post_publication_time(post, now):
+    """Use publication evidence, then stable discovery evidence, never build time.
+
+    Some bulletin/API sources put an event's future start in posted_at. Clamping
+    that value to each build's clock made old sources appear updated forever.
+    Normalize offsets before comparing so UTC and Taipei dates sort alike.
+    """
+    ceiling = _iso_dt(now)
+    for field in ("published_at", "posted_at", "first_seen", "first_seen_at", "fetched_at"):
+        value = _iso_dt(post.get(field))
+        if value is not None and value <= ceiling:
+            return value.astimezone(TZ_TAIPEI).isoformat(timespec="seconds")
+    return ""
+
+
 def build_sources_data(events):
     """全機構名錄 site/data/sources.json：官方名冊為底＋監測帳號＋公告來源，含未收錄單位。"""
     seen = {}  # sid → 活動 id 集合（跨帳號合併的活動歸戶到每個來源；同帳號多貼文只算一次）
@@ -1501,8 +1516,7 @@ def build_sources_data(events):
     latest = {}
     for it in iter_inbox():
         sid = it["source_id"]
-        # infonews 的公告日期可能是未來的展示起始日，最新更新時間以現在為上限
-        ts = min(it.get("posted_at") or "", now)
+        ts = post_publication_time(it, now)
         if ts > latest.get(sid, ""):
             latest[sid] = ts
 
@@ -1786,7 +1800,7 @@ def org_pages(entries, events):
                  for sid in ent.get("sids", []) for p in posts_by_sid.get(sid, [])}
         if posts:
             def post_key(p):
-                return min(p.get("posted_at") or p.get("fetched_at") or "", now_text)
+                return post_publication_time(p, now_text)
             ordered = sorted(posts.values(), key=post_key, reverse=True)
             shown = ordered[:30]
 
@@ -2343,7 +2357,7 @@ def prerender_feed(posts, shown=30, deck_shown=12):
     cols = []
     for i, (school, bucket) in enumerate(zip(FEED_DEFAULT_COLS, feed_school_buckets(posts))):
         rows = [_feed_row(p, now) for p in bucket[:deck_shown]]
-        cols.append(feed_col_html(i, school, rows, i, cat_opts, more=len(bucket) > shown))
+        cols.append(feed_col_html(i, school, rows, i, cat_opts, more=len(bucket) > deck_shown))
     deck = (f'<div class="feed-cols ssr-deck has-deck-add" style="--ncols:{len(cols)}">'
             + "".join(cols) + feed_deck_add_html() + "</div>")
     rows = [_feed_row(p, now) for p in posts[:shown]]

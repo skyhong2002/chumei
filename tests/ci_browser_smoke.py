@@ -94,6 +94,57 @@ def check_feed_layout(page):
     summary.press('Enter')
 
 
+def check_column_windows(page):
+    """Loading/filtering/resizing one river must preserve its neighbours."""
+    original = page.viewport_size.copy()
+    if original['width'] < 700:
+        return
+    page.wait_for_selector('body.feed-locked .feed-cols:not(.ssr-deck)')
+    columns = page.locator('.feed-cols .feed-col')
+    counts = lambda: columns.evaluate_all('(els) => els.map(el => el.querySelectorAll(".feed-post").length)')
+    assert counts() == [12, 12, 12], counts()
+    neighbour = columns.nth(1).element_handle()
+    columns.first.locator('.feed-more').click()
+    loaded = counts()
+    assert loaded[0] > 12 and loaded[1:] == [12, 12], loaded
+    assert neighbour.evaluate('(el) => el === document.querySelectorAll(".feed-col")[1]'), 'Load more rebuilt another column'
+    columns.first.evaluate('(el) => { el.scrollTop = 200; }')
+    top = columns.first.evaluate('(el) => el.scrollTop')
+    first = columns.first.element_handle()
+    page.set_viewport_size({'width': original['width'] + 30, 'height': original['height']})
+    page.wait_for_timeout(350)  # Application resize debounce.
+    assert first.evaluate('(el) => el === document.querySelector(".feed-col")'), 'Same-layout resize discarded the deck'
+    assert counts() == loaded
+    assert columns.first.evaluate('(el) => el.scrollTop') == top
+    if page.locator('.feed-cols').evaluate('(el) => el.scrollWidth > el.clientWidth + 8'):
+        page.locator('.deck-next').click()
+        page.wait_for_function('document.querySelector(".feed-cols").scrollLeft > 0')
+        page.wait_for_timeout(450)  # Smooth horizontal scrolling.
+    horizontal = page.locator('.feed-cols').evaluate('(el) => el.scrollLeft')
+    page.set_viewport_size({'width': 390, 'height': original['height']})
+    page.wait_for_function('document.querySelectorAll(".feed-cols .feed-col").length === 1')
+    assert columns.first.locator('.feed-post').count() >= loaded[0]
+    page.set_viewport_size(original)
+    page.wait_for_function('document.querySelectorAll(".feed-cols .feed-col").length === 3')
+    assert counts() == loaded, 'Breakpoint switch discarded desktop pagination'
+    assert columns.first.evaluate('(el) => el.scrollTop') == top
+    assert abs(page.locator('.feed-cols').evaluate('(el) => el.scrollLeft') - horizontal) <= 1
+    # Persistent deck buttons must bind the newly created deck, not its old node.
+    if horizontal > 0:
+        page.locator('.deck-prev').click()
+        page.wait_for_function('(left) => document.querySelector(".feed-cols").scrollLeft < left', arg=horizontal)
+        page.wait_for_timeout(450)
+    # Filtering starts a new window; clearing the filter restores the small batch.
+    columns.first.locator('.col-picker > summary').click()
+    search = columns.first.locator('.cf-q')
+    search.fill('CI 同名說明會')
+    page.wait_for_function('document.querySelector(".feed-col").querySelectorAll(".feed-post").length < 12')
+    search.fill('')
+    page.wait_for_function('document.querySelector(".feed-col").querySelectorAll(".feed-post").length === 12')
+    assert counts()[1:] == [12, 12]
+    page.reload(wait_until='networkidle')
+
+
 def main():
     site = Path(sys.argv[1]).resolve()
     server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(site)))
@@ -129,6 +180,7 @@ def main():
                     assert response.status == 200, (path, response.status)
                     assert page.locator('h1').first.is_visible(), path
                     if path == '/':
+                        check_column_windows(page)
                         check_feed_layout(page)
                 page.goto(origin + '/events/', wait_until='networkidle')
                 page.locator('#search').fill('CI 同名說明會')
@@ -142,6 +194,7 @@ def main():
         server.server_close()
     print('Browser smoke passed at 390/1024/1440/1920px: six pages, search, same-time venues, '
           'contained deck, independent vertical/gap wheel scrolling, sticky headers, '
+          'per-column pagination/filter windows, breakpoint restoration, '
           'keyboard navigation/filter popovers, no JS errors.')
 
 

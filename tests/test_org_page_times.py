@@ -47,7 +47,8 @@ class OrganizationTimesTests(unittest.TestCase):
         posts = [{"source_id": "test-source", "post_id": "p1",
                   "posted_at": "2026-09-21T12:00:00+08:00", "text": "正常貼文"},
                  {"source_id": "test-source", "post_id": "p2",
-                  "posted_at": "2099-01-01T12:00:00+08:00", "text": "未來日期貼文"}]
+                  "posted_at": "2099-01-01T12:00:00+08:00",
+                  "fetched_at": "2026-09-20T12:00:00+08:00", "text": "未來日期貼文"}]
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(build_site, "SITE", Path(tmp)), \
              patch.object(build_site, "now_iso", return_value="2026-09-23T00:00:00+08:00"), \
@@ -56,5 +57,27 @@ class OrganizationTimesTests(unittest.TestCase):
             page = (Path(tmp) / "org/test-org/index.html").read_text()
         self.assertIn("即將舉行（1）", page)
         self.assertIn("收錄貼文（2 則）", page)
-        self.assertIn("9/23", page)
-        self.assertLess(page.index("未來日期貼文"), page.index("正常貼文"))
+        self.assertIn("9/20", page)
+        self.assertNotIn("9/23", page)
+        self.assertLess(page.index("正常貼文"), page.index("未來日期貼文"))
+
+    def test_future_event_date_uses_stable_discovery_across_builds(self):
+        post = {"posted_at": "2099-01-01T12:00:00+08:00",
+                "first_seen_at": "2026-09-20T04:00:00Z",
+                "fetched_at": "2026-09-22T12:00:00+08:00"}
+        for now in ("2026-09-23T00:00:00+08:00", "2026-09-24T00:00:00+08:00"):
+            self.assertEqual(build_site.post_publication_time(post, now), "2026-09-20T12:00:00+08:00")
+
+    def test_publication_and_timezone_evidence_precede_discovery(self):
+        self.assertEqual(build_site.post_publication_time({
+            "published_at": "2026-09-22T15:00:00Z", "posted_at": "2099-01-01",
+            "fetched_at": "2026-09-23T00:00:00+08:00",
+        }, "2026-09-23T00:00:00+08:00"), "2026-09-22T23:00:00+08:00")
+        self.assertEqual(build_site.post_publication_time({
+            "posted_at": "2026-09-22T20:00:00-08:00",
+            "fetched_at": "2026-09-22T12:00:00+08:00",
+        }, "2026-09-23T00:00:00+08:00"), "2026-09-22T12:00:00+08:00")
+
+    def test_missing_invalid_or_future_evidence_does_not_invent_freshness(self):
+        for post in ({}, {"posted_at": "invalid"}, {"posted_at": "2099-01-01"}):
+            self.assertEqual(build_site.post_publication_time(post, "2026-09-23T00:00:00+08:00"), "")
