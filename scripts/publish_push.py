@@ -296,6 +296,13 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
             pd.finish(state, job, "exhausted", stamp)
             checkpoint(state)
             continue
+        if job["attempts"] and job["kind"] == "event" and "recipient_user_id" not in job:
+            # An older upgraded attempt may have frozen bytes but no account.
+            # Today's subscription cannot establish who that attempt targeted.
+            job["reason"] = "missing_recipient_binding"
+            pd.finish(state, job, "exhausted", stamp)
+            checkpoint(state)
+            continue
         if job["attempts"] >= pd.MAX_ATTEMPTS:
             pd.finish(state, job, "exhausted", stamp)
             checkpoint(state)
@@ -303,6 +310,11 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
         now = clock()
         if job.get("next_attempt_at", 0) > now:
             continue
+        # Upgrade unattempted event jobs with the first observed binding, even
+        # when unlinked (None). Older reminders already freeze their user_id.
+        # Persist this together with the payload and intent before transport.
+        job.setdefault("recipient_user_id", job["user_id"] if job["kind"] == "reminder"
+                       else record.get("user_id"))
         payload = frozen_payload(job, active, active_ids, today)
         job["attempts"] += 1
         job.update(attempted_at=stamp, next_attempt_at=now + pd.retry_delay(job["attempts"]))
@@ -313,7 +325,7 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
         # Atomic subscription replacement gives a complete snapshot; requests
         # already in flight may finish after a later unsubscribe.
         current = pc.load_subs()["subs"].get(key)
-        binding = job.get("recipient_user_id", record.get("user_id"))
+        binding = job["recipient_user_id"]
         if current is None or current.get("user_id") != binding:
             pd.finish(state, job, "cancelled", now_iso())
             stats["cancelled"] += 1

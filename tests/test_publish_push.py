@@ -58,6 +58,13 @@ class DeliveryTest(unittest.TestCase):
         pp.queue_events(self.subs, pp.pending_events(self.events, self.state), self.state, {}, {})
         self.save(self.state)
 
+    def queue_older_events(self):
+        self.queue()
+        for job in self.jobs():
+            job.pop("recipient_user_id")  # Earlier v2 job schema.
+        self.save(self.state)
+        self.reload()
+
     def deliver(self, sender=None, *, going=None, **changes):
         options = dict(today=TODAY, clock=lambda: self.now, checkpoint=self.save)
         options.update(changes)
@@ -608,16 +615,148 @@ class DeliveryTest(unittest.TestCase):
                          ("exhausted", "missing_frozen_payload", 1))
         self.assertNotIn("payload", held)
 
-    def test_older_unattempted_job_can_freeze_once_and_send(self):
-        self.subs = subscriptions("a")
-        self.queue()
-        self.jobs()[0].pop("recipient_user_id")  # Earlier v2 job schema.
+    def test_older_unattempted_job_freezes_binding_with_payload_and_reuses_both(self):
+        for user_id in (None, "original-user"):
+            for count in (1, 4):
+                with self.subTest(user_id=user_id, count=count):
+                    self.state = pd.migrate({})
+                    self.subs = subscriptions("a", user_id=user_id)
+                    self.events = [event(str(n)) for n in range(count)]
+                    self.queue_older_events()
+                    intents = []
+
+                    def timeout(record, payload, **kwargs):
+                        intents.append(next(iter(pd.load(self.path)["deliveries"].values())))
+                        raise TimeoutError()
+
+                    _, first = self.deliver(timeout)
+                    first.assert_called_once()
+                    original = copy.deepcopy(first.call_args.args[1])
+                    self.assertEqual(intents[0]["recipient_user_id"], user_id)
+                    self.assertEqual(intents[0]["payload"], original)
+                    self.assertEqual((intents[0]["status"], intents[0]["attempts"]), ("sending", 1))
+                    self.reload()
+                    self.now = self.jobs()[0]["next_attempt_at"]
+                    _, retry = self.deliver()
+                    retry.assert_called_once()
+                    self.assertEqual(retry.call_args.args[1], original)
+                    self.reload()
+                    self.assertEqual(self.jobs()[0]["recipient_user_id"], user_id)
+                    self.assertEqual(self.jobs()[0]["status"], "sent")
+
+    def test_older_event_retry_cannot_follow_rebound_unlinked_or_removed_device(self):
+        for count in (1, 4):
+            for change in ("rebind", "unlink", "unsubscribe", "link"):
+                with self.subTest(count=count, change=change):
+                    self.state = pd.migrate({})
+                    original_user = None if change == "link" else "original-user"
+                    self.subs = subscriptions("a", user_id=original_user)
+                    self.events = [event(str(n)) for n in range(count)]
+                    self.queue_older_events()
+                    self.deliver(lambda *a, **kw: (_ for _ in ()).throw(TimeoutError()))
+                    self.reload()
+                    original = copy.deepcopy(self.jobs()[0]["payload"])
+                    self.now = self.jobs()[0]["next_attempt_at"]
+                    # A later invocation starts with a fresh subscriptions snapshot.
+                    self.subs = subscriptions("a", user_id="different-user")
+                    if change == "unlink":
+                        self.subs["a"].pop("user_id")
+                    elif change == "unsubscribe":
+                        self.subs.clear()
+                    self.subs.update(subscriptions("new-device", user_id="different-user"))
+                    _, send = self.deliver()
+                    send.assert_not_called()
+                    self.reload()
+                    held = self.jobs()[0]
+                    self.assertEqual((held["status"], held["recipient_user_id"]),
+                                     ("cancelled", original_user))
+                    self.assertEqual(held["payload"], original)
+                    self.queue()  # Neither a new account nor device can replay this cohort.
+                    self.assertEqual(len(self.jobs()), 1)
+                    for entry in self.state["sent"].values():
+                        self.assertEqual(set(entry["devices"]), {"a"})
+                        self.assertEqual(entry["devices"]["a"]["status"], "cancelled")
+                        self.assertNotIn("sent_at", entry["devices"]["a"])
+
+    def test_older_job_binding_survives_interrupted_intent_and_journal_recovery(self):
+        for interruption in ("after_save", "snapshot_failure"):
+            for rebind in (False, True):
+                with self.subTest(interruption=interruption, rebind=rebind):
+                    self.state = pd.migrate({})
+                    self.subs = subscriptions("a", user_id="original-user")
+                    self.queue_older_events()
+                    original_write = pd._atomic_write
+
+                    def write(path, data):
+                        if interruption == "snapshot_failure" and path == self.path:
+                            raise OSError("synthetic snapshot failure after intent journal")
+                        return original_write(path, data)
+
+                    def checkpoint(state):
+                        self.save(state)
+                        raise KeyboardInterrupt()
+
+                    with mock.patch.object(pd, "_atomic_write", side_effect=write), \
+                            mock.patch.object(pc, "send_push") as send:
+                        with self.assertRaises(KeyboardInterrupt if interruption == "after_save" else OSError):
+                            pp.send_deliveries(self.subs, self.events, self.state, {}, today=TODAY,
+                                               clock=lambda: self.now, checkpoint=checkpoint)
+                    send.assert_not_called()
+                    self.reload()
+                    held = self.jobs()[0]
+                    self.assertEqual((held["recipient_user_id"], held["status"], held["attempts"]),
+                                     ("original-user", "sending", 1))
+                    original = copy.deepcopy(held["payload"])
+                    self.now = held["next_attempt_at"]
+                    self.subs = subscriptions("a", user_id="different-user" if rebind else "original-user")
+                    _, retry = self.deliver()
+                    if rebind:
+                        retry.assert_not_called()
+                        self.assertEqual(self.jobs()[0]["status"], "cancelled")
+                    else:
+                        retry.assert_called_once()
+                        self.assertEqual(retry.call_args.args[1], original)
+                    self.assertFalse(pd.journal_path(self.path).exists())
+
+    def test_older_job_failed_intent_does_not_persist_a_partial_binding_upgrade(self):
+        self.subs = subscriptions("a", user_id="original-user")
+        self.queue_older_events()
+        with mock.patch.object(pc, "send_push") as send, self.assertRaises(OSError):
+            pp.send_deliveries(self.subs, self.events, self.state, {}, today=TODAY,
+                               checkpoint=mock.Mock(side_effect=OSError("synthetic disk failure")))
+        send.assert_not_called()
+        self.reload()
+        self.assertEqual(self.jobs()[0]["attempts"], 0)
+        self.assertNotIn("payload", self.jobs()[0])
+        self.assertNotIn("recipient_user_id", self.jobs()[0])
+
+    def test_older_job_rebind_at_checkpoint_cannot_replace_first_observed_binding(self):
+        self.subs = subscriptions("a", user_id="original-user")
+        self.queue_older_events()
+
+        def checkpoint(state):
+            self.save(state)
+            self.subs = subscriptions("a", user_id="different-user")
+
+        _, send = self.deliver(checkpoint=checkpoint)
+        send.assert_not_called()
+        self.reload()
+        self.assertEqual((self.jobs()[0]["status"], self.jobs()[0]["recipient_user_id"]),
+                         ("cancelled", "original-user"))
+
+    def test_older_reminder_retry_can_recover_binding_from_frozen_user_id(self):
+        self.subs = subscriptions("a", user_id="original-user")
+        going = {"original-user": ["event-a"]}
+        pp.queue_reminders(self.subs, self.events, going, self.state, today=TODAY)
+        self.deliver(lambda *a, **kw: (_ for _ in ()).throw(TimeoutError()), going=going)
+        self.jobs()[0].pop("recipient_user_id")
         self.save(self.state)
         self.reload()
-        _, send = self.deliver()
-        send.assert_called_once()
+        self.now = self.jobs()[0]["next_attempt_at"]
+        _, retry = self.deliver(going=going)
+        retry.assert_called_once()
         self.reload()
-        self.assertEqual(self.jobs()[0]["payload"], send.call_args.args[1])
+        self.assertEqual(self.jobs()[0]["recipient_user_id"], "original-user")
 
 
 class PublisherBoundaryTest(unittest.TestCase):
@@ -702,6 +841,40 @@ class PublisherBoundaryTest(unittest.TestCase):
             self.assertEqual(self.main(), 0)
         self.send.assert_called_once()
         self.assertIn("last_success_at", pd.load(self.path))
+
+    def test_old_attempt_with_payload_but_no_binding_requires_review_preserving_success(self):
+        for count in (1, 4):
+            for status in ("retry", "sending"):
+                with self.subTest(count=count, status=status):
+                    self.events = [event(str(n)) for n in range(count)]
+                    state = pd.migrate({"last_success_at": "previous-success"})
+                    subs = subscriptions("a", "b", user_id="original-user")
+                    pp.queue_events(subs, self.events, state, {}, {})
+                    successful, uncertain = state["deliveries"].values()
+                    pd.finish(state, successful, "sent", "historical-success")
+                    before = copy.deepcopy(state["sent"])
+                    original = pp.frozen_payload(uncertain, self.events, uncertain["event_ids"], TODAY)
+                    uncertain.pop("recipient_user_id")
+                    uncertain.update(status=status, attempts=1)
+                    pd.save(state, self.path)
+                    self.send.reset_mock()
+                    with mock.patch.object(pc, "load_subs", return_value={"subs": subs}):
+                        self.assertEqual(self.main(), 1)
+                        self.assertEqual(self.main(), 1)  # Exhaustion cannot reopen a cohort.
+                    self.send.assert_not_called()
+                    persisted = pd.load(self.path)
+                    held = persisted["deliveries"][uncertain["id"]]
+                    self.assertEqual((held["status"], held["reason"], held["attempts"]),
+                                     ("exhausted", "missing_recipient_binding", 1))
+                    self.assertEqual(held["payload"], original)
+                    self.assertNotIn("recipient_user_id", held)
+                    self.assertEqual(persisted["last_success_at"], "previous-success")
+                    self.assertEqual(len(persisted["deliveries"]), 2)
+                    for eid in uncertain["event_ids"]:
+                        devices = persisted["sent"][eid]["devices"]
+                        self.assertEqual(devices["a"], before[eid]["devices"]["a"])
+                        self.assertEqual(devices["b"]["status"], "exhausted")
+                        self.assertNotIn("sent_at", devices["b"])
 
     def test_account_database_failure_does_not_advance_or_cancel_state(self):
         state = pd.migrate({})
