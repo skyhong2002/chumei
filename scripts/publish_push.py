@@ -12,13 +12,14 @@ launchd: tw.observe.chumei.push-drip（每 30 分鐘）。
 """
 
 import argparse
-import json
 import sys
+import time
+from contextlib import nullcontext
 from datetime import date, timedelta
-from pathlib import Path
 
 from chumei_lib import ROOT, now_iso
 import push_common as pc
+import push_delivery as pd
 from publish_telegram import (
     compact,
     eligible_events,
@@ -34,24 +35,18 @@ BASE_URL = "https://chumei.observe.tw"
 DIGEST_THRESHOLD = 3  # 單輪單訂閱命中超過此數 → 摘要通知
 
 
-def load_state(path=STATE_PATH):
-    if not path.exists():
-        return None
-    state = json.loads(Path(path).read_text())
-    state.setdefault("sent", {})
-    return state
+def load_state(path=None):
+    return pd.load(STATE_PATH if path is None else path)
 
 
-def save_state(state, path=STATE_PATH):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1))
-    tmp.replace(path)
+def save_state(state, path=None):
+    pd.save(state, STATE_PATH if path is None else path)
 
 
 def pending_events(events, state):
     sent = state.get("sent", {})
-    pending = [e for e in eligible_events(events) if e["id"] not in sent]
+    pending = [e for e in eligible_events(events)
+               if not any(eid in sent for eid in [e["id"], *e.get("merged_event_ids", [])])]
     return sorted(pending, key=lambda e: (e.get("first_seen") or "", e["start_at"], e["id"]))
 
 
@@ -87,15 +82,20 @@ def digest_payload(matched):
     }
 
 
-def deliveries_for(subs, pending, org_sids, follows=None):
-    """[(key, record, [payload, ...]), ...] — 每訂閱一組要發的通知。"""
-    plan = []
+def matched_events(subs, pending, org_sids, follows=None):
     follows = follows or {}
     for key, record in subs.items():
         prefs = pc.effective_prefs(record, follows)
         matched = [e for e in pending if pc.event_matches(e, prefs, org_sids)]
         if not matched:
             continue
+        yield key, record, matched
+
+
+def deliveries_for(subs, pending, org_sids, follows=None):
+    """[(key, record, [payload, ...], event_count), ...]."""
+    plan = []
+    for key, record, matched in matched_events(subs, pending, org_sids, follows):
         if len(matched) > DIGEST_THRESHOLD:
             payloads = [digest_payload(matched)]
         else:
@@ -158,26 +158,192 @@ def reminders_for(subs, events, going, state, today=None):
     return plan
 
 
-def send_reminders(subs, events, state, dry_run=False):
-    """回傳 (提醒數, 通知數)；state 會被標記（呼叫端負責存檔）。"""
-    going = pc.account_going()
-    plan = reminders_for(subs, events, going, state)
-    if dry_run:
-        for user_id, event_id, devices, payload in plan:
-            print(f"  remind {user_id[:8]}… {event_id} → {len(devices)} device(s): {payload['title']}")
-        return len(plan), sum(len(d) for _, _, d, _ in plan)
-    sent = 0
-    for user_id, event_id, devices, payload in plan:
-        for key, record in devices:
-            try:
-                pc.send_push(record, payload, ttl=6 * 3600)
-                sent += 1
-            except pc.PushGone as exc:
-                pc.prune_endpoint(str(exc))
-            except Exception as exc:
-                print(f"push: reminder failed for {key}: {exc}", file=sys.stderr)
-        state.setdefault("reminders", {})[f"{user_id}:{event_id}"] = {"sent_at": now_iso()}
-    return len(plan), sent
+def queue_events(subs, pending, state, org_sids, follows):
+    """Freeze each event's recipient cohort and each digest's membership once."""
+    for event in pending:
+        pd.group(state, "event", event["id"])
+    for key, _record, matched in matched_events(subs, pending, org_sids, follows):
+        if len(matched) > DIGEST_THRESHOLD:
+            pd.enqueue(state, "event", key, [e["id"] for e in matched], digest=True)
+        else:
+            for event in matched:
+                pd.enqueue(state, "event", key, [event["id"]])
+    for event in pending:
+        entry = state["sent"][event["id"]]
+        if not entry["devices"]:
+            entry.update(status="complete", completed_at=now_iso(), reason="no_recipients")
+
+
+def queue_reminders(subs, events, going, state, today=None):
+    plan = reminders_for(subs, events, going, state, today=today)
+    for user_id, event_id, devices, _payload in plan:
+        for key, _record in devices:
+            pd.enqueue(state, "reminder", key, [event_id], user_id=user_id)
+    return len(plan)
+
+
+def send_deliveries(subs, events, state, going, *, today=None, clock=None, checkpoint=None):
+    """Attempt each due job once; persist intent and result around every send.
+
+    A transport timeout or interrupted attempt is uncertain, never a receipt.
+    Retries use a bounded budget and backoff without sleeping in the publisher.
+    Checkpoint failures escape immediately, so no later recipient is sent.
+    """
+    today = today or date.today()
+    clock = clock or time.time
+    checkpoint = checkpoint or save_state
+    by_id = {e["id"]: e for e in events if e.get("id")}
+    for event in events:
+        for alias in event.get("merged_event_ids", []):
+            by_id.setdefault(alias, event)
+    eligible = {e["id"] for e in eligible_events(events, today.isoformat())}
+    stats = {"sent": 0, "gone": 0, "failed": 0, "cancelled": 0}
+    # A gone device remains terminal even if pruning subscriptions failed on a
+    # previous invocation. Never send later jobs from this loaded subs snapshot.
+    gone = {job["device"] for job in state["deliveries"].values() if job["status"] == "gone"}
+    for key in gone:
+        if key in subs:
+            pc.prune_endpoint(subs[key]["sub"]["endpoint"])
+    for job in state["deliveries"].values():
+        if job["status"] in pd.TERMINAL:
+            continue
+        stamp = now_iso()
+        key = job["device"]
+        record = subs.get(key)
+        if key in gone or record is None:
+            pd.finish(state, job, "gone" if key in gone else "cancelled", stamp)
+            checkpoint(state)
+            continue
+        active = []
+        for event_id in job["event_ids"]:
+            device = pd.group(state, job["kind"], event_id, job.get("user_id"))["devices"][key]
+            if device["status"] in pd.TERMINAL:
+                continue
+            event = by_id.get(event_id)
+            if event and job["kind"] == "event":
+                aliases = [event["id"], *event.get("merged_event_ids", [])]
+                prior = [state["sent"].get(alias) or {} for alias in aliases]
+                if any(entry.get("baselined_at") or entry.get("sent_at") for entry in prior):
+                    pd.receipt(state, job, event_id, "cancelled", stamp)
+                    continue
+                if any((entry.get("devices", {}).get(key) or {}).get("status") == "sent" for entry in prior):
+                    pd.receipt(state, job, event_id, "sent", stamp)
+                    continue
+            valid = bool(event and event["id"] in eligible)
+            if event and job["kind"] == "reminder":
+                aliases = {event["id"], *event.get("merged_event_ids", [])}
+                # Going reminders intentionally do not use the new-post age
+                # fence: a months-old announcement still needs its reminder.
+                valid = (event.get("status") != "rejected"
+                         and record.get("user_id") == job["user_id"]
+                         and bool(aliases.intersection(going.get(job["user_id"], [])))
+                         and event["start_at"][:10] in {
+                             today.isoformat(), (today + timedelta(days=1)).isoformat()})
+            if valid:
+                if event["id"] not in {e["id"] for e in active}:
+                    active.append(event)
+            else:
+                pd.receipt(state, job, event_id, "cancelled", stamp)
+        if not active:
+            pd.finish(state, job, "cancelled", stamp)
+            stats["cancelled"] += 1
+            checkpoint(state)
+            continue
+        if job["attempts"] >= pd.MAX_ATTEMPTS:
+            pd.finish(state, job, "exhausted", stamp)
+            checkpoint(state)
+            continue
+        now = clock()
+        if job.get("next_attempt_at", 0) > now:
+            continue
+        if job["kind"] == "reminder":
+            when = "今天" if active[0]["start_at"][:10] == today.isoformat() else "明天"
+            payload = reminder_payload(active[0], when)
+        elif job["digest"]:
+            payload = digest_payload(active)
+            # Distinct queued batches must not replace one another on-device;
+            # uncertain retries of this batch retain the same notification tag.
+            payload["tag"] = f"chumei-digest-{job['id']}"
+        else:
+            payload = event_payload(active[0])
+        job["attempts"] += 1
+        job.update(attempted_at=stamp, next_attempt_at=now + pd.retry_delay(job["attempts"]))
+        pd.finish(state, job, "sending", stamp)
+        checkpoint(state)  # No network call if durable intent cannot be saved.
+        try:
+            pc.send_push(record, payload, ttl=6 * 3600 if job["kind"] == "reminder" else 43200)
+        except pc.PushGone:
+            pd.finish(state, job, "gone", now_iso())
+            gone.add(key)
+            stats["gone"] += 1
+            checkpoint(state)  # Keep the gone receipt even if pruning fails.
+            pc.prune_endpoint(record["sub"]["endpoint"])
+        except Exception as exc:
+            job["error_type"] = type(exc).__name__
+            pd.finish(state, job, "retry", now_iso())
+            if job["attempts"] >= pd.MAX_ATTEMPTS:
+                pd.finish(state, job, "exhausted", now_iso())
+            stats["failed"] += 1
+            checkpoint(state)
+            # Provider exception strings may contain private endpoint URLs.
+            print(f"push: {job['kind']} delivery failed ({type(exc).__name__}); "
+                  f"attempt {job['attempts']}/{pd.MAX_ATTEMPTS}", file=sys.stderr)
+        else:
+            pd.finish(state, job, "sent", now_iso())
+            stats["sent"] += 1
+            checkpoint(state)
+    return stats
+
+
+def run(args):
+    if not pc.push_enabled():
+        print("push: disabled")
+        return 0
+    events = load_events()
+    state = load_state()
+    if state is None:
+        baseline = eligible_events(events)
+        if args.dry_run:
+            print(f"push dry-run: would baseline {len(baseline)} current upcoming events")
+            return 0
+        stamp = now_iso()
+        state = pd.migrate({"initialized_at": stamp,
+                            "sent": {e["id"]: {"baselined_at": stamp} for e in baseline}})
+        save_state(state)
+        print(f"push: initialized baseline ({len(baseline)} upcoming events)")
+        return 0
+
+    pending = pending_events(events, state)
+    if is_silent_hour() and not args.ignore_quiet_hours:
+        print(f"push: quiet hours, {len(pending)} new events and queued retries held for morning")
+        return 0
+
+    subs = pc.load_subs()["subs"]
+    linked = any(record.get("user_id") for record in subs.values())
+    # A DB failure is not evidence that a user withdrew their going/follows.
+    # Do not permanently cancel reminder retries or freeze wrong cohorts.
+    going = pc.account_going(strict=True) if linked else {}
+    follows = pc.account_follows(strict=True) if linked else {}
+    n_remind = queue_reminders(subs, events, going, state)
+    queue_events(subs, pending, state, pc.load_org_sids(), follows)
+    queued = [job for job in state["deliveries"].values() if job["status"] not in pd.TERMINAL]
+    if args.dry_run:
+        print(f"push dry-run: {len(pending)} new events, {len(subs)} subs, "
+              f"{len(queued)} queued deliveries, {n_remind} new reminders")
+        return 0
+
+    save_state(state)  # Recipient cohorts are durable before the first push.
+    stats = send_deliveries(subs, events, state, going)
+    unresolved = sum(job["status"] in {"retry", "sending", "exhausted"}
+                     for job in state["deliveries"].values())
+    state["last_run_at"] = now_iso()
+    if not unresolved:
+        state["last_success_at"] = now_iso()
+    save_state(state)
+    print(f"push: {len(pending)} new events → {stats['sent']} notifications, "
+          f"pruned {stats['gone']}, failed {stats['failed']}, unresolved {unresolved}; "
+          f"{n_remind} new reminders")
+    return 1 if unresolved else 0
 
 
 def main():
@@ -187,71 +353,14 @@ def main():
     args = parser.parse_args()
 
     try:
-        if not pc.push_enabled():
-            print("push: disabled")
-            return 0
-        events = load_events()
-        state = load_state()
-        if state is None:
-            baseline = eligible_events(events)
-            if args.dry_run:
-                print(f"push dry-run: would baseline {len(baseline)} current upcoming events")
+        with nullcontext(True) if args.dry_run else pd.publisher_lock(STATE_PATH) as acquired:
+            if not acquired:
+                print("push: another publisher is running")
                 return 0
-            state = {"version": 1, "initialized_at": now_iso(),
-                     "sent": {e["id"]: {"baselined_at": now_iso()} for e in baseline}}
-            save_state(state)
-            print(f"push: initialized baseline ({len(baseline)} upcoming events)")
-            return 0
-
-        pending = pending_events(events, state)
-        if is_silent_hour() and not args.ignore_quiet_hours:
-            print(f"push: quiet hours, {len(pending)} pending held for morning")
-            return 0
-
-        subs = pc.load_subs()["subs"]
-        n_remind, n_remind_sent = send_reminders(subs, events, state, dry_run=args.dry_run)
-        if n_remind and not args.dry_run:
-            save_state(state)
-        if not pending:
-            print(f"push: OK (no pending events; {n_remind} reminders → {n_remind_sent} notifications)")
-            return 0
-
-        org_sids = pc.load_org_sids()
-        plan = deliveries_for(subs, pending, org_sids, pc.account_follows())
-        if args.dry_run:
-            print(f"push dry-run: {len(pending)} pending events, {len(subs)} subs, {len(plan)} deliveries, "
-                  f"{n_remind} reminders")
-            for key, _record, payloads, n_matched in plan:
-                kinds = "digest" if payloads and payloads[0].get("tag") == "chumei-digest" else "individual"
-                print(f"  {key}: {n_matched} matched → {len(payloads)} notification(s) ({kinds})")
-            return 0
-
-        sent_n, gone_n, fail_n = 0, 0, 0
-        for key, record, payloads, _n in plan:
-            for payload in payloads:
-                try:
-                    pc.send_push(record, payload)
-                    sent_n += 1
-                except pc.PushGone as exc:
-                    pc.prune_endpoint(str(exc))
-                    gone_n += 1
-                    break
-                except Exception as exc:
-                    print(f"push: send failed for {key}: {exc}", file=sys.stderr)
-                    fail_n += 1
-                    break
-
-        stamp = now_iso()
-        for event in pending:
-            state["sent"][event["id"]] = {"sent_at": stamp}
-        state["last_success_at"] = stamp
-        save_state(state)
-        print(f"push: OK ({len(pending)} events → {sent_n} notifications, "
-              f"{len(subs)} subs, pruned {gone_n}, failed {fail_n}; "
-              f"{n_remind} reminders → {n_remind_sent})")
-        return 0
-    except (OSError, KeyError, json.JSONDecodeError) as exc:
-        print(f"push: FAILED: {exc}", file=sys.stderr)
+            return run(args)
+    except (OSError, KeyError, ValueError) as exc:
+        # Avoid leaking malformed state, subscription credentials or endpoints.
+        print(f"push: FAILED ({type(exc).__name__})", file=sys.stderr)
         return 1
 
 

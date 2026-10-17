@@ -61,3 +61,6 @@ Caddy 以 `deploy/chumei.caddy` 為本站範本：靜態 root 指向 `published/
 | 發布、備份、監控 | 建站失敗保留舊版；快照完整性、隔離還原、來源健康判定 | Caddy 啟用、排程存活、備份新鮮度及異地復原 |
 
 專題參考：[共同活動分類](event-categories.md)、[瀏覽資料量](browser-performance.md)、[外連安全](outbound-security.md)。
+
+Web Push 的裝置收據、摘要／提醒重試、舊狀態遷移及中斷恢復限制見
+[推播發送收據與重試](push-delivery.md)。
