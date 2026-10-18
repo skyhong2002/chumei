@@ -362,6 +362,24 @@ class TransportTest(unittest.TestCase):
         self.assertTrue(response.closed)
         self.assertClosed()
 
+    def test_response_close_failure_still_closes_pool_without_replaying_post(self):
+        close_error = failed()
+
+        class CloseFailure(FakeResponse):
+            def close(self):
+                self.closed = True
+                raise close_error
+
+        response = CloseFailure()
+        self.actions = [response]
+        with self.assertRaises(NewConnectionError) as caught:
+            self.send()
+        self.assertIs(caught.exception, close_error)
+        self.assertTrue(response.closed)
+        self.assertEqual(len(self.pools), 1)
+        self.assertEqual(len(self.requests), 1)
+        self.assertClosed()
+
     def test_http_status_is_returned_without_retry(self):
         for code in (201, 400, 404, 410, 429, 500, 503):
             with self.subTest(status=code):

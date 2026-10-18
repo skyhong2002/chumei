@@ -187,9 +187,11 @@ def request(url, *, method="GET", headers=None, data=None, max_bytes=8_000_000,
                 result.encoding = requests.utils.get_encoding_from_headers(result.headers)
                 return result
             finally:
-                if response is not None:
-                    response.close()
-                pool.close()
+                try:
+                    if response is not None:
+                        response.close()
+                finally:
+                    pool.close()
     raise UnsafeURL("too many redirects")
 
 
