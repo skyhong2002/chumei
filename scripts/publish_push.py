@@ -13,6 +13,7 @@ launchd: tw.observe.chumei.push-drip（每 30 分鐘）。
 
 import argparse
 import copy
+import errno
 import sys
 import time
 from contextlib import nullcontext
@@ -34,6 +35,67 @@ from publish_telegram import (
 STATE_PATH = ROOT / "state" / "push" / "publish.json"
 BASE_URL = "https://chumei.observe.tw"
 DIGEST_THRESHOLD = 3  # 單輪單訂閱命中超過此數 → 摘要通知
+
+
+def failure_diagnostic(error):
+    """Fixed classes and known socket errno only; never inspect exception text.
+
+    Inspect at most four explicit cause links, with a cycle guard. These facts
+    describe this failure only and cannot establish a provider or route cause.
+    """
+    try:
+        from socket import gaierror, herror
+        from ssl import SSLError as SocketSSLError
+        from urllib3.exceptions import (
+            ConnectTimeoutError, NameResolutionError, NewConnectionError, SSLError,
+        )
+        # NewConnectionError itself inherits ConnectTimeoutError in urllib3.
+        classifiers = (((NameResolutionError, gaierror, herror), "dns_resolution"),
+                       ((NewConnectionError,), "new_connection"),
+                       ((ConnectTimeoutError,), "connect_timeout"),
+                       ((SSLError, SocketSSLError), "tls"))
+        chain, seen = [], set()
+        current = error
+        for depth in range(5):  # Original plus at most four followed cause links.
+            if not isinstance(current, BaseException) or id(current) in seen:
+                raise ValueError("incomplete diagnostic chain")
+            seen.add(id(current))
+            chain.append(current)
+            # Built-in descriptors avoid custom exception properties/args/repr.
+            following = BaseException.__cause__.__get__(current)
+            if following is None:
+                break
+            if depth == 4:
+                raise ValueError("diagnostic chain exceeds bound")
+            current = following
+        # First known exception from the outside; precedence within each node.
+        known_index, category = next(((index, label) for index, item in enumerate(chain)
+                                      for classes, label in classifiers if isinstance(item, classes)),
+                                     (None, "other"))
+        allowed_errno = {getattr(errno, name) for name in (
+            "ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "ETIMEDOUT",
+            "EADDRNOTAVAIL", "EACCES", "EPERM", "ECONNRESET", "EAFNOSUPPORT",
+        ) if hasattr(errno, name)}
+        socket_errno = None
+        excluded = (NameResolutionError, gaierror, herror, SSLError, SocketSSLError)
+        if (category in {"new_connection", "connect_timeout"}
+                and not any(isinstance(item, excluded) for item in chain)):
+            # urllib3's connect exceptions explicitly chain their socket error.
+            # Do not borrow errno from an unrelated outer/opaque wrapper.
+            cause = chain[known_index + 1] if known_index + 1 < len(chain) else None
+            if isinstance(cause, OSError):
+                value = OSError.errno.__get__(cause)
+                if type(value) is int and value in allowed_errno:
+                    socket_errno = value
+        return {"failure_cause": category, "socket_errno": socket_errno}
+    except Exception:
+        # Diagnostics never replace the original failure/retry/checkpoint path.
+        return {"failure_cause": "other", "socket_errno": None}
+
+
+def clear_failure_diagnostic(job):
+    job.pop("failure_cause", None)
+    job.pop("socket_errno", None)
 
 
 def load_state(path=None):
@@ -246,6 +308,7 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
         key = job["device"]
         record = subs.get(key)
         if key in gone or record is None:
+            clear_failure_diagnostic(job)
             pd.finish(state, job, "gone" if key in gone else "cancelled", stamp)
             checkpoint(state)
             continue
@@ -285,6 +348,7 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
             else:
                 pd.receipt(state, job, event_id, "cancelled", stamp)
         if not active:
+            clear_failure_diagnostic(job)
             pd.finish(state, job, "cancelled", stamp)
             stats["cancelled"] += 1
             checkpoint(state)
@@ -316,6 +380,9 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
         job.setdefault("recipient_user_id", job["user_id"] if job["kind"] == "reminder"
                        else record.get("user_id"))
         payload = frozen_payload(job, active, active_ids, today)
+        # A new attempt must not retain diagnostics from a previous failure.
+        # Keep existing error_type behavior for compatibility with older state.
+        clear_failure_diagnostic(job)
         job["attempts"] += 1
         job.update(attempted_at=stamp, next_attempt_at=now + pd.retry_delay(job["attempts"]))
         pd.finish(state, job, "sending", stamp)
@@ -342,6 +409,7 @@ def send_deliveries(subs, events, state, going, *, today=None, clock=None, check
             pc.prune_endpoint(record["sub"]["endpoint"])
         except Exception as exc:
             job["error_type"] = type(exc).__name__
+            job.update(failure_diagnostic(exc))
             pd.finish(state, job, "retry", now_iso())
             if job["attempts"] >= pd.MAX_ATTEMPTS:
                 pd.finish(state, job, "exhausted", now_iso())
