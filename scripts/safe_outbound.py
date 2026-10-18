@@ -6,9 +6,11 @@ library follow redirects or resolve the hostname again.
 """
 from __future__ import annotations
 
+import errno
 import ipaddress
 import re
 import socket
+import ssl
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
@@ -60,7 +62,7 @@ _dns_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="public-dns
 _dns_slots = threading.BoundedSemaphore(4)
 
 
-def resolve_public(host, port, timeout=5):
+def _resolve_public_addresses(host, port, timeout=5):
     deadline = time.monotonic() + timeout
     if timeout <= 0 or not _dns_slots.acquire(timeout=timeout):
         raise TimeoutError("DNS lookup deadline exceeded")
@@ -73,60 +75,121 @@ def resolve_public(host, port, timeout=5):
     addresses = {item[4][0] for item in answers}
     if not addresses or any(not _public_ip(ipaddress.ip_address(ip)) for ip in addresses):
         raise UnsafeURL("DNS returned a non-public address")
-    return sorted(addresses)[0]
+    return sorted(addresses)
+
+
+def resolve_public(host, port, timeout=5):
+    return _resolve_public_addresses(host, port, timeout=timeout)[0]
+
+
+def _push_connect_addresses(addresses):
+    """Use the original first address, then favor family diversity; at most three."""
+    unique = []
+    seen = set()
+    for address in addresses:
+        parsed = ipaddress.ip_address(address)
+        if parsed not in seen:
+            seen.add(parsed)
+            unique.append((address, parsed.version))
+    first = unique[0]
+    other = next((item for item in unique[1:] if item[1] != first[1]), None)
+    ordered = [first] + ([other] if other is not None else [])
+    ordered.extend(item for item in unique[1:] if item != other)
+    return [address for address, _ in ordered[:3]]
+
+
+def _can_retry_push_connect(error):
+    """Only an unwrapped, known failure before TCP/TLS/HTTP can change IPs.
+
+    urllib3's _new_conn raises NewConnectionError directly from an OSError.
+    Its timeout/DNS branches and any ambiguous wrapper are deliberately excluded.
+    Read built-in descriptors rather than exception text or spoofable __class__.
+    """
+    try:
+        if (not issubclass(type(error), urllib3.exceptions.NewConnectionError)
+                or issubclass(type(error), (urllib3.exceptions.NameResolutionError,
+                                           urllib3.exceptions.SSLError,
+                                           urllib3.exceptions.ProtocolError))):
+            return False
+        cause = BaseException.__cause__.__get__(error)
+        if (not issubclass(type(cause), OSError)
+                or issubclass(type(cause), (socket.gaierror, socket.herror,
+                                           TimeoutError, ssl.SSLError))
+                or BaseException.__cause__.__get__(cause) is not None):
+            return False
+        number = OSError.errno.__get__(cause)
+        return type(number) is int and number in {
+            errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ECONNREFUSED,
+            errno.EADDRNOTAVAIL, errno.EAFNOSUPPORT,
+        }
+    except Exception:
+        return False
 
 
 def request(url, *, method="GET", headers=None, data=None, max_bytes=8_000_000,
-            timeout=25, max_redirects=5):
+            timeout=25, max_redirects=5, _push_connect_fallback=False):
     deadline = time.monotonic() + timeout
     headers = {k: str(v) for k, v in (headers or {}).items()
                if k.lower() not in {"host", "accept-encoding", "connection"}}
     headers["Accept-Encoding"] = "identity"
     for hop in range(max_redirects + 1):
         parts, host, port = parse_public_url(url)
-        ip = resolve_public(host, port, timeout=min(5, max(0, deadline - time.monotonic())))
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("outbound request deadline exceeded")
-        pool_cls = urllib3.HTTPSConnectionPool if parts.scheme == "https" else urllib3.HTTPConnectionPool
-        tls = {"assert_hostname": host, "server_hostname": host, "cert_reqs": "CERT_REQUIRED"} if parts.scheme == "https" else {}
-        pool = pool_cls(ip, port=port, **tls)
-        response = None
-        try:
-            response = pool.urlopen(method, (parts.path or "/") + ("?" + parts.query if parts.query else ""),
-                                    body=data, headers={**headers, "Host": f"[{host}]" if ":" in host else host},
-                                    timeout=urllib3.Timeout(total=remaining, connect=min(5, remaining), read=min(5, remaining)),
-                                    redirect=False, retries=False, preload_content=False)
-            if response.status in {301, 302, 303, 307, 308}:
-                if method != "GET" or hop == max_redirects or not response.headers.get("Location"):
-                    raise UnsafeURL("redirect not allowed")
-                url = urljoin(url, response.headers["Location"])
-                continue
-            if response.headers.get("Content-Encoding", "identity").lower() not in {"", "identity"}:
-                raise UnsafeURL("compressed response not allowed")
-            if int(response.headers.get("Content-Length", "0")) > max_bytes:
-                raise UnsafeURL("response too large")
-            content = bytearray()
-            while True:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("outbound request deadline exceeded")
-                chunk = response.read1(min(65536, max_bytes + 1 - len(content)), decode_content=False)
-                if not chunk:
+        dns_timeout = min(5, max(0, deadline - time.monotonic()))
+        # A stream/iterable may raise a connection-shaped error after transmission.
+        # Only immutable bytes (or no body) can use the pre-connect fallback.
+        if (_push_connect_fallback and method == "POST" and parts.scheme == "https"
+                and max_redirects == 0 and (data is None or type(data) is bytes)):
+            addresses = _push_connect_addresses(_resolve_public_addresses(host, port, timeout=dns_timeout))
+        else:
+            addresses = [resolve_public(host, port, timeout=dns_timeout)]
+        for candidate, ip in enumerate(addresses):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("outbound request deadline exceeded")
+            pool_cls = urllib3.HTTPSConnectionPool if parts.scheme == "https" else urllib3.HTTPConnectionPool
+            tls = {"assert_hostname": host, "server_hostname": host, "cert_reqs": "CERT_REQUIRED"} if parts.scheme == "https" else {}
+            pool = pool_cls(ip, port=port, **tls)
+            response = None
+            try:
+                try:
+                    response = pool.urlopen(method, (parts.path or "/") + ("?" + parts.query if parts.query else ""),
+                                            body=data, headers={**headers, "Host": f"[{host}]" if ":" in host else host},
+                                            timeout=urllib3.Timeout(total=remaining, connect=min(5, remaining), read=min(5, remaining)),
+                                            redirect=False, retries=False, preload_content=False)
+                except Exception as exc:
+                    if candidate + 1 < len(addresses) and _can_retry_push_connect(exc):
+                        continue
+                    raise
+                if response.status in {301, 302, 303, 307, 308}:
+                    if method != "GET" or hop == max_redirects or not response.headers.get("Location"):
+                        raise UnsafeURL("redirect not allowed")
+                    url = urljoin(url, response.headers["Location"])
                     break
-                content.extend(chunk)
-                if len(content) > max_bytes:
+                if response.headers.get("Content-Encoding", "identity").lower() not in {"", "identity"}:
+                    raise UnsafeURL("compressed response not allowed")
+                if int(response.headers.get("Content-Length", "0")) > max_bytes:
                     raise UnsafeURL("response too large")
-            result = requests.Response()
-            result.status_code = response.status
-            result.headers.update(response.headers)
-            result._content = bytes(content)
-            result.url = url
-            result.encoding = requests.utils.get_encoding_from_headers(result.headers)
-            return result
-        finally:
-            if response is not None:
-                response.close()
-            pool.close()
+                content = bytearray()
+                while True:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("outbound request deadline exceeded")
+                    chunk = response.read1(min(65536, max_bytes + 1 - len(content)), decode_content=False)
+                    if not chunk:
+                        break
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise UnsafeURL("response too large")
+                result = requests.Response()
+                result.status_code = response.status
+                result.headers.update(response.headers)
+                result._content = bytes(content)
+                result.url = url
+                result.encoding = requests.utils.get_encoding_from_headers(result.headers)
+                return result
+            finally:
+                if response is not None:
+                    response.close()
+                pool.close()
     raise UnsafeURL("too many redirects")
 
 
@@ -150,7 +213,7 @@ class PushSession:
     def post(self, url, *, data=None, headers=None, timeout=None, **kwargs):
         validate_push_endpoint(url)
         return request(url, method="POST", data=data, headers=headers, timeout=15,
-                       max_bytes=64_000, max_redirects=0)
+                       max_bytes=64_000, max_redirects=0, _push_connect_fallback=True)
 
 
 def secure_browser_context(browser, **kwargs):
