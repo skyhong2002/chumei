@@ -110,6 +110,19 @@ class DiagnosticTest(Fixture):
         mixed = chained(SSLError(PRIVATE), self.connection_failure())
         self.assertFacts(mixed, "tls")
 
+    def test_successful_class_property_spoof_is_never_read(self):
+        reads = []
+
+        class Impersonator(Exception):
+            @property
+            def __class__(self):
+                reads.append("class property read")
+                return NewConnectionError
+
+        error = chained(Impersonator(PRIVATE), OSError(errno.ENETUNREACH, PRIVATE))
+        self.assertFacts(error, "other")
+        self.assertEqual(reads, [])
+
     def test_dns_and_tls_errno_domains_cannot_collide_with_posix(self):
         # Positive synthetic EAI/h_errno deliberately collides with EPERM=1.
         for cause in (socket.gaierror(errno.EPERM, PRIVATE),

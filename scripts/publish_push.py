@@ -57,7 +57,7 @@ def failure_diagnostic(error):
         chain, seen = [], set()
         current = error
         for depth in range(5):  # Original plus at most four followed cause links.
-            if not isinstance(current, BaseException) or id(current) in seen:
+            if not issubclass(type(current), BaseException) or id(current) in seen:
                 raise ValueError("incomplete diagnostic chain")
             seen.add(id(current))
             chain.append(current)
@@ -70,7 +70,7 @@ def failure_diagnostic(error):
             current = following
         # First known exception from the outside; precedence within each node.
         known_index, category = next(((index, label) for index, item in enumerate(chain)
-                                      for classes, label in classifiers if isinstance(item, classes)),
+                                      for classes, label in classifiers if issubclass(type(item), classes)),
                                      (None, "other"))
         allowed_errno = {getattr(errno, name) for name in (
             "ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "ETIMEDOUT",
@@ -79,11 +79,11 @@ def failure_diagnostic(error):
         socket_errno = None
         excluded = (NameResolutionError, gaierror, herror, SSLError, SocketSSLError)
         if (category in {"new_connection", "connect_timeout"}
-                and not any(isinstance(item, excluded) for item in chain)):
+                and not any(issubclass(type(item), excluded) for item in chain)):
             # urllib3's connect exceptions explicitly chain their socket error.
             # Do not borrow errno from an unrelated outer/opaque wrapper.
             cause = chain[known_index + 1] if known_index + 1 < len(chain) else None
-            if isinstance(cause, OSError):
+            if issubclass(type(cause), OSError):
                 value = OSError.errno.__get__(cause)
                 if type(value) is int and value in allowed_errno:
                     socket_errno = value
