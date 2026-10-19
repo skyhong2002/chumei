@@ -1,8 +1,9 @@
 """Bounded public, logged-out Threads fallback; no env/config/state imports.
 
-RSSHub stays first. One account shares a 30 second budget, at most seven
-requests (RSSHub, three profile GETs, two metadata scripts, one timeline POST),
-and 4 MiB per response. Only ephemeral public-profile cookies are retained,
+RSSHub stays first. One account shares a 30 second scheduling deadline, at
+most seven requests (RSSHub, three profile GETs, two metadata scripts, one
+timeline POST), and 4 MiB per response. Socket timeouts are at most 10 seconds;
+an in-flight read may cross the scheduling deadline before it returns. Only ephemeral public-profile cookies are retained,
 for one account. No paid provider, authenticated API, retry or pagination.
 """
 from __future__ import annotations
