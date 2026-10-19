@@ -31,8 +31,12 @@ class ParsingTests(unittest.TestCase):
         body = json.dumps(["searchResult", {"data": {"status": "error", "code": 430}}])
         with self.assertRaises(AccountUnavailable):
             InstaStoriesViewer()._parse(body)
-        with self.assertRaises(ViewerUnavailable):
-            InstaStoriesViewer()._parse('["searchResult"]')
+        for body in ('["searchResult"]', '["searchResult", {"data": null}]',
+                     json.dumps(["searchResult", {"data": {"status": "error", "code": 429}}]),
+                     json.dumps(["searchResult", {"data": {"status": "success", "user": {"reels": [
+                         {"id": "1", "taken_at": "soon", "display_url": "x"}]}}}])):
+            with self.assertRaises(ViewerUnavailable, msg=body):
+                InstaStoriesViewer()._parse(body)
 
     def test_inflact_key_is_rebuilt_from_the_masked_bundle_arrays(self):
         def mask(text):
@@ -83,6 +87,15 @@ class PoolTests(unittest.TestCase):
         self.assertEqual(pool.available(), [])
         self.now = MIDNIGHT + 86400
         self.assertEqual(pool.available(), [viewer])
+
+    def test_a_lookup_rechecks_allowance_another_collector_may_have_used(self):
+        viewer = _Fake([[]])
+        viewer.daily_limit = 1
+        first, second = self.pool(viewer), self.pool(viewer)
+        self.assertEqual(second.available(), [viewer])
+        first.lookup(viewer, "club")
+        with self.assertRaises(ViewerUnavailable):
+            second.lookup(viewer, "club")
 
     def test_refusal_parks_the_viewer_for_hours(self):
         viewer = _Fake([ViewerUnavailable("HTTP 429")])

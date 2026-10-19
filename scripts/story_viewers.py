@@ -129,25 +129,23 @@ class InstaStoriesViewer(Viewer):
 
     def _parse(self, body: str) -> list[dict]:
         try:
-            event, payload = json.loads(body)[:2]
-            data = payload["data"]
-        except (TypeError, ValueError, KeyError) as exc:
-            raise ViewerUnavailable(f"{self.name}: unreadable result ({exc})") from exc
-        if data.get("status") != "success":
-            # 430 is what the site answers for missing and private accounts.
-            raise AccountUnavailable(f"{self.name}: code {data.get('code')}")
-        stories = []
-        for reel in (data.get("user") or {}).get("reels") or []:
-            image = reel.get("display_url") or reel.get("thumbnail_src")
-            if not reel.get("id") or not image or not reel.get("taken_at"):
-                continue
-            stories.append({
-                "id": str(reel["id"]),
-                "taken_at": float(reel["taken_at"]),
-                "image_url": self.image_base + quote(str(image), safe=""),
-                "is_video": str(reel.get("is_video")).lower() == "true",
-            })
-        return stories
+            data = json.loads(body)[1]["data"]
+            if data.get("status") == "success":
+                return [{
+                    "id": str(reel["id"]),
+                    "taken_at": float(reel["taken_at"]),
+                    "image_url": self.image_base + quote(str(reel.get("display_url") or reel["thumbnail_src"]), safe=""),
+                    "is_video": str(reel.get("is_video")).lower() == "true",
+                } for reel in (data.get("user") or {}).get("reels") or []
+                    if reel.get("id") and reel.get("taken_at")
+                    and (reel.get("display_url") or reel.get("thumbnail_src"))]
+            code = data.get("code")
+        except (TypeError, ValueError, KeyError, IndexError, AttributeError) as exc:
+            raise ViewerUnavailable(f"{self.name}: unreadable result ({exc!r})") from exc
+        # 430 is what the site answers for missing and private accounts.
+        if code == 430:
+            raise AccountUnavailable(f"{self.name}: code 430")
+        raise ViewerUnavailable(f"{self.name}: code {code}")
 
 
 class Inflact(Viewer):
@@ -211,21 +209,17 @@ class Inflact(Viewer):
         )
         try:
             payload = response.json()
-        except ValueError as exc:
-            raise ViewerUnavailable(f"{self.name}: HTTP {response.status_code}, not JSON") from exc
-        if response.status_code != 200 or payload.get("status") != "success":
-            raise ViewerUnavailable(f"{self.name}: {payload.get('message') or response.status_code}")
-        stories = []
-        for story in (payload.get("data") or {}).get("stories") or []:
-            if not story.get("id") or not story.get("displayUrl") or not story.get("takenAt"):
-                continue
-            stories.append({
+            if response.status_code != 200 or payload.get("status") != "success":
+                raise ViewerUnavailable(f"{self.name}: {payload.get('message') or response.status_code}")
+            return [{
                 "id": str(story["id"]),
                 "taken_at": float(story["takenAt"]),
-                "image_url": story["displayUrl"],
+                "image_url": str(story["displayUrl"]),
                 "is_video": bool(story.get("videoUrl")),
-            })
-        return stories
+            } for story in (payload.get("data") or {}).get("stories") or []
+                if story.get("id") and story.get("takenAt") and story.get("displayUrl")]
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            raise ViewerUnavailable(f"{self.name}: HTTP {response.status_code}, unreadable ({exc!r})") from exc
 
 
 VIEWERS = (InstaStoriesViewer, Inflact)
@@ -245,17 +239,21 @@ class ViewerPool:
             row.update(day=today, lookups=0)
         return row
 
+    def _usable(self, row: dict, viewer: Viewer) -> bool:
+        return (float(row.get("parkedUntil") or 0) <= self.clock()
+                and row["lookups"] < viewer.daily_limit)
+
     def available(self) -> list[Viewer]:
-        now = self.clock()
         with _state(self.path) as state:
-            return [viewer for viewer in self.viewers
-                    if float(self._row(state, viewer).get("parkedUntil") or 0) <= now
-                    and self._row(state, viewer)["lookups"] < viewer.daily_limit]
+            return [viewer for viewer in self.viewers if self._usable(self._row(state, viewer), viewer)]
 
     def lookup(self, viewer: Viewer, username: str) -> list[dict]:
         """Run one lookup; parks the viewer on refusal and re-raises."""
         with _state(self.path) as state:
             row = self._row(state, viewer)
+            # Another collector may have used the last lookup or parked it meanwhile.
+            if not self._usable(row, viewer):
+                raise ViewerUnavailable(f"{viewer.name}: no allowance left")
             start = max(self.clock(), float(row.get("lastRequestAt") or 0) + MIN_GAP_SECONDS)
             row["lastRequestAt"] = start
             row["lookups"] += 1

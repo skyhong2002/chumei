@@ -121,11 +121,15 @@ def select_active_due(usernames: list[str], intervals: dict[str, float], state: 
     return due[:limit]
 
 
-def remember_story_times(schedule: dict, username: str, stories: list[dict]) -> None:
+def remember_story_times(schedule: dict, username: str, stories: list[dict],
+                         intervals: dict | None = None) -> None:
+    """Record Story times, and retune the account's interval to the new history."""
     account = schedule["accounts"].setdefault(username, {})
     seen = set(account.get("story_seen") or [])
     seen.update(story["taken_at"] for story in stories)
     account["story_seen"] = sorted(seen)[-STORY_HISTORY_LIMIT:]
+    if intervals is not None:
+        intervals[username] = story_interval_hours(account["story_seen"], [])
 
 
 def attempted_targets(selected: list[str], outcome: dict) -> list[str]:
@@ -239,10 +243,11 @@ def save_media(story: dict) -> str | None:
         return None
 
 
-def add_stories(state: dict, schedule: dict, username: str, row: dict, stories: list[dict]) -> int:
+def add_stories(state: dict, schedule: dict, username: str, row: dict, stories: list[dict],
+                intervals: dict) -> int:
     """Save new Stories of one account; returns how many were added."""
     if stories:
-        remember_story_times(schedule, username, stories)
+        remember_story_times(schedule, username, stories, intervals)
     added = 0
     for story in stories:
         if story["id"] in state:
@@ -287,7 +292,7 @@ def viewer_pass(usernames: list[str], *, pool: ViewerPool, state: dict, schedule
                 continue
             record_api_call("Story viewer", operation=viewer.name, source_count=1,
                             request_count=1, ok=True)
-            added += add_stories(state, schedule, username, metadata[username], stories)
+            added += add_stories(state, schedule, username, metadata[username], stories, intervals)
             mark_success(schedule, username, interval_hours=intervals[username], jitter_hours=1)
             record_fetch(f"story:{username}", backend="Story viewer", ok=True, items=len(stories))
             break
@@ -376,7 +381,7 @@ def main() -> int:
             if username in metadata and (story := apify_story(item)):
                 found[username].append(story)
         for username, stories in found.items():
-            added += add_stories(state, schedule, username, metadata[username], stories)
+            added += add_stories(state, schedule, username, metadata[username], stories, intervals)
 
         scanned_now = attempted_targets(selected, outcome)
         failed = set(outcome.get("failed_targets") or [])

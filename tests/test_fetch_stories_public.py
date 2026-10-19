@@ -1,4 +1,5 @@
 import sys
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -99,10 +100,10 @@ class ViewerPassTests(unittest.TestCase):
         self.state, self.schedule = {}, {"accounts": {}}
         metadata = {name: {"name": name.title()} for name in usernames}
         return viewer_pass(usernames, pool=pool, state=self.state, schedule=self.schedule,
-                           metadata=metadata, intervals={name: 12 for name in usernames})
+                           metadata=metadata, intervals={name: 168 for name in usernames})
 
     def test_next_viewer_is_tried_when_the_first_cannot_see_the_account(self):
-        story = {"id": "1", "taken_at": NOW - HOUR, "image_url": "https://x/1.jpg", "is_video": True}
+        story = {"id": "1", "taken_at": time.time() - HOUR, "image_url": "https://x/1.jpg", "is_video": True}
         first = _Viewer("first", {"club": AccountUnavailable("code 430")})
         second = _Viewer("second", {"club": [story]})
         uncovered, added = self.run_pass(_Pool(first, second), ["club"])
@@ -111,7 +112,8 @@ class ViewerPassTests(unittest.TestCase):
         self.assertTrue(saved["is_video"])
         self.assertEqual(saved["ig_url"], "https://www.instagram.com/stories/club/1/")
         self.assertEqual(self.schedule["accounts"]["club"]["story_seen"], [saved["taken_at"]])
-        self.assertIn("next_eligible", self.schedule["accounts"]["club"])
+        # A first Story retunes the account from the slow probe to 12 hours.
+        self.assertEqual(self.schedule["accounts"]["club"]["interval_hours"], 12)
 
     def test_accounts_no_viewer_covers_are_left_for_apify(self):
         parked = _Viewer("only", {"a": [], "b": ViewerUnavailable("HTTP 429")})
