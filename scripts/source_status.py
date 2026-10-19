@@ -29,7 +29,7 @@ SNAPSHOT_MAX_AGE_HOURS = 9.0  # Three missed publication cycles.
 
 CURRENT_LEDGER_BACKENDS = {
     "Instagram public": {"Instagram public", "Instagram public web", "Apify Instagram"},
-    "Apify Stories": {"Apify Stories"},
+    "Instagram Stories": {"Apify Stories", "Story viewer"},
 }
 
 
@@ -74,7 +74,7 @@ def source_registry(*, facebook_interval_hours: float = 168.0) -> list[dict]:
         })
         sources.append({
             **common, "id": f"story:{username}", "sourceId": f"ig_{username}",
-            "kind": "instagram_story", "backend": "Apify Stories",
+            "kind": "instagram_story", "backend": "Instagram Stories",
             "kindLabel": "限時動態",
             "targetIntervalHours": 168.0,
         })

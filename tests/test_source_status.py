@@ -22,7 +22,7 @@ class SourceStatusTests(unittest.TestCase):
 
     def test_retry_in_future_does_not_make_stale_success_healthy(self):
         row = {"id": "story:test", "sourceId": "ig_test", "username": "test",
-               "kind": "instagram_story", "backend": "Apify Stories", "targetIntervalHours": 24}
+               "kind": "instagram_story", "backend": "Instagram Stories", "targetIntervalHours": 24}
         with patch.object(source_status, "source_registry", return_value=[row]), \
              patch.object(source_status, "load_ledger", return_value={"story:test": {"lastSuccess": 100}}), \
              patch.object(source_status, "_inbox_last_success", return_value={"ig_test": 199999}), \
@@ -111,7 +111,7 @@ class SourceStatusTests(unittest.TestCase):
         self.assertIn("story:nthu_official", registry)
         self.assertEqual(registry["instagram:nthu_official"]["targetIntervalHours"], 168)
         self.assertEqual(registry["instagram:nthu_official"]["backend"], "Instagram public")
-        self.assertEqual(registry["story:nthu_official"]["backend"], "Apify Stories")
+        self.assertEqual(registry["story:nthu_official"]["backend"], "Instagram Stories")
         self.assertTrue(any(item["backend"] == "Apify" for item in registry.values()))
         self.assertTrue(any(item["backend"] == "RSSHub" for item in registry.values()))
         self.assertTrue(any(item["backend"] == "NYCU Open Data" for item in registry.values()))

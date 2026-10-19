@@ -120,11 +120,11 @@ def run_pipeline():
         elif fb_script.exists():
             print(f"facebook: skipped; this round's Apify share is US${fb_budget:.3f}")
 
-        # 限時動態改走不使用本站 IG 帳號的 Actor；每輪掃活躍度最高的
-        # 到期帳號，社群每貢獻一個可用帳號就增加三個處理槽位。
-        if (ROOT / "scripts" / "fetch_stories_apify.py").exists():
+        # 限時動態不使用本站 IG 帳號：先查免費限動檢視網站，查不到的到期帳號
+        # 再交給 Apify Actor；社群每貢獻一個可用帳號就增加三個處理槽位。
+        if (ROOT / "scripts" / "fetch_stories_public.py").exists():
             results["stories"] = run_step(
-                "stories", ["fetch_stories_apify.py", "--max-accounts", str(ig_batch)]
+                "stories", ["fetch_stories_public.py", "--max-accounts", str(ig_batch)]
             )
 
     results["extract"] = run_step("extract", ["extract_events.py"])

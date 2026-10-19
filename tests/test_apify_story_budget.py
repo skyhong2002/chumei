@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import apify_pool
-from fetch_stories_apify import attempted_targets, auto_max_runs
+from fetch_stories_public import attempted_targets, auto_max_runs
 
 
 DAY = 20713 * 86400 + 43200.0  # noon UTC, so +2h stays on the same day
