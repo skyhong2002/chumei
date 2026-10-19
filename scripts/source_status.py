@@ -279,7 +279,7 @@ def api_usage_summary(now: float | None = None) -> dict:
     now = float(now or time.time())
     rows = _usage_rows()
     out = {}
-    for service in ("Instagram public web", "Apify Instagram", "RSSHub", "Instaloader", "Apify"):
+    for service in ("Instagram public web", "Apify Instagram", "RSSHub", "Threads public logged-out", "Instaloader", "Apify"):
         selected = [r for r in rows if r.get("service") == service]
         out[service] = {
             "requests24h": sum(int(r.get("requestCount", 0)) for r in selected if r.get("ts", 0) >= now - 86400),
