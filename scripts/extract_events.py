@@ -11,17 +11,21 @@ import base64
 import hashlib
 import json
 import sys
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path
 
 from event_categories import normalize_event_category
 from chumei_lib import iter_inbox, load_env, now_iso, ROOT, TZ_TAIPEI
 from llm_gateway import chat_json, extraction_model, load_schema
+from extraction_retry import (GLOBAL_FAILURES, RequestDeferred, admit_gateway_request,
+                              attempt_count, error_record, gateway_blocked, pending_record,
+                              record_gateway_failure, retry_due)
+from pipeline_state import LockBusy, atomic_json, file_lock, merge_json, read_json
 
 PROMPT_VERSION = 3
 EXTRACT_DIR = ROOT / "state" / "extraction"
 SCHEMA = ROOT / "scripts" / "extract_schema.json"
+GATEWAY_STATE = ROOT / "state" / "extraction_gateway.json"
 
 SYSTEM_PROMPT = """你是「竹梅」（清大＋交大校園活動聚合站）的資料抽取引擎。輸入是一則校園社群貼文或公告（含海報圖片），你要判斷它是否在宣傳「有明確時間的實體或線上活動」，並抽出結構化欄位。
 
@@ -170,16 +174,12 @@ def check_start_at(ev, item):
 
 def _load_cache(source_id):
     path = EXTRACT_DIR / f"{source_id}.json"
-    return json.loads(path.read_text()) if path.exists() else {}
+    return read_json(path, {})
 
 
-def _save_cache(source_id, cache, lock):
-    with lock:
-        EXTRACT_DIR.mkdir(parents=True, exist_ok=True)
-        path = EXTRACT_DIR / f"{source_id}.json"
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(cache, ensure_ascii=False, indent=0))
-        tmp.replace(path)
+def _save_cache(source_id, updates):
+    # Pass only changed post IDs, never a stale snapshot of the whole source.
+    return merge_json(EXTRACT_DIR / f"{source_id}.json", updates)
 
 
 def fetch_image_b64(url, max_bytes=8_000_000):
@@ -216,28 +216,24 @@ def user_prompt(item, retry_note=None):
     )
 
 
-def call_llm(env, item, retry_note=None):
+def call_llm(env, item, retry_note=None, *, before_request=None):
     """回傳 (JSON 字串, 實際作答的模型)。"""
     images = [b64 for b64 in map(fetch_image_b64, (item.get("images") or [])[:2]) if b64]
-    return chat_json(env, extraction_model(env), SYSTEM_PROMPT, user_prompt(item, retry_note),
-                     images=images, schema=load_schema(SCHEMA), schema_name="extraction")
+    schema, prompt = load_schema(SCHEMA), user_prompt(item, retry_note)
+    # Preparation can be slow: another process may have opened the circuit.
+    (before_request or (lambda: admit_gateway_request(GATEWAY_STATE)))()
+    return chat_json(env, extraction_model(env), SYSTEM_PROMPT, prompt,
+                     images=images, schema=schema, schema_name="extraction", attempts=1)
 
 
-def process_item(env, item, lock, caches):
+def _extract_item(env, item, *, before_request=None):
     source_id, post_id = item["source_id"], item["post_id"]
-    raw = None
     alias = extraction_model(env)
-    try:
-        raw, model = call_llm(env, item)
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        try:
-            raw, model = call_llm(env, item, retry_note="請輸出合法 JSON")
-            parsed = json.loads(raw)
-        except Exception as e:
-            return source_id, post_id, {"error": f"{e} raw={str(raw)[:200]}", "prompt_version": PROMPT_VERSION, "ts": now_iso()}
-    except Exception as e:
-        return source_id, post_id, {"error": str(e)[:300], "prompt_version": PROMPT_VERSION, "ts": now_iso()}
+    raw, model = call_llm(env, item, before_request=before_request)
+    parsed = json.loads(raw)
+    if (not isinstance(parsed, dict) or not isinstance(parsed.get("events"), list)
+            or not isinstance(parsed.get("recurrings", []), list)):
+        raise ValueError("invalid extraction shape")
 
     events = []
     for i, ev in enumerate(parsed.get("events") or []):
@@ -305,55 +301,151 @@ def process_item(env, item, lock, caches):
     }
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--limit", type=int, default=0, help="這一輪最多處理幾筆（0=全部）")
-    ap.add_argument("--source", help="只處理這個 source_id")
-    ap.add_argument("--workers", type=int, default=2)
-    ap.add_argument("--retry-errors", action="store_true", help="重跑之前出錯的項目")
-    args = ap.parse_args()
+def _reserve_attempt(item, *, retry_errors=False):
+    """Reload and charge under the cache lock, before entering the provider."""
+    path = EXTRACT_DIR / f"{item['source_id']}.json"
+    pid = item["post_id"]
+    with file_lock(path.with_suffix(path.suffix + ".lock")):
+        cache = read_json(path, {})
+        previous = cache.get(pid) or {}
+        if not retry_due(previous, PROMPT_VERSION, retry_errors=retry_errors):
+            raise RequestDeferred("item cooldown or exhausted budget")
+        reserved = pending_record(previous, PROMPT_VERSION)
+        reserved["first_seen"] = (previous.get("first_seen") or item.get("first_seen")
+                                  or item.get("fetched_at") or previous.get("ts") or reserved["ts"])
+        cache[pid] = reserved
+        # A failed write refuses admission; no request can spend an unsaved slot.
+        atomic_json(path, cache)
+        return reserved
 
+
+def process_item(env, item, lock=None, caches=None, *, reserve=None):
+    """One provider attempt; every failure becomes a bounded, safe cache record."""
+    sid, pid = item["source_id"], item["post_id"]
+    previous = (caches or {}).get(sid, {}).get(pid) or {}
+    reserved = False
+
+    def before_request():
+        nonlocal previous, reserved
+        charged = admit_gateway_request(GATEWAY_STATE, reserve)
+        if reserve is not None:
+            previous, reserved = charged, True
+
+    try:
+        _, _, result = _extract_item(env, item, before_request=before_request)
+        result["attempts"] = attempt_count(previous) + (0 if reserved else 1)
+    except RequestDeferred:
+        raise
+    except Exception as exc:
+        if reserve is not None and not reserved:
+            raise  # Preparation/reservation failed before any provider admission.
+        result = {**error_record(exc, previous, reserved=reserved), "prompt_version": PROMPT_VERSION}
+        # Publish independently of the result-cache save (which can fail/crash).
+        record_gateway_failure(GATEWAY_STATE, result)
+        # A failed prompt upgrade must not remove existing historical activities.
+        for field in ("events", "recurrings"):
+            if field in previous:
+                result[field] = previous[field]
+    first_seen = (previous.get("first_seen") or item.get("first_seen")
+                  or item.get("fetched_at") or previous.get("ts") or result["ts"])
+    result["first_seen"] = first_seen
+    for event in result.get("events", []):
+        event.setdefault("first_seen", first_seen)
+        event.setdefault("fetched_at", item.get("fetched_at"))
+        event.setdefault("published_at", item.get("published_at") if "published_at" in item else item.get("posted_at"))
+        event.setdefault("publication_time_basis", item.get("publication_time_basis") or "source")
+    return sid, pid, result
+
+
+def extract(args):
+    """Caller holds the process lock, preventing duplicate attempts across jobs."""
+    if gateway_blocked(read_json(GATEWAY_STATE, {})):
+        print("extraction deferred: gateway cooldown")
+        return 0
     env = load_env()
     if not env.get("CHUMEI_LLM_API_KEY"):
         print("missing CHUMEI_LLM_API_KEY", file=sys.stderr)
         return 1
 
-    caches, todo = {}, []
+    caches, todo, queued = {}, [], set()
     for item in iter_inbox():
         if item["raw_source"] == "nycu-life-api":
             continue
         if args.source and item["source_id"] != args.source:
             continue
-        sid = item["source_id"]
+        sid, pid = item["source_id"], item["post_id"]
+        if (sid, pid) in queued:
+            continue
+        queued.add((sid, pid))
         if sid not in caches:
             caches[sid] = _load_cache(sid)
-        hit = caches[sid].get(item["post_id"])
-        if hit and hit.get("prompt_version") == PROMPT_VERSION:
-            if "error" not in hit or not args.retry_errors:
-                continue
-        todo.append(item)
+        if retry_due(caches[sid].get(pid), PROMPT_VERSION, retry_errors=args.retry_errors):
+            todo.append(item)
     if args.limit:
-        todo = todo[: args.limit]
+        todo = todo[:args.limit]
     print(f"{len(todo)} items to extract")
 
-    lock = threading.Lock()
-    n_events = n_err = 0
+    n_events = n_err = completed = 0
+    stopped = False
+    items = iter(todo)
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = [pool.submit(process_item, env, it, lock, caches) for it in todo]
-        for i, fut in enumerate(as_completed(futures)):
-            sid, pid, result = fut.result()
-            caches[sid][pid] = result
-            _save_cache(sid, caches[sid], lock)
-            if "error" in result:
-                n_err += 1
-                print(f"  [{i+1}/{len(todo)}] {sid}/{pid}: ERROR {result['error'][:100]}", file=sys.stderr)
-            else:
-                k = len(result["events"])
-                n_events += k
-                if k:
-                    print(f"  [{i+1}/{len(todo)}] {sid}/{pid}: {k} event(s) — {result['events'][0]['title']}")
-    print(f"done: {n_events} events extracted, {n_err} errors")
+        pending = set()
+
+        def fill():
+            nonlocal stopped
+            while not stopped and len(pending) < args.workers:
+                if gateway_blocked(read_json(GATEWAY_STATE, {})):
+                    stopped = True
+                    break
+                item = next(items, None)
+                if item is None:
+                    break
+                pending.add(pool.submit(process_item, env, item, None, caches,
+                                        reserve=lambda item=item: _reserve_attempt(
+                                            item, retry_errors=args.retry_errors)))
+
+        fill()
+        while pending:
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                try:
+                    sid, pid, result = future.result()
+                except RequestDeferred:
+                    continue
+                caches[sid][pid] = result
+                _save_cache(sid, {pid: result})
+                completed += 1
+                if "error" in result:
+                    n_err += 1
+                    print(f"  [{completed}/{len(todo)}] {sid}/{pid}: ERROR {result['error_kind']}", file=sys.stderr)
+                    if result["error_kind"] in GLOBAL_FAILURES:
+                        stopped = True
+                else:
+                    k = len(result["events"])
+                    n_events += k
+                    if k:
+                        print(f"  [{completed}/{len(todo)}] {sid}/{pid}: {k} event(s)")
+            fill()
+    print(f"done: {n_events} events extracted, {n_err} errors"
+          + ("; remaining items deferred by gateway cooldown" if stopped else ""))
     return 0
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--limit", type=int, default=0, help="這一輪最多處理幾筆（0=全部）")
+    ap.add_argument("--source", help="只處理這個 source_id")
+    ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--retry-errors", action="store_true", help="也重試永久／未知錯誤；仍遵守冷卻與次數上限")
+    args = ap.parse_args()
+    if args.workers < 1 or args.limit < 0:
+        ap.error("workers must be positive and limit nonnegative")
+    try:
+        with file_lock(EXTRACT_DIR / "extraction.lock", blocking=False):
+            return extract(args)
+    except LockBusy:
+        print("extraction deferred: another process is extracting")
+        return 0
 
 
 if __name__ == "__main__":

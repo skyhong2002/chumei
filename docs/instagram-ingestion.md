@@ -44,34 +44,71 @@ been dormant.
 
 ## Stories
 
-`fetch_stories_apify.py` replaces the account-bound Instaloader job. The
-actor (`intropix/instagram-stories-scraper`) grants every free-plan Apify
-account 40 result items per day, at most 10 items and 10 scanned profiles per
-run, and always admits an account's first run of the day even when the shared
-free pool is busy. Each pipeline invocation rotates through the token pool:
-every run takes a batch of up to ten due profiles on the account with the most
-allowance left today (`apify_pool.choose_story_token`), and the number of runs
-per invocation spreads the pool's remaining daily allowance over the eight
-three-hour pipeline slots so live Stories are caught before they expire.
-Per-account allowance lives in `state/apify_pool.json` (`accounts.<label>.story`)
-and resets at UTC midnight; a `user_daily_exhausted` denial parks the account
-until then, a `free_capacity_exhausted` denial for one hour. Profiles the
-actor reports as not attempted stay due instead of being marked scanned.
-Accounts are ranked by their historical posting cadence; active accounts are
-checked first. Story media is downloaded immediately because CDN URLs expire.
+`fetch_stories_public.py` replaces the account-bound Instaloader job. No
+backend uses a Chumei-owned Instagram account, and none sends Story lookups to
+Instagram from this host. Due accounts go through these backends in order:
 
-Runs are not free: each charges the account's monthly credit (US$0.005 per
-run start, US$0.002 per scanned profile, US$0.0025 per delivered item, about
-US$0.03–0.05 per run), paid from the Story share of the pool (see below).
+1. Free web Story viewers (`story_viewers.py`). These sites look Stories up on
+   their own servers for anonymous visitors.
+   - `insta-stories-viewer.com`: one Socket.IO search over HTTP
+     long-polling. `GET /connect/` returns a token. The `search` event returns
+     `user.reels[]`, whose opaque `display_url` is served through
+     `cdn.iqsaved.com/img2.php?url=`. It answers code 430 for missing or
+     private accounts. Capped at 150 lookups per day.
+   - `inflact.com` Story viewer: a JSON API signed with HMAC-SHA256. The key
+     is rebuilt from XOR-masked arrays in the page bundle on every run. The
+     site advertises three free views a day, and that is the cap Chumei keeps.
+
+   Neither site publishes an API or a quota. Lookups are spaced 10 s apart,
+   at most 25 per pipeline run. A viewer that throttles (HTTP errors, a
+   changed protocol, or three "unavailable" accounts in a row) is parked for
+   six hours. That state lives in `state/story_viewers.json`.
+2. The Apify Story actor, for due accounts no viewer covered.
+
+Measured 2026-10-19: both viewers returned the same Story ids as the actor
+for club accounts. Sites behind Cloudflare Turnstile or reCAPTCHA (StoriesIG,
+AnonyIG, FastDL, SSSInstagram, iGram, Mollygram, StorySaver, Toolzu,
+Picuki.tv, Dumpor) are not automated. Several also forbid scraping in their
+terms. Paid APIs with Story endpoints (HikerAPI, RapidAPI's RockSolid and IG
+Data, RocketAPI, TikHub) were evaluated but are not used.
+
+Few organizations post Stories: in October 2026, 28 of 326 accounts had one
+at their last check. Accounts are therefore scheduled from their own Story
+history (`story_seen` in the schedule), not their post cadence.
+- An account seen with a Story is revisited at a quarter of the time since
+  its latest one, on 12/24/48/72/168-hour tiers. A Story posted within the
+  last two days means a 12-hour revisit, which catches each Story before it
+  expires.
+- Accounts never seen with a Story are probed every 72 hours if they post
+  often, otherwise weekly.
+
+The actor (`intropix/instagram-stories-scraper`) grants every free-plan Apify
+account 40 result items per day, at most 10 items and 10 scanned profiles per
+run. It always admits an account's first run of the day, even when the shared
+free pool is busy. Each pipeline invocation rotates through the token pool:
+every run takes a batch of up to ten remaining due profiles on the account
+with the most allowance left today (`apify_pool.choose_story_token`). The
+number of runs per invocation spreads the pool's remaining daily allowance
+over the eight three-hour pipeline slots.
+
+Per-account allowance lives in `state/apify_pool.json`
+(`accounts.<label>.story`) and resets at UTC midnight. A
+`user_daily_exhausted` denial parks the account until then; a
+`free_capacity_exhausted` denial parks it for one hour. Profiles the actor
+reports as not attempted stay due instead of being marked scanned.
+
+Story media is downloaded immediately because CDN URLs expire. Viewers
+provide a still image for video Stories too.
+
+Actor runs are not free. Each charges the account's monthly credit: US$0.005
+per run start, US$0.002 per scanned profile and US$0.0025 per delivered item,
+about US$0.03–0.05 per run. This is paid from the Story share of the pool (see
+below).
 
 The old `fetch_stories.py` and the authenticated backends in
-`fetch_instagram.py` remain only as diagnostic/migration code. They are not
-called by `run_pipeline.py`.
-
-Anonymous Story viewer websites are not automated: the sites checked during
-evaluation either prohibit bulk/scraping access or expose no supported API.
-The Apify Story actor is used only for public organization/creator accounts;
-private or personal accounts are outside this collector's scope.
+`fetch_instagram.py` remain only as diagnostic and migration code.
+`run_pipeline.py` does not call them. Only public organization and creator
+accounts are collected; private or personal accounts are out of scope.
 
 ## Sharing Apify credit
 

@@ -461,6 +461,19 @@ class FeedPrerenderTests(unittest.TestCase):
         self.assertIn('<h2>交大</h2>', out)
         self.assertIn('class="deck-add"', out)
 
+    def test_desktop_pagination_offers_remainder_below_mobile_batch(self):
+        posts = [self.post(str(i), "nthu") for i in range(16)]
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "index.html"
+            index.write_text('<div id="post-feed"><!-- ssr-feed --><!-- /ssr-feed --></div>')
+            with mock.patch.object(build_site, "SITE", index.parent):
+                build_site.prerender_feed(posts)
+            deck, pager = index.read_text().split('class="feed-cols ssr-pager"')
+        self.assertEqual(deck.count('class="feed-post"'), 12)
+        self.assertIn('class="fchip feed-more"', deck)
+        self.assertEqual(pager.count('class="feed-post"'), 16)
+        self.assertNotIn('class="fchip feed-more"', pager)
+
 
 class DedupeDeterminismTests(unittest.TestCase):
     def test_title_core_strips_the_same_prefix_every_run(self):

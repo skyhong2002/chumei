@@ -18,6 +18,7 @@ from chumei_lib import SeenState, append_inbox, load_env, now_iso, read_sources_
 from fetch_instagram import rsshub_error, strip_html
 from ig_schedule import load_schedule, mark_failure, mark_success, save_schedule, select_due
 from source_status import record_api_call, record_fetch
+from threads_public import fetch_threads_source
 
 RAW_SOURCE = "rsshub-social"
 ERROR_LOG = ROOT / "state" / "seen" / "social_errors.jsonl"
@@ -107,21 +108,29 @@ def main():
         platform, username = row["platform"], row["username"].strip().lstrip("@")
         source_id = f"{platform}_{username}"
         schedule_key = f"{platform}:{username}"
+        backend = "RSSHub"
         try:
             url = base + ROUTES[platform].format(u=username)
-            resp = requests.get(url, params={"limit": args.limit}, timeout=90)
-            error = rsshub_error(resp)
-            if error:
-                raise error
-            resp.raise_for_status()
-            if b"<rss" not in resp.content[:200]:
-                raise RuntimeError(f"non-RSS response ({resp.status_code})")
-            posts = list(parse_feed(resp.text, platform))[: args.limit]
-            import html as _html
-            m_av = re.search(r"<image><url>([^<]+)</url>", resp.text)
-            if m_av:
+            if platform == "threads":
+                posts, avatar, backend = fetch_threads_source(
+                    {"username": username}, rsshub_url=url + "?limit=" + str(args.limit),
+                    limit=args.limit, parse_rss=parse_feed,
+                    record_request=lambda service, **metrics: record_api_call(service, operation=platform, **metrics))
+            else:
+                resp = requests.get(url, params={"limit": args.limit}, timeout=90)
+                error = rsshub_error(resp)
+                if error:
+                    raise error
+                resp.raise_for_status()
+                if b"<rss" not in resp.content[:200]:
+                    raise RuntimeError(f"non-RSS response ({resp.status_code})")
+                posts = list(parse_feed(resp.text, platform))[: args.limit]
+                import html as _html
+                m_av = re.search(r"<image><url>([^<]+)</url>", resp.text)
+                avatar = _html.unescape(m_av.group(1)) if m_av else ""
+            if avatar:
                 from chumei_lib import save_avatar
-                save_avatar(f"{platform}_{username}", _html.unescape(m_av.group(1)))
+                save_avatar(f"{platform}_{username}", avatar)
             fresh = []
             for p in posts:
                 if seen.has(source_id, p["post_id"]):
@@ -140,14 +149,16 @@ def main():
             n = append_inbox(RAW_SOURCE, fresh)
             seen.save()
             total_new += n
-            record_api_call("RSSHub", operation=platform, ok=True)
-            record_fetch(f"{platform}:{username}", backend="RSSHub", ok=True, items=len(posts))
+            if platform != "threads":
+                record_api_call("RSSHub", operation=platform, ok=True)
+            record_fetch(f"{platform}:{username}", backend=backend, ok=True, items=len(posts))
             mark_success(schedule, schedule_key, interval_hours=args.account_interval_hours, jitter_hours=3)
             save_schedule(SCHEDULE_STATE, schedule)
             print(f"[{i+1}/{len(rows)}] {platform}/@{username}: +{n}")
         except Exception as e:
             failed += 1
-            record_api_call("RSSHub", operation=platform, ok=False)
+            if platform != "threads":
+                record_api_call("RSSHub", operation=platform, ok=False)
             record_fetch(f"{platform}:{username}", backend="RSSHub", ok=False, error=e)
             log_error(platform, username, e)
             mark_failure(schedule, schedule_key)

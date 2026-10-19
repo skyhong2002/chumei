@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """Fetch public organization Stories without using a Chumei-owned IG account.
 
-The actor grants every free-plan Apify account 40 result items per day, at
-most 10 items and 10 scanned profiles per run. Each pipeline invocation
-therefore rotates through the token pool: every run takes a fresh batch of due
-profiles on the account with the most allowance left today, spread across the
-day so live Stories are caught before they expire. Runs still charge the
-account's monthly credit, so Stories only spend their equal share of the
-pool's evenly paced daily credit (see ``apify_pool.apify_allocation``).
+Due accounts are first looked up on free web Story viewers (see
+``story_viewers``), which cost nothing but have unpublished limits. Accounts
+the viewers could not cover go to the Apify Story actor. The actor grants
+every free-plan Apify account 40 result items per day, at most 10 items and 10
+scanned profiles per run, so each invocation rotates through the token pool:
+every run takes a fresh batch on the account with the most allowance left
+today. Runs still charge the account's monthly credit, so Stories only spend
+their equal share of the pool's evenly paced daily credit (see
+``apify_pool.apify_allocation``).
+
+Few organizations post Stories, so accounts are scheduled by their own Story
+history: one that posted recently is checked every 12 hours, which catches
+every Story before it expires, and the interval stretches as it goes quiet.
+Accounts never seen with a Story are checked every three days to a week.
 """
 
 from __future__ import annotations
@@ -36,12 +43,16 @@ from fetch_stories import (MEDIA_DIR, STORIES_STATE, refresh_story_output)
 from ig_schedule import (adaptive_interval_hours, load_schedule, mark_failure,
                          mark_success, save_schedule)
 from source_status import record_api_call, record_fetch
+from story_viewers import AccountUnavailable, ViewerPool, ViewerUnavailable
 
 
 ACTOR_ID = "intropix/instagram-stories-scraper"
 SCHEDULE_STATE = ROOT / "state" / "instagram_apify_stories_schedule.json"
 PIPELINE_RUNS_PER_DAY = 8  # launchd pipeline cadence is every 3 hours
 TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"}
+STORY_HISTORY_LIMIT = 20
+STORY_INTERVAL_TIERS = (12, 24, 48, 72, 168)
+VIEWER_LOOKUPS_PER_RUN = 25
 
 
 def historical_post_times() -> dict[str, list[str]]:
@@ -61,12 +72,32 @@ def historical_post_times() -> dict[str, list[str]]:
     return values
 
 
-def ranked_usernames(usernames: list[str], history: dict[str, list[str]], *, now=None):
+def _epoch(value: str) -> float | None:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def story_interval_hours(story_times: list[str], post_times: list[str], *, now=None) -> float:
+    """Revisit Story posters before their Stories expire; probe the rest slowly."""
     now = time.time() if now is None else float(now)
+    latest = max(filter(None, map(_epoch, story_times)), default=None)
+    if latest is None:
+        return adaptive_interval_hours(post_times[-12:], now=now, minimum=72, maximum=168)
+    # Stories come in bursts, so their cadence says little; how long the
+    # account has been quiet decides, as for dormant post publishers.
+    target = max(0.0, now - latest) / 3600 / 4
+    return float(min(STORY_INTERVAL_TIERS, key=lambda tier: (abs(tier - target), tier)))
+
+
+def ranked_usernames(usernames: list[str], post_history: dict[str, list[str]], schedule: dict,
+                     *, now=None):
+    now = time.time() if now is None else float(now)
+    accounts = schedule.get("accounts") or {}
     intervals = {
-        username: adaptive_interval_hours(
-            history.get(username, [])[-12:], now=now, minimum=12, maximum=168
-        )
+        username: story_interval_hours((accounts.get(username) or {}).get("story_seen") or [],
+                                       post_history.get(username, []), now=now)
         for username in usernames
     }
     return sorted(usernames, key=lambda username: (intervals[username], username)), intervals
@@ -74,7 +105,7 @@ def ranked_usernames(usernames: list[str], history: dict[str, list[str]], *, now
 
 def select_active_due(usernames: list[str], intervals: dict[str, float], state: dict,
                       limit: int, *, now=None, force=False) -> list[str]:
-    """Prefer frequently publishing accounts instead of fair-but-slow seeding."""
+    """Prefer frequent Story posters instead of fair-but-slow seeding."""
     now = time.time() if now is None else float(now)
     accounts = state.get("accounts") or {}
     due = [
@@ -88,6 +119,17 @@ def select_active_due(usernames: list[str], intervals: dict[str, float], state: 
         username,
     ))
     return due[:limit]
+
+
+def remember_story_times(schedule: dict, username: str, stories: list[dict],
+                         intervals: dict | None = None) -> None:
+    """Record Story times, and retune the account's interval to the new history."""
+    account = schedule["accounts"].setdefault(username, {})
+    seen = set(account.get("story_seen") or [])
+    seen.update(story["taken_at"] for story in stories)
+    account["story_seen"] = sorted(seen)[-STORY_HISTORY_LIMIT:]
+    if intervals is not None:
+        intervals[username] = story_interval_hours(account["story_seen"], [])
 
 
 def attempted_targets(selected: list[str], outcome: dict) -> list[str]:
@@ -144,6 +186,29 @@ def run_actor(token: str, usernames: list[str], max_results: int):
     return run, items if isinstance(items, list) else [], outcome
 
 
+def apify_story(item: dict) -> dict | None:
+    """Normalize an actor item to the shape ``add_stories`` takes."""
+    story_id = str(item.get("story_pk") or "").strip()
+    media_url = str(item.get("media_url") or "").strip()
+    if not story_id or not media_url:
+        return None
+    is_video = item.get("media_type") == "video"
+    return {
+        "id": story_id,
+        "taken_at": str(item.get("taken_at") or datetime.now(timezone.utc).isoformat()),
+        "media_url": media_url, "media_is_video": is_video, "is_video": is_video,
+    }
+
+
+def viewer_story(story: dict) -> dict:
+    return {
+        "id": story["id"],
+        "taken_at": datetime.fromtimestamp(story["taken_at"], timezone.utc).isoformat(timespec="seconds"),
+        # Viewers hand out a still image for video Stories too.
+        "media_url": story["image_url"], "media_is_video": False, "is_video": story["is_video"],
+    }
+
+
 def _video_frame(content: bytes, destination: Path) -> bool:
     with tempfile.TemporaryDirectory(prefix="chumei-story-") as directory:
         source = Path(directory) / "story.mp4"
@@ -156,30 +221,84 @@ def _video_frame(content: bytes, destination: Path) -> bool:
         return result.returncode == 0 and destination.exists()
 
 
-def save_media(item: dict) -> str | None:
-    story_id = str(item.get("story_pk") or "").strip()
-    media_url = str(item.get("media_url") or "").strip()
-    if not story_id or not media_url:
-        return None
+def save_media(story: dict) -> str | None:
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    destination = MEDIA_DIR / f"{story_id}.jpg"
+    destination = MEDIA_DIR / f"{story['id']}.jpg"
     if destination.exists():
-        return f"/assets/stories/{story_id}.jpg"
+        return f"/assets/stories/{story['id']}.jpg"
     try:
-        response = requests.get(media_url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+        response = requests.get(story["media_url"], timeout=30, headers={"User-Agent": "Mozilla/5.0"})
         response.raise_for_status()
-        if item.get("media_type") == "video":
+        if story["media_is_video"]:
             if not _video_frame(response.content, destination):
                 return None
         else:
             image = Image.open(io.BytesIO(response.content)).convert("RGB")
             image.thumbnail((720, 1280))
             image.save(destination, "JPEG", quality=82)
-        return f"/assets/stories/{story_id}.jpg"
+        return f"/assets/stories/{story['id']}.jpg"
     except Exception as exc:
-        print(f"story media {story_id}: {str(exc)[:100]}", file=sys.stderr)
+        print(f"story media {story['id']}: {str(exc)[:100]}", file=sys.stderr)
         destination.unlink(missing_ok=True)
         return None
+
+
+def add_stories(state: dict, schedule: dict, username: str, row: dict, stories: list[dict],
+                intervals: dict) -> int:
+    """Save new Stories of one account; returns how many were added."""
+    if stories:
+        remember_story_times(schedule, username, stories, intervals)
+    added = 0
+    for story in stories:
+        if story["id"] in state:
+            continue
+        media = save_media(story)
+        if not media:
+            continue
+        state[story["id"]] = {
+            "username": username,
+            "avatar": (f"/assets/avatars/ig_{username}.jpg"
+                       if (AVATAR_DIR / f"ig_{username}.jpg").exists() else None),
+            "name": row.get("name") or username,
+            "school": row.get("school") or "other",
+            "taken_at": story["taken_at"],
+            "is_video": story["is_video"],
+            "media": media,
+            "ig_url": f"https://www.instagram.com/stories/{username}/{story['id']}/",
+        }
+        added += 1
+    return added
+
+
+def viewer_pass(usernames: list[str], *, pool: ViewerPool, state: dict, schedule: dict,
+                metadata: dict, intervals: dict) -> tuple[list[str], int]:
+    """Look accounts up on the free viewers; returns (uncovered accounts, added)."""
+    uncovered, added = [], 0
+    for index, username in enumerate(usernames):
+        viewers = pool.available()
+        if not viewers:
+            print("stories (viewers): none available; leaving the rest to Apify")
+            return uncovered + usernames[index:], added
+        for viewer in viewers:
+            try:
+                stories = [viewer_story(story) for story in pool.lookup(viewer, username)]
+            except AccountUnavailable as exc:
+                print(f"stories (viewers): {username}: {exc}")
+                continue
+            except ViewerUnavailable as exc:
+                print(f"stories (viewers): parked {viewer.name}: {exc}")
+                record_api_call("Story viewer", operation=viewer.name, source_count=1,
+                                request_count=1, ok=False)
+                continue
+            record_api_call("Story viewer", operation=viewer.name, source_count=1,
+                            request_count=1, ok=True)
+            added += add_stories(state, schedule, username, metadata[username], stories, intervals)
+            mark_success(schedule, username, interval_hours=intervals[username], jitter_hours=1)
+            record_fetch(f"story:{username}", backend="Story viewer", ok=True, items=len(stories))
+            break
+        else:
+            uncovered.append(username)
+    return uncovered, added
 
 
 def main() -> int:
@@ -190,14 +309,16 @@ def main() -> int:
     parser.add_argument("--max-results", type=int, default=STORY_RUN_RESULT_LIMIT)
     parser.add_argument("--max-runs", type=int, default=0,
                         help="actor runs this invocation (0 = spread today's pool allowance over the day)")
+    parser.add_argument("--max-viewer-lookups", type=int, default=VIEWER_LOOKUPS_PER_RUN,
+                        help="free viewer lookups this invocation (0 = Apify only)")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    if args.max_accounts < 1 or not 1 <= args.max_results <= STORY_RUN_RESULT_LIMIT or args.max_runs < 0:
+    if (args.max_accounts < 1 or not 1 <= args.max_results <= STORY_RUN_RESULT_LIMIT
+            or args.max_runs < 0 or args.max_viewer_lookups < 0):
         parser.error(f"--max-accounts must be positive, --max-results 1..{STORY_RUN_RESULT_LIMIT}, "
-                     "--max-runs non-negative")
+                     "--max-runs and --max-viewer-lookups non-negative")
     batch = min(args.max_accounts, STORY_RUN_TARGET_LIMIT)
 
-    quota = pool_status(refresh=True)
     rows = [
         row for row in read_sources_csv("ig_accounts.csv")
         if row.get("active", "true").lower() not in {"false", "link"}
@@ -207,22 +328,27 @@ def main() -> int:
         wanted = {value.strip().lstrip("@") for value in args.accounts.split(",") if value.strip()}
         rows = [row for row in rows if row["username"].strip().lstrip("@") in wanted]
     metadata = {row["username"].strip().lstrip("@"): row for row in rows}
-    ranked, intervals = ranked_usernames(list(metadata), historical_post_times())
     schedule = load_schedule(SCHEDULE_STATE)
-    max_runs = 1 if args.accounts else (args.max_runs or auto_max_runs(quota))
-
+    ranked, intervals = ranked_usernames(list(metadata), historical_post_times(), schedule)
+    due = ranked if args.accounts else select_active_due(ranked, intervals, schedule, len(ranked),
+                                                         force=args.force)
     state = json.loads(STORIES_STATE.read_text()) if STORIES_STATE.exists() else {}
-    attempted: set[str] = set()
+
+    remaining, added = viewer_pass(due[:args.max_viewer_lookups], pool=ViewerPool(), state=state,
+                                   schedule=schedule, metadata=metadata, intervals=intervals)
+    remaining += due[args.max_viewer_lookups:]
+    viewer_covered = len(due) - len(remaining)
+    save_schedule(SCHEDULE_STATE, schedule)
+
+    quota = pool_status(refresh=True)
+    max_runs = 1 if args.accounts else (args.max_runs or auto_max_runs(quota))
     exhausted_labels: set[str] = set()
-    added = scanned = runs_done = 0
+    scanned = runs_done = 0
     total_cost = 0.0
     stop_reason = ""
+    exit_code = 0
     while runs_done < max_runs:
-        if args.accounts:
-            selected = ranked[:batch]
-        else:
-            due = [username for username in ranked if username not in attempted]
-            selected = select_active_due(due, intervals, schedule, batch, force=args.force)
+        selected = remaining[:batch]
         if not selected:
             stop_reason = "no more accounts due"
             break
@@ -237,10 +363,10 @@ def main() -> int:
             for username in selected:
                 mark_failure(schedule, username, base_hours=6, cap_hours=48)
                 record_fetch(f"story:{username}", backend="Apify Stories", ok=False, error=exc)
-            save_schedule(SCHEDULE_STATE, schedule)
             record_run(label, consumer="story", cost_usd=None, source_count=len(selected), ok=False)
             print(f"stories (Apify): ERROR {exc}", file=sys.stderr)
-            return 1
+            exit_code = 1
+            break
 
         if outcome.get("outcome") == "denied":
             reason = outcome.get("reason") or "free-tier request denied"
@@ -249,33 +375,13 @@ def main() -> int:
             print(f"stories (Apify): {label} denied ({reason}); trying another account")
             continue
 
-        counts = defaultdict(int)
+        found = defaultdict(list)
         for item in items:
             username = str(item.get("username") or "").strip().lstrip("@")
-            story_id = str(item.get("story_pk") or "").strip()
-            row = metadata.get(username)
-            if not row or not story_id:
-                continue
-            counts[username] += 1
-            if story_id in state:
-                continue
-            media = save_media(item)
-            if not media:
-                continue
-            taken_at = str(item.get("taken_at") or datetime.now(timezone.utc).isoformat())
-            state[story_id] = {
-                "username": username,
-                "avatar": (f"/assets/avatars/ig_{username}.jpg"
-                           if (AVATAR_DIR / f"ig_{username}.jpg").exists() else None),
-                "name": row.get("name") or username,
-                "school": row.get("school") or "other",
-                "taken_at": taken_at,
-                "expires_at": item.get("expiring_at"),
-                "is_video": item.get("media_type") == "video",
-                "media": media,
-                "ig_url": f"https://www.instagram.com/stories/{username}/{story_id}/",
-            }
-            added += 1
+            if username in metadata and (story := apify_story(item)):
+                found[username].append(story)
+        for username, stories in found.items():
+            added += add_stories(state, schedule, username, metadata[username], stories, intervals)
 
         scanned_now = attempted_targets(selected, outcome)
         failed = set(outcome.get("failed_targets") or [])
@@ -287,9 +393,8 @@ def main() -> int:
                 continue
             mark_success(schedule, username, interval_hours=intervals[username], jitter_hours=1)
             record_fetch(f"story:{username}", backend="Apify Stories", ok=True,
-                         items=counts[username])
-        attempted.update(selected)
-        save_schedule(SCHEDULE_STATE, schedule)
+                         items=len(found[username]))
+        remaining = [username for username in remaining if username not in selected]
         delivered = len(items) if items else int(outcome.get("delivered") or 0)
         cost = usage_usd(run)
         budget = record_story_run(label, delivered=delivered, cost_usd=cost)
@@ -303,11 +408,12 @@ def main() -> int:
               f"scanned={len(scanned_now)}/{len(selected)}, cost={cost if cost is not None else 'unreported'}, "
               f"today {budget['results']}/{STORY_DAILY_RESULT_LIMIT} items, US${budget['costUsd']:.3f}")
 
+    save_schedule(SCHEDULE_STATE, schedule)
     live, expired, _ = refresh_story_output(state)
-    suffix = f"; stopped: {stop_reason}" if stop_reason and runs_done < max_runs else ""
-    print(f"stories (Apify): +{added}, {live} visible, pruned {expired}; "
-          f"runs={runs_done}, scanned={scanned}, cost={total_cost:.4f}{suffix}")
-    return 0
+    suffix = f"; Apify stopped: {stop_reason}" if stop_reason and runs_done < max_runs else ""
+    print(f"stories: +{added}, {live} visible, pruned {expired}; viewers covered {viewer_covered}/{len(due)}, "
+          f"Apify runs={runs_done}, scanned={scanned}, cost={total_cost:.4f}{suffix}")
+    return exit_code
 
 
 if __name__ == "__main__":

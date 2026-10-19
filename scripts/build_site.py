@@ -19,7 +19,8 @@ import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
 from event_categories import CAT_SLUG, normalize_event_category
-from event_time import event_has_not_ended
+from event_time import (event_has_not_ended, event_discovery_time,
+                        first_valid_evidence_time, validated_evidence_time)
 from data_quality import (missing_venue, apply_quality_reviews, event_quality_issues,
                           build_quality_report, write_quality_report)
 from event_curation import merge_reviewed_events, is_period_event, write_merged_event_pages
@@ -53,7 +54,8 @@ CAMPUS_GEO = {
 }
 
 
-def load_events():
+def load_events(now=None):
+    now = now if now is not None else now_iso()
     events = []
     nl = ROOT / "state" / "nycu_life_activities.json"
     if nl.exists():
@@ -64,13 +66,17 @@ def load_events():
         for ev in nl_events:
             pid = (ev.get("source") or {}).get("post_id")
             ts = seen.get(f"nycu_life_api\t{pid}")
-            if ts:
-                ev.setdefault("first_seen", ts)
+            ev["first_seen"] = first_valid_evidence_time((
+                ev.get("first_seen"), ev.get("first_seen_at"), ts,
+            ), now)
         events += nl_events
     for path in sorted(EXTRACT_DIR.glob("*.json")):
         for pid, rec in json.loads(path.read_text()).items():
             for ev in rec.get("events", []):
-                ev.setdefault("first_seen", rec.get("ts"))
+                ev["first_seen"] = first_valid_evidence_time((
+                    ev.get("first_seen"), ev.get("first_seen_at"),
+                    rec.get("first_seen"), rec.get("ts"),
+                ), now)
                 # 同貼文的例行時段（社課），Telegram 推播時附一行
                 if rec.get("recurrings"):
                     ev["post_recurrings"] = [
@@ -742,7 +748,7 @@ def _ics_stamp(iso):
     try:
         d = datetime.fromisoformat(iso)
     except (TypeError, ValueError):
-        d = datetime.now(timezone.utc)
+        return ""
     if d.tzinfo is None:
         d = d.replace(tzinfo=timezone(timedelta(hours=8)))
     return d.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -751,6 +757,7 @@ def _ics_stamp(iso):
 def ics_calendar(body, name, description="", url="", color="#5B4BDB"):
     """完整的 VCALENDAR 外殼：RFC 7986 NAME/DESCRIPTION/URL/COLOR、Apple／Google 的 X-WR-*、
     VTIMEZONE（DTSTART 用 TZID 時必備）、REFRESH-INTERVAL。"""
+    modified = max(re.findall(r"(?m)^LAST-MODIFIED:(\d{8}T\d{6}Z)\r?$", body), default="")
     head = [
         "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//chumei//observe.tw//ZH",
         "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
@@ -763,18 +770,24 @@ def ics_calendar(body, name, description="", url="", color="#5B4BDB"):
         f"COLOR:{color}" if color else None,
         f"X-APPLE-CALENDAR-COLOR:{color}" if color else None,
         "REFRESH-INTERVAL;VALUE=DURATION:PT3H", "X-PUBLISHED-TTL:PT3H",
-        f"LAST-MODIFIED:{_ics_stamp(None)}",
+        f"LAST-MODIFIED:{modified}" if modified else None,
         ICS_TZ_BLOCK,
     ]
     return "\r\n".join(l for l in head if l) + "\r\n" + (body + "\r\n" if body else "") + "END:VCALENDAR\r\n"
 
 
-def event_ics(e):
+def event_ics(e, now=None):
     uid = f"{e['id']}@chumei.observe.tw"
+    now = now or datetime.now(TZ_TAIPEI)
+    created = _ics_stamp(event_discovery_time(e, now))
+    modified = _ics_stamp(e.get("updated_at")) or created
+    # DTSTAMP is required by RFC 5545. A legacy event without observation
+    # evidence uses its stable start only here, never as CREATED/publication.
+    stamp = created or _ics_stamp(e.get("start_at"))
     lines = ["BEGIN:VEVENT", f"UID:{uid}",
-             f"DTSTAMP:{_ics_stamp(e.get('first_seen'))}",
-             f"CREATED:{_ics_stamp(e.get('first_seen'))}",
-             f"LAST-MODIFIED:{_ics_stamp(e.get('updated_at') or e.get('first_seen'))}",
+             f"DTSTAMP:{stamp}",
+             f"CREATED:{created}" if created else None,
+             f"LAST-MODIFIED:{modified}" if modified else None,
              "STATUS:CONFIRMED", "TRANSP:TRANSPARENT"]
     try:
         st = datetime.fromisoformat(e["start_at"])
@@ -817,18 +830,20 @@ def event_ics(e):
 
 def write_ics(path, events, name, now=None):
     now = now or datetime.now(TZ_TAIPEI)
-    body = "\r\n".join(filter(None, (event_ics(e) for e in events if event_has_not_ended(e, now))))
+    body = "\r\n".join(filter(None, (event_ics(e, now) for e in events if event_has_not_ended(e, now))))
     path.write_text(ics_calendar(body, name, "竹梅活動觀測站彙整清大與陽明交大的公開活動。",
                                  f"{BASE_URL}/subscribe/"))
 
 
-def write_rss(path, events, title):
+def write_rss(path, events, title, now=None):
+    now = now or datetime.now(TZ_TAIPEI)
     items = []
     for e in events[:80]:
         link = f"{BASE_URL}/event/{e['id']}/"
         desc = esc(f"{fmt_dt(e.get('start_at'), e.get('all_day'))}｜{join_loc(e, ' ')}｜{e.get('organizer')}\n{e.get('summary')}")
         try:
-            pub = datetime.fromisoformat(e.get("first_seen") or e["start_at"]).strftime("%a, %d %b %Y %H:%M:%S %z")
+            observed = event_discovery_time(e, now)
+            pub = datetime.fromisoformat(observed).strftime("%a, %d %b %Y %H:%M:%S %z")
         except (TypeError, ValueError):
             pub = ""
         items.append(
@@ -1487,6 +1502,114 @@ def _org_sim(a, b):
     return len(A & B) / max(1, len(A | B))
 
 
+def post_time_details(post, now, structured=None):
+    """Resolve compatibility time and provenance without changing stored records.
+
+    NYCU LIFE's legacy posted_at is startAt, even after that start has passed.
+    Only its explicit, timezone-bearing published_at proves publication. Other
+    adapters retain their posted_at contract unless marked as discovery/unknown.
+    """
+    structured = structured or {}
+    nycu = any(p.get("_nycu_publication") or p.get("source_id") == "nycu_life_api"
+               or p.get("raw_source") == "nycu-life-api"
+               for p in (structured, post))
+
+    def valid(raw, require_zone=False):
+        return validated_evidence_time(raw, now, require_zone=require_zone)
+
+    # Structured fetched_at changes on refresh. Only the append-only inbox's
+    # original fetched_at can stand in for discovery when first_seen is absent.
+    discovery = first_valid_evidence_time((
+        structured.get("first_seen"), structured.get("first_seen_at"),
+        post.get("first_seen"), post.get("first_seen_at"),
+        structured.get("posted_at") if structured.get("publication_time_basis") == "first_seen" else None,
+        post.get("posted_at") if post.get("publication_time_basis") == "first_seen" else None,
+        post.get("fetched_at"),
+    ), now)
+    published = ""
+    for record in (structured, post):
+        # The index's normalized projection cannot prove an original timezone.
+        # Recheck raw candidates now that inbox/duplicate identity is available.
+        candidates = record.get("_published_at_candidates", (record.get("published_at"),))
+        published = next((stamp for raw in candidates
+                          if (stamp := valid(raw, require_zone=nycu))), "")
+        if not published and not nycu and record.get("publication_time_basis") not in ("first_seen", "unknown"):
+            published = valid(record.get("posted_at"))
+        if published:
+            break
+    return {"posted_at": published or discovery, "published_at": published or None,
+            "publication_time_basis": "source" if published else "first_seen" if discovery else "unknown",
+            "first_seen": discovery}
+
+
+def post_publication_time(post, now, structured=None):
+    """Source/org display time: publication, then stable discovery, never now."""
+    return post_time_details(post, now, structured)["posted_at"]
+
+
+def event_post_records(events, now):
+    """Validate before merging evidence; event fields belong to the primary post."""
+    records = {}
+    time_fields = {"first_seen", "first_seen_at", "published_at", "posted_at", "publication_time_basis",
+                   "_published_at_candidates", "_nycu_publication"}
+    for event in events:
+        primary = event.get("source") or {}
+        for src in [primary] + event.get("alt_posts", []):
+            key = (src.get("source_id"), src.get("post_id"))
+            record = dict(src)
+            owner = event if src is primary else {}
+            # Resolve aliases and fallback candidates independently, before any
+            # raw source value can discard valid event evidence (or vice versa).
+            record["first_seen"] = first_valid_evidence_time((
+                src.get("first_seen"), src.get("first_seen_at"),
+                owner.get("first_seen"), owner.get("first_seen_at"),
+            ), now)
+            nycu = src.get("source_id") == "nycu_life_api" or src.get("raw_source") == "nycu-life-api"
+            record["published_at"] = next((stamp for raw in (
+                src.get("published_at"), owner.get("published_at"),
+            ) if (stamp := validated_evidence_time(raw, now, require_zone=nycu))), "")
+            if src is primary and not record.get("publication_time_basis"):
+                record["publication_time_basis"] = event.get("publication_time_basis")
+            times = post_time_details({}, now, record)
+            previous = records.setdefault(key, {})
+            for field, value in record.items():
+                if field not in time_fields and not previous.get(field) and value is not None:
+                    previous[field] = value
+            # Validate without inventing zone evidence or discarding later
+            # aware candidates. Adapter identity may arrive in another row or
+            # only in the inbox; preserve it even if raw_source metadata differs.
+            previous.setdefault("_published_at_candidates", []).extend(raw for raw in (
+                src.get("published_at"), owner.get("published_at"),
+            ) if validated_evidence_time(raw, now))
+            previous["_nycu_publication"] = previous.get("_nycu_publication", False) or nycu
+            # Keep explicit publication separate from legacy publication so a
+            # later explicit duplicate still beats an earlier legacy posted_at.
+            # Validate legacy evidence with its own basis, never another row's.
+            candidates = {
+                "published_at": record["published_at"],
+                "posted_at": validated_evidence_time(src.get("posted_at"), now)
+                if not nycu and record.get("publication_time_basis") not in ("first_seen", "unknown") else "",
+                "first_seen": times["first_seen"],
+            }
+            for field, value in candidates.items():
+                previous[field] = first_valid_evidence_time((previous.get(field), value), now)
+    # Preserve raw explicit versus legacy publication until the consumer also
+    # knows the inbox adapter identity. Structured fetched_at is metadata only.
+    return records
+
+
+def attach_source_post_times(events):
+    """Attach effective posted_at plus explicit basis, preserving source evidence."""
+    from chumei_lib import iter_inbox
+    inbox = {(p["source_id"], p["post_id"]): p for p in iter_inbox()}
+    now = now_iso()
+    records = event_post_records(events, now)
+    for event in events:
+        for src in [event.get("source") or {}] + event.get("alt_posts", []):
+            key = (src.get("source_id"), src.get("post_id"))
+            src.update(post_time_details(inbox.get(key, {}), now, records.get(key)))
+
+
 def build_sources_data(events):
     """全機構名錄 site/data/sources.json：官方名冊為底＋監測帳號＋公告來源，含未收錄單位。"""
     seen = {}  # sid → 活動 id 集合（跨帳號合併的活動歸戶到每個來源；同帳號多貼文只算一次）
@@ -1499,10 +1622,11 @@ def build_sources_data(events):
     from chumei_lib import iter_inbox
     now = now_iso()
     latest = {}
-    for it in iter_inbox():
-        sid = it["source_id"]
-        # infonews 的公告日期可能是未來的展示起始日，最新更新時間以現在為上限
-        ts = min(it.get("posted_at") or "", now)
+    records = event_post_records(events, now)
+    inbox = {(p["source_id"], p["post_id"]): p for p in iter_inbox()}
+    for key in records.keys() | inbox.keys():
+        sid = key[0]
+        ts = post_publication_time(inbox.get(key, {}), now, records.get(key))
         if ts > latest.get(sid, ""):
             latest[sid] = ts
 
@@ -1713,6 +1837,7 @@ def org_pages(entries, events):
     # 收錄貼文（含沒抽出活動的），各來源合流
     from chumei_lib import iter_inbox
     now_text = now_iso()
+    records = event_post_records(events, now_text)
     posts_by_sid, ev_per_post = {}, {}
     for it in iter_inbox():
         posts_by_sid.setdefault(it["source_id"], []).append(it)
@@ -1786,7 +1911,7 @@ def org_pages(entries, events):
                  for sid in ent.get("sids", []) for p in posts_by_sid.get(sid, [])}
         if posts:
             def post_key(p):
-                return min(p.get("posted_at") or p.get("fetched_at") or "", now_text)
+                return post_publication_time(p, now_text, records.get((p["source_id"], p["post_id"])))
             ordered = sorted(posts.values(), key=post_key, reverse=True)
             shown = ordered[:30]
 
@@ -1945,6 +2070,8 @@ def build_posts_data(events, sid_to_entry=None):
     for e in events:
         src = e["source"]
         groups.setdefault((src["source_id"], src["post_id"]), []).append(e)
+    now = now_iso()
+    records = event_post_records(events, now)
 
     inbox = {}
     for it in iter_inbox():
@@ -1955,26 +2082,17 @@ def build_posts_data(events, sid_to_entry=None):
             lead = evs[0]
             inbox[key] = {"source_name": lead.get("organizer"), "platform": lead["source"]["platform"],
                           "school": lead.get("school"), "org_type": lead.get("organizer_type"),
-                          "url": lead["source"].get("url"), "posted_at": lead.get("first_seen") or lead["start_at"],
+                          "url": lead["source"].get("url"),
                           "text": lead.get("summary") or ""}
-    now = now_iso()
+    times = {key: post_time_details(it, now, records.get(key)) for key, it in inbox.items()}
 
     def post_time(key):
-        it = inbox[key]
-        posted = it.get("posted_at") or ""
-        evs = groups.get(key) or []
-        if not posted or posted > now:
-            posted = min((evs[0].get("first_seen") if evs else None) or it.get("fetched_at") or now, now)
-        return posted
+        return times[key]["posted_at"]
 
     def discovery_time(key):
         """收錄時間：滾動抓取下貼文常在發文後數小時～數天才進系統，
         按發文時間排會讓新收錄沉底、置頂永遠不動；按收錄時間排，每輪抓到的都浮上來。"""
-        it = inbox[key]
-        evs = groups.get(key) or []
-        return min(it.get("fetched_at")
-                   or (evs[0].get("first_seen") if evs else None)
-                   or post_time(key), now)
+        return times[key]["first_seen"] or post_time(key)
 
     def feed_rank(key):
         """河道排序鍵：收錄序，但收錄落差超過 FEED_STALE_DAYS 的舊文（掃新帳號
@@ -2042,6 +2160,9 @@ def build_posts_data(events, sid_to_entry=None):
             "school": post_school,
             "campus": post_campus(directory_entry, evs) if post_school == "nycu" else None,
             "url": it.get("url"), "posted_at": posted, "fetched_at": discovered,
+            "published_at": times[key]["published_at"],
+            "publication_time_basis": times[key]["publication_time_basis"],
+            "first_seen": times[key]["first_seen"],
             "profile_url": profile_url(sid, it.get("platform"), directory_entry),
             **({"late": True} if late else {}),
             "org_type": it.get("org_type") or lead.get("organizer_type"),
@@ -2343,7 +2464,7 @@ def prerender_feed(posts, shown=30, deck_shown=12):
     cols = []
     for i, (school, bucket) in enumerate(zip(FEED_DEFAULT_COLS, feed_school_buckets(posts))):
         rows = [_feed_row(p, now) for p in bucket[:deck_shown]]
-        cols.append(feed_col_html(i, school, rows, i, cat_opts, more=len(bucket) > shown))
+        cols.append(feed_col_html(i, school, rows, i, cat_opts, more=len(bucket) > deck_shown))
     deck = (f'<div class="feed-cols ssr-deck has-deck-add" style="--ncols:{len(cols)}">'
             + "".join(cols) + feed_deck_add_html() + "</div>")
     rows = [_feed_row(p, now) for p in posts[:shown]]
@@ -2649,7 +2770,10 @@ def write_browser_event_bundles(bundle):
 
 
 def main():
-    events = dedupe(apply_overrides(load_events()))
+    events = apply_overrides(load_events())
+    # Attach before dedupe so absorbed posts retain their own discovery evidence.
+    attach_source_post_times(events)
+    events = dedupe(events)
     quality_candidates = events
     apply_quality_reviews(quality_candidates, read_sources_csv("event_quality_reviews.csv"))
     events = [e for e in events if e.get("start_at")]
@@ -2690,17 +2814,6 @@ def main():
 
     for d in ("data", "api", "feeds", "event"):
         (SITE / d).mkdir(parents=True, exist_ok=True)
-
-    # 原貼文時間掛回活動（Telegram 用「貼文新舊」判斷是否推播，防新帳號回填洪水）
-    from chumei_lib import iter_inbox
-    post_ts = {}
-    for it in iter_inbox():
-        post_ts[(it["source_id"], it["post_id"])] = it.get("posted_at")
-    for e in events:
-        for src in [e.get("source") or {}] + e.get("alt_posts", []):
-            ts = post_ts.get((src.get("source_id"), src.get("post_id")))
-            if ts:
-                src["posted_at"] = ts
 
     bundle = {"generated_at": now_iso(), "events": events,
               "labels": {"school": SCHOOL_LABEL, "campus": CAMPUS_LABEL, "org": ORG_LABEL}}

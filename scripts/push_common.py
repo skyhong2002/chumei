@@ -30,7 +30,7 @@ from site_paths import published_site_dir
 import json
 import sqlite3
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 from chumei_lib import ROOT, load_env, now_iso
@@ -51,15 +51,19 @@ def _auth_db_path():
     return Path(load_env().get("CHUMEI_AUTH_DATABASE") or AUTH_DB_PATH)
 
 
-def _auth_query(sql, params=()):
+def _auth_query(sql, params=(), *, strict=False):
     path = _auth_db_path()
     if not path.exists():
+        if strict:
+            raise OSError("push account database unavailable")
         return []
     try:
-        with sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5) as conn:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)) as conn:
             conn.row_factory = sqlite3.Row
             return conn.execute(sql, params).fetchall()
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        if strict:
+            raise OSError("push account query failed") from exc
         return []
 
 
@@ -75,18 +79,18 @@ def session_user_id(raw_token):
     return rows[0]["user_id"] if rows else None
 
 
-def account_follows():
+def account_follows(*, strict=False):
     """{user_id: [{"id", "name"}]} — 有追蹤紀錄的帳號。"""
     out = {}
-    for row in _auth_query("SELECT user_id, org_id, org_name FROM user_org_follows ORDER BY created_at"):
+    for row in _auth_query("SELECT user_id, org_id, org_name FROM user_org_follows ORDER BY created_at", strict=strict):
         out.setdefault(row["user_id"], []).append({"id": row["org_id"], "name": row["org_name"]})
     return out
 
 
-def account_going():
+def account_going(*, strict=False):
     """{user_id: [event_id, ...]} — 「我會去」標記。"""
     out = {}
-    for row in _auth_query("SELECT user_id, event_id FROM user_event_going ORDER BY created_at"):
+    for row in _auth_query("SELECT user_id, event_id FROM user_event_going ORDER BY created_at", strict=strict):
         out.setdefault(row["user_id"], []).append(row["event_id"])
     return out
 

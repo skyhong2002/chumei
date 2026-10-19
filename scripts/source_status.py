@@ -29,7 +29,7 @@ SNAPSHOT_MAX_AGE_HOURS = 9.0  # Three missed publication cycles.
 
 CURRENT_LEDGER_BACKENDS = {
     "Instagram public": {"Instagram public", "Instagram public web", "Apify Instagram"},
-    "Apify Stories": {"Apify Stories"},
+    "Instagram Stories": {"Apify Stories", "Story viewer"},
 }
 
 
@@ -74,7 +74,7 @@ def source_registry(*, facebook_interval_hours: float = 168.0) -> list[dict]:
         })
         sources.append({
             **common, "id": f"story:{username}", "sourceId": f"ig_{username}",
-            "kind": "instagram_story", "backend": "Apify Stories",
+            "kind": "instagram_story", "backend": "Instagram Stories",
             "kindLabel": "限時動態",
             "targetIntervalHours": 168.0,
         })
@@ -279,7 +279,7 @@ def api_usage_summary(now: float | None = None) -> dict:
     now = float(now or time.time())
     rows = _usage_rows()
     out = {}
-    for service in ("Instagram public web", "Apify Instagram", "RSSHub", "Instaloader", "Apify"):
+    for service in ("Instagram public web", "Apify Instagram", "RSSHub", "Threads public logged-out", "Instaloader", "Apify"):
         selected = [r for r in rows if r.get("service") == service]
         out[service] = {
             "requests24h": sum(int(r.get("requestCount", 0)) for r in selected if r.get("ts", 0) >= now - 86400),

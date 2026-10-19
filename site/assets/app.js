@@ -595,7 +595,7 @@
   })();
 
   // 限動資料/燈箱的共享介面：首頁「限時動態」欄也要用（須在提前 return 前賦值）
-  var storyShare = { data: null, open: null, hooks: [] };
+  var storyShare = { data: null, failed: false, open: null, hooks: [] };
 
   var listEl = document.getElementById("event-list");
   var calEl = document.getElementById("cal-months");
@@ -830,7 +830,22 @@
         return '<article class="feed-post">' + avatarEl + '<div class="feed-content">' + head + body + evs + actions + "</div></article>";
       }
 
-      var shown = 30;
+      // Keep pagination with the column, so loading one river never expands its
+      // neighbours and switching layouts does not discard already loaded posts.
+      var columnWindows = new WeakMap();
+      function columnSignature(c) {
+        return JSON.stringify([c.t, c.kind, c.follow, c.school, c.platform, c.cat, c.org, c.q]);
+      }
+      function columnBatch() { return window.innerWidth >= 700 ? 12 : 30; }
+      function columnWindow(c) {
+        var signature = columnSignature(c);
+        var value = columnWindows.get(c);
+        if (!value || value.signature !== signature) {
+          value = { signature: signature, shown: columnBatch(), scrollTop: 0 };
+          columnWindows.set(c, value);
+        }
+        return value;
+      }
       // 欄位模型：欄就是「貼文」（篩選自帶：學校/平台/類型/主辦/搜尋）或「即將活動」
       var SCHOOL_L = { all: "全部", "nycu-guangfu": "交大", nthu: "清大", "nycu-yangming": "陽明" };
       function feedCol(school) { return { t: "feed", kind: "all", follow: "all", school: school || "all", platform: "all", cat: "all", org: "all", q: "" }; }
@@ -892,6 +907,8 @@
         render();
       }
       var viewCols = [];
+      var deckNavCleanup = null;
+      var desktopDeckLeft = 0;
       function saveCols() { try { localStorage.setItem("chumei-cols", JSON.stringify(cols)); } catch (e) {} }
       function buildViewCols(wide) {
         var saved = cols.map(function (c, i) { return { col: c, source: i }; });
@@ -987,11 +1004,11 @@
         });
         return buckets;
       }
-      function moreBtn(list) {
+      function moreBtn(list, shown) {
         return list.length > shown ? '<button class="fchip feed-more">載入更多</button>' : "";
       }
       // 即將活動：日期分組的議程卡（時間｜標題｜校區・地點・類型），重用日曆頁樣式
-      function evAgenda(list) {
+      function evAgenda(list, shown) {
         var labels = data.labels || {};
         var today = new Date(); today.setHours(0, 0, 0, 0);
         var out = "", lastDay = "";
@@ -1015,9 +1032,10 @@
         });
         return '<div class="col-agd">' + out + "</div>";
       }
-      function storyCards(list) {
+      function storyCards(list, shown) {
+        if (storyShare.failed) return '<p class="empty">限時動態載入失敗，請重新整理再試。</p>';
         if (!storyShare.data) return '<p class="empty">限時動態載入中…</p>';
-        if (!list.length) return '<p class="empty">現在沒有進行中的限時動態。</p>';
+        if (!list.length) return '<p class="empty">目前沒有可顯示的限時動態。</p>';
         var ago = storyShare.data.ago;
         return '<div class="story-wall col-stories">' + list.slice(0, shown).map(function (s) {
           var i = storyShare.data.flat.indexOf(s);
@@ -1030,16 +1048,17 @@
         }).join("") + "</div>";
       }
       function colBody(c, list) {
+        var shown = columnWindow(c).shown;
         if (c.t === "events") {
-          return (list.length ? evAgenda(list) : '<p class="empty">近期沒有活動。</p>') + moreBtn(list);
+          return (list.length ? evAgenda(list, shown) : '<p class="empty">近期沒有活動。</p>') + moreBtn(list, shown);
         }
-        if (c.t === "stories") return storyCards(list) + moreBtn(list);
+        if (c.t === "stories") return storyCards(list, shown) + moreBtn(list, shown);
         var emptyMsg = c.follow === "on"
           ? (window.chumeiFollow && window.chumeiFollow.following().length
               ? '<p class="empty">追蹤的單位最近沒有貼文。</p>'
               : '<p class="empty">還沒追蹤任何單位——在貼文或<a href="/source/">資料來源</a>按 🔔 就會出現在這裡。</p>')
           : '<p class="empty">沒有符合的貼文。</p>';
-        return (list.slice(0, shown).map(row).join("") || emptyMsg) + moreBtn(list);
+        return (list.slice(0, shown).map(row).join("") || emptyMsg) + moreBtn(list, shown);
       }
       function colHtml(i, c, list, sourceIdx) {
         var tt = colTitle(c);
@@ -1051,13 +1070,17 @@
           '<div class="col-body">' + colBody(c, list) + "</div></section>";
       }
       // 調整欄內篩選時只更新內容，不重建選單（維持選單開啟）
-      function updateBodies() {
+      function updateBodies(onlyIndex) {
         var buckets = computeBuckets(viewCols);
         viewCols.forEach(function (view, i) {
+          if (typeof onlyIndex === "number" && i !== onlyIndex) return;
           var c = view.col;
           var el = feed.querySelector('.feed-col[data-idx="' + i + '"]');
           if (!el) return;
+          var previous = columnWindows.get(c);
+          if (previous && previous.signature === columnSignature(c)) previous.scrollTop = el.scrollTop;
           el.querySelector(".col-body").innerHTML = colBody(c, buckets[i]);
+          el.scrollTop = columnWindow(c).scrollTop;
           var tt = colTitle(c);
           var sm = el.querySelector(".col-picker > summary");
           sm.querySelector(".feed-col-dot").className = "feed-col-dot dot-" + tt.dot;
@@ -1183,6 +1206,7 @@
       // 桌機多欄：欄位是垂直捲動容器，shift+滾輪會被它吃掉、macOS 捲軸又是隱藏式的，
       // 一般滑鼠等於無法左右移動 → 補上左右箭頭與 shift/橫向滾輪。
       function bindDeckNav(deck) {
+        if (deckNavCleanup) deckNavCleanup();
         var wrap = deck.parentNode;
         var dbg = null;
         if (/[?&]swipedebug=1/.test(location.search)) {
@@ -1213,15 +1237,17 @@
           prev.innerHTML = SVG_OPEN + '<path d="M15 6l-6 6l6 6"/></svg>';
           next.innerHTML = SVG_OPEN + '<path d="M9 6l6 6l-6 6"/></svg>';
           wrap.appendChild(prev); wrap.appendChild(next);
-          [["deck-prev", -1], ["deck-next", 1]].forEach(function (pair) {
-            wrap.querySelector("." + pair[0]).addEventListener("click", function () {
-              var col = deck.querySelector(".feed-col");
-              var step = col ? col.getBoundingClientRect().width + 12 : deck.clientWidth * 0.8;
-              deck.scrollBy({ left: pair[1] * step, behavior: "smooth" });
-            });
-          });
         }
+        // The controls survive a deck rebuild; point them at the current deck.
+        [[prev, -1], [next, 1]].forEach(function (pair) {
+          pair[0].onclick = function () {
+            var col = deck.querySelector(".feed-col");
+            var step = col ? col.getBoundingClientRect().width + 12 : deck.clientWidth * 0.8;
+            deck.scrollBy({ left: pair[1] * step, behavior: "smooth" });
+          };
+        });
         function sync() {
+          if (window.innerWidth >= 700) desktopDeckLeft = deck.scrollLeft;
           var max = deck.scrollWidth - deck.clientWidth;
           var overflow = max > 8;
           prev.hidden = !overflow; next.hidden = !overflow;
@@ -1230,6 +1256,7 @@
         }
         deck.addEventListener("scroll", sync, { passive: true });
         window.addEventListener("resize", sync);
+        deckNavCleanup = function () { window.removeEventListener("resize", sync); };
         sync(); dbgInit();
         // 觸控板左右滑：真實手勢前幾個事件常帶垂直雜訊，Chrome 會先把整個手勢
         // 軸鎖定到欄位的垂直捲動 → 這裡自己累積判定方向，橫向勝出就鎖定接手。
@@ -1307,8 +1334,15 @@
         history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
         pageSEO.refresh();
       }
-      function render(more) {
-        if (!more) shown = 30;
+      function render() {
+        var oldDeck = feed.querySelector(".feed-cols");
+        if (oldDeck && feed.classList.contains("feed-wide") && window.innerWidth >= 700) desktopDeckLeft = oldDeck.scrollLeft;
+        viewCols.forEach(function (view, i) {
+          var el = feed.querySelector('.feed-col[data-idx="' + i + '"]');
+          var value = columnWindows.get(view.col);
+          if (el && value && value.signature === columnSignature(view.col)) value.scrollTop = el.scrollTop;
+        });
+        if (deckNavCleanup) { deckNavCleanup(); deckNavCleanup = null; }
         var fc = document.getElementById("feed-count");
         var wide = window.innerWidth >= 700;
         viewCols = buildViewCols(wide);
@@ -1339,6 +1373,10 @@
           '" style="--ncols:' + viewCols.length + '">' +
           viewCols.map(function (view, i) { return colHtml(i, view.col, buckets[i], view.source); }).join("") +
           (canAdd ? deckAddHtml() : "") + "</div>";
+        viewCols.forEach(function (view, i) {
+          feed.querySelector('.feed-col[data-idx="' + i + '"]').scrollTop = columnWindow(view.col).scrollTop;
+        });
+        feed.querySelector(".feed-cols").scrollLeft = wide ? desktopDeckLeft : 0;
         if (!wide) { bindPager(); syncFilterUI(); }
         else { bindDeckNav(feed.querySelector(".feed-cols")); }
         renderPagerBar(wide);
@@ -1359,11 +1397,11 @@
           return;
         }
         if (ev.target.classList.contains("feed-more")) {
-          shown += 30;
           var colEl = ev.target.closest(".feed-col");
-          var keep = colEl ? colEl.scrollTop : 0;
-          updateBodies();
-          if (colEl) colEl.scrollTop = keep;   // 換內容不該把這一欄捲回頂端
+          var moreIndex = colEl ? +colEl.dataset.idx : -1;
+          if (!viewCols[moreIndex]) return;
+          columnWindow(viewCols[moreIndex].col).shown += columnBatch();
+          updateBodies(moreIndex);
           return;
         }
         var sc = ev.target.closest(".story-card[data-story]");
@@ -1413,8 +1451,8 @@
           if (wide !== wasWide) {
             wasWide = wide;
             activeCol = 0;
+            render(true);
           }
-          render(true);
         }, 200);
       });
       var feedEvById = {};
@@ -1422,7 +1460,7 @@
       bindEventHover(feed, ".feed-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
       bindEventHover(feed, ".agd-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
       // 限動資料晚到時補繪限時動態欄
-      if (!storyShare.data) storyShare.hooks.push(function () { updateBodies(); });
+      if (!storyShare.data && !storyShare.failed) storyShare.hooks.push(function () { updateBodies(); });
       render();
     }).catch(function (err) {
       console.error("chumei feed init failed:", err);
@@ -1658,12 +1696,24 @@
     var wall = document.getElementById("story-wall");
     if (!strip && !wall) return;
 
+    function notifyStoryColumns() {
+      var hooks = storyShare.hooks;
+      storyShare.hooks = [];
+      hooks.forEach(function (f) { f(); });
+    }
+
     fetch("/data/stories.json")
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Stories response failed");
+        return r.json();
+      })
       .then(function (data) {
-        var stories = data.stories || [];
+        var stories = data.stories;
+        if (!Array.isArray(stories)) throw new Error("Stories response is invalid");
         if (!stories.length) {
-          if (wall) wall.innerHTML = '<p class="empty">現在沒有進行中的限時動態 — 限動 24 小時後就會消失，晚點再來看看。</p>';
+          storyShare.data = { flat: [] };
+          if (wall) wall.innerHTML = '<p class="empty">目前沒有可顯示的限時動態，晚點再來看看。</p>';
+          notifyStoryColumns();
           return;
         }
         // 依帳號分組，組序 = 該帳號最新限動時間
@@ -2002,10 +2052,13 @@
 
         storyShare.data = { flat: flat, ago: ago };
         storyShare.open = openLightbox;
-        storyShare.hooks.forEach(function (f) { f(); });
-        storyShare.hooks = [];
+        notifyStoryColumns();
       })
-      .catch(function () { if (wall && !wall.firstElementChild) wall.innerHTML = '<p class="empty">限時動態載入失敗。</p>'; });
+      .catch(function () {
+        storyShare.failed = true;
+        if (wall) wall.innerHTML = '<p class="empty">限時動態載入失敗，請重新整理再試。</p>';
+        notifyStoryColumns();
+      });
   }
 
   // ---- 共用活動 hover 預覽卡（日曆格／地圖 popup／河道 chips） ----

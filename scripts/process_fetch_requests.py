@@ -98,7 +98,7 @@ def command_for(source: dict) -> list[str] | None:
     if kind == "instagram_profile":
         return ["fetch_instagram_public.py", "--accounts", username, "--max-accounts", "1", "--limit", "5"]
     if kind == "instagram_story":
-        return ["fetch_stories_apify.py", "--accounts", username, "--max-accounts", "1"]
+        return ["fetch_stories_public.py", "--accounts", username, "--max-accounts", "1"]
     if kind == "facebook":
         return ["fetch_facebook.py", "--pages", username, "--limit", "5", "--max-pages-per-run", "1"]
     if kind in {"threads", "x"}:

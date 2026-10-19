@@ -56,7 +56,7 @@ SCRIPT = r"""
     document.querySelector('#apify-quota').innerHTML=`<div class="status-apify-main"><h3>Instagram／Facebook 共用 Apify 額度</h3><strong>US$${remaining.toFixed(3)}</strong><span>${a.available===false?'Apify API：目前無法取得額度':a.exhausted?'Apify API：所有帳號額度皆不可用':`共用 Apify 帳號池 · ${Number(a.usableAccountCount||0)} / ${Number(a.accountCount||0)} 個帳號可使用${temporary?` · 含 US$${temporary.toFixed(2)} 臨時活動額度`:''}`}${a.stale?'（含快取資料）':''}</span><a class="status-apify-contribute" href="/contribute/">貢獻免費額度，讓更新更快 →</a><div class="status-quota-bar" aria-label="Instagram／Facebook 共用的固定月額已使用 ${percent.toFixed(0)}%"><i style="width:${percent}%"></i></div></div><div class="status-apify-stat"><span>已用／固定月額</span><strong>US$${used.toFixed(3)} / ${limit.toFixed(2)}</strong></div><div class="status-apify-stat"><span>最晚重置時間</span><strong>${fmtTime(a.cycleEnd)}</strong></div><div class="status-apify-stat"><span>執行中／資料時間</span><strong>${Number(a.activeActorJobs||0)} 個 Actor</strong><span>${fmtTime(a.checkedAt)}</span></div>${shares}${accountRows?`<div class="status-apify-accounts"><h4>Apify API 帳號狀態</h4>${accountRows}</div>`:''}`;
     const info={
       'Instagram public':['Instagram 貼文','公開端點優先 · Apify 帳號池備援','Instagram public web'],
-      'Apify Stories':['Instagram 限時動態','Apify 帳號池 · 活躍帳號優先','Apify'],
+      'Instagram Stories':['Instagram 限時動態','免費限動檢視網站優先 · Apify 帳號池備援 · 常發限動的帳號優先','Story viewer'],
       'Apify':['Facebook 粉專貼文','Apify 帳號池 · 批次抓取','Apify'],
       'RSSHub':['Threads／X 公開貼文','本機 RSSHub','RSSHub'],
       'NTHU RPage':['清大 RPage 公告','網頁爬蟲',null],
@@ -197,7 +197,7 @@ def build() -> dict:
     <div class="filter-row"><span class="label">狀態</span><span class="fgroup" id="status-filters"></span><label class="search-hit status-search"><span class="sr-only">搜尋來源</span><input id="source-search" type="search" placeholder="搜尋名稱、帳號或後端"></label></div>
     <div class="filter-row"><span class="label">平台</span><span class="fgroup" id="platform-filters"></span></div>
   </section>
-  <p class="status-note">同一個 Instagram 帳號會分成「貼文」與「限時動態」兩列。貼文依近期發文頻率調整為 12 小時到 14 天；限時動態優先輪詢活躍帳號。兩者都不使用本站的 Instagram 帳號；Apify 額度由 Facebook 粉專、限時動態與貼文備援每天平分。「實際」需累積至少兩次成功紀錄；沒有新內容仍算抓取成功。</p>
+  <p class="status-note">同一個 Instagram 帳號會分成「貼文」與「限時動態」兩列。貼文依近期發文頻率調整為 12 小時到 14 天；限時動態依各帳號最近一次發限動的時間調整為 12 小時到 7 天，先查免費限動檢視網站，查不到才用 Apify。兩者都不使用本站的 Instagram 帳號；Apify 額度由 Facebook 粉專、限時動態與貼文備援每天平分。「實際」需累積至少兩次成功紀錄；沒有新內容仍算抓取成功。</p>
   <p id="source-count" class="status-count"></p><p id="status-message" class="status-message" role="status"></p>
   <div class="status-sort-mobile"><label for="source-sort">排序</label><select id="source-sort">{sort_options}</select><button type="button" class="status-sort-direction" id="source-sort-direction">↑ 升冪</button></div>
   <div class="status-src-table"><div class="status-src-head">{sort_headers}</div><div id="source-rows"></div></div>

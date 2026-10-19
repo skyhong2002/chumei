@@ -26,6 +26,7 @@
 
 - 去重鍵：`(source_id, post_id)`。fetcher 的 seen-state 放 `state/seen/<raw_source>.json`。
 - `posted_at`/`fetched_at` 一律 ISO8601 含時區。公告沒有時間就用當天 00:00+08:00。
+- 新的 NYCU LIFE／使用者回報資料另含 `first_seen`（首次收錄、保持不變）、`published_at`（來源明示的發布時間，可為 null）、`publication_time_basis`（`source` 或 `first_seen`）。`fetched_at` 是這次抓取時間；`posted_at` 相容既有讀取端，以發布時間或首次收錄時間填入，**不得使用活動 `start_at`**。NYCU LIFE 只有 `publishedAt` 被視為來源發布時間，缺少、無時區或晚於抓取時間時不採用。舊 inbox 不回寫，不能把舊的活動開始時間當成發布時間證據。
 - 公告類（bulletin）的 `text` = 標題 + "\n\n" + 內文純文字（去 HTML）；有附圖放 `images`。
 - 欄位可缺：`images`、`image_url` 可為空陣列/null。其他欄位必填。
 
@@ -63,6 +64,7 @@
 ```
 
 - LLM 快取鍵：`(source_id, post_id, prompt_version)`，存 `state/extraction/<source_id>.json`。
+- 快取成功／非活動結果保持不重跑（prompt version 改變時除外）。錯誤紀錄增加 `error_kind`、`attempts`、`retryable`、`retry_after`、`exhausted`；暫時性錯誤到期自動重試，最多四次實際抽取請求，不再於同一次呼叫內重試。`ts` 是這次抽取完成／失敗時間，`first_seen` 才是穩定的首次收錄時間；活動本身也保存 `first_seen`、`fetched_at`、`published_at`、`publication_time_basis`。升級 prompt 失敗仍保留既有活動與例行時段。詳見 [抽取重試與時間整合](extraction-recovery.md)。
 - 一篇貼文可以抽出多個 events（例如社課系列）；也可能是 0 個（非活動貼文 → 記錄為 rejected 供統計）。
 - `confidence < 0.7` 或缺 `start_at` → `needs_review: true`、`status: "review"`。
 

@@ -17,6 +17,7 @@ from apify_pool import (SOURCE_COST_ESTIMATE_USD, pool_status, recommended_inter
                         round_budget_usd)
 from chumei_lib import read_sources_csv
 from publish_site import exclusive_lock
+from pipeline_state import atomic_json
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / ".venv" / "bin" / "python"
@@ -119,11 +120,11 @@ def run_pipeline():
         elif fb_script.exists():
             print(f"facebook: skipped; this round's Apify share is US${fb_budget:.3f}")
 
-        # 限時動態改走不使用本站 IG 帳號的 Actor；每輪掃活躍度最高的
-        # 到期帳號，社群每貢獻一個可用帳號就增加三個處理槽位。
-        if (ROOT / "scripts" / "fetch_stories_apify.py").exists():
+        # 限時動態不使用本站 IG 帳號：先查免費限動檢視網站，查不到的到期帳號
+        # 再交給 Apify Actor；社群每貢獻一個可用帳號就增加三個處理槽位。
+        if (ROOT / "scripts" / "fetch_stories_public.py").exists():
             results["stories"] = run_step(
-                "stories", ["fetch_stories_apify.py", "--max-accounts", str(ig_batch)]
+                "stories", ["fetch_stories_public.py", "--max-accounts", str(ig_batch)]
             )
 
     results["extract"] = run_step("extract", ["extract_events.py"])
@@ -133,8 +134,7 @@ def run_pipeline():
 
     state["last_run"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state["last_results"] = results
-    STATE.parent.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps(state, indent=1))
+    atomic_json(STATE, state)
 
     # fetcher 局部失敗只記錄；公開輸出與通知投遞需成功。
     return 0 if results.get("build") and results.get("telegram", True) else 1
