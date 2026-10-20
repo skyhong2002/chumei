@@ -2650,7 +2650,7 @@ def prerender_stories():
     flat = [s for u in order for s in groups[u]]
 
     if not flat:
-        body = '<p class="empty">現在沒有進行中的限時動態 — 限動 24 小時後就會消失，晚點再來看看。</p>'
+        body = '<p class="empty">現在沒有進行中的限時動態 — 限動發布 48 小時後就會下架，晚點再來看看。</p>'
     else:
         body = "".join(
             f'<button class="story-card" data-i="{i}">'
