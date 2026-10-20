@@ -3,7 +3,7 @@
 - userid 解析走 topsearch（快取 state/ig_userids.json，每輪最多解析 --resolve-limit 個）。
 - get_stories 每輪只查一批最多 48 個 userid，launchd 跨輪輪替。
 - 媒體立即下載到 site/assets/stories/（IG CDN 連結很快過期），縮到 720px。
-- 限動 24 小時過期：輸出 site/data/stories.json 只含未過期項目；過期 48h 後刪媒體。
+- 限動顯示 48 小時（STORY_DISPLAY_HOURS）：輸出 site/data/stories.json 只含未過期項目；過期 24h 後刪媒體。
 """
 
 import argparse
