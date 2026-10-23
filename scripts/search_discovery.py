@@ -36,6 +36,9 @@ def hub_links(current=None):
 
 
 HOME_TITLE = "清大、陽明交大活動與講座｜竹梅活動觀測站"
+# 近三個月結束的活動仍有人搜；單位頁的過往活動也至少列到這個範圍，讓 sitemap 裡的活動都有站內連結。
+SITEMAP_RECENT_DAYS = 90
+_NOINDEX_RE = re.compile(r'<meta\s+name=["\']robots["\']\s+content=["\'][^"\']*noindex', re.I)
 _LINKS_RE = re.compile(r"<!-- search-entry-links -->.*?<!-- /search-entry-links -->", re.S)
 
 
@@ -114,8 +117,8 @@ def page_digest(source):
 
 def write_search_sitemap(site, events, org_ids, hub_paths, now, base_url, *, state_path):
     """state_path 記錄各頁內容雜湊與 lastmod；必須放在網站根目錄之外，跨發布版本沿用。"""
-    # 近三個月結束的活動仍有人搜；更早的存檔頁保留網址與站內連結，但不進 sitemap。
-    cutoff = now - timedelta(days=90)
+    # 更早的存檔頁保留網址與站內連結，但不進 sitemap。
+    cutoff = now - timedelta(days=SITEMAP_RECENT_DAYS)
     recent = [e for e in events if event_end(e) and event_end(e) >= cutoff]
     paths = ["/", "/events/", "/calendar/", "/source/", "/about/", "/subscribe/"]
     paths += hub_paths + [f'/event/{e["id"]}/' for e in recent]
@@ -129,13 +132,15 @@ def write_search_sitemap(site, events, org_ids, hub_paths, now, base_url, *, sta
     root = ET.Element(f"{{{ns}}}urlset")
     for path in dict.fromkeys(paths):
         target = site / path.strip("/") / "index.html"
-        if not target.exists():
+        # 標了 noindex 的頁（例如還沒有活動的單位頁）不列入，sitemap 與頁面訊號一致。
+        source = target.read_text() if target.exists() else None
+        if source is None or _NOINDEX_RE.search(source):
             continue
         entry = ET.SubElement(root, f"{{{ns}}}url")
         ET.SubElement(entry, f"{{{ns}}}loc").text = base_url + path
         # 首頁與單位頁帶相對時間標籤，每次建站都會變，不給 lastmod。
         if path.startswith("/event/") or path in hub_paths:
-            digest = page_digest(target.read_text())
+            digest = page_digest(source)
             old = previous.get(path, {})
             modified = (old.get("lastmod") if old.get("hash") == digest else None) or stamp
             state[path] = {"hash": digest, "lastmod": modified}
