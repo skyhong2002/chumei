@@ -60,7 +60,7 @@ Caddy 以 `deploy/chumei.caddy` 為本站範本：靜態 root 指向 `published/
 | Push、Telegram、LINE、MCP | API、篩選、發送邏輯測試；不發真實通知 | 授權的測試裝置／帳號與服務憑證 |
 | 發布、備份、監控 | 建站失敗保留舊版；快照完整性、隔離還原、來源健康判定 | Caddy 啟用、排程存活、備份新鮮度及異地復原 |
 
-專題參考：[共同活動分類](event-categories.md)、[瀏覽資料量](browser-performance.md)、[外連安全](outbound-security.md)。
+專題參考：[共同活動分類](event-categories.md)、[瀏覽資料量](browser-performance.md)、[外連安全](outbound-security.md)、[搜尋收錄訊號（2026-10-23）](seo-index-2026-10-23.md)。
 
 Web Push 的裝置收據、摘要／提醒重試、舊狀態遷移及中斷恢復限制見
 [推播發送收據與重試](push-delivery.md)。
