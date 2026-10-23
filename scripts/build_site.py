@@ -19,7 +19,7 @@ import requests
 
 from chumei_lib import load_env, now_iso, read_sources_csv, ROOT, TZ_TAIPEI
 from event_categories import CAT_SLUG, normalize_event_category
-from event_time import (event_has_not_ended, event_discovery_time,
+from event_time import (event_end, event_has_not_ended, event_discovery_time,
                         first_valid_evidence_time, validated_evidence_time)
 from data_quality import (missing_venue, apply_quality_reviews, event_quality_issues,
                           build_quality_report, write_quality_report)
@@ -876,9 +876,10 @@ SHARED_FOOTER = """<footer class="site-footer">
 SHARED_FAB = '<a class="fab" href="/notify/" aria-label="App 通知"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 17h-8.5a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6a2 2 0 1 1 4 0a7 7 0 0 1 4 6v1.5"/><path d="M9 17v1a3 3 0 0 0 4.5 2.6"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></a>'
 
 
-def page_shell(title, desc, content, og_image=None, canonical=None):
+def page_shell(title, desc, content, og_image=None, canonical=None, robots=None):
     og_img = og_image or f"{BASE_URL}/assets/og-default.png"
     canonical = (canonical or BASE_URL + "/").split("?", 1)[0].split("#", 1)[0]
+    robots_meta = f'<meta name="robots" content="{robots}">\n' if robots else ""
     return f"""<!doctype html>
 <html lang="zh-Hant-TW" data-theme="dark">
 <head>
@@ -897,7 +898,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None):
 <meta name="twitter:title" content="{esc(title)}">
 <meta name="twitter:description" content="{esc(desc)}">
 <meta name="twitter:image" content="{og_img}">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png">
+{robots_meta}<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-title" content="竹梅">
@@ -1409,6 +1410,9 @@ def refresh_legacy_event_seo(current_ids):
         else:
             source = source.replace("</head>", canonical_tag + "\n</head>", 1)
         source = replace_meta(source, "name", "description", preview_desc)
+        # 目前資料已不再產生這場活動（重新抽取換了 ID、或已被剔除），內容不再維護；
+        # 舊連結照常可開，但不讓它和現行活動頁競爭收錄。
+        source = replace_meta(source, "name", "robots", "noindex,follow")
         source = replace_meta(source, "property", "og:title", page_title)
         source = replace_meta(source, "property", "og:description", preview_desc)
         source = replace_meta(source, "property", "og:url", canonical)
@@ -1846,6 +1850,8 @@ def org_pages(entries, events):
             k = (src["source_id"], src["post_id"])
             ev_per_post[k] = ev_per_post.get(k, 0) + 1
     now = datetime.now(TZ_TAIPEI)
+    from search_discovery import SITEMAP_RECENT_DAYS
+    recent_cutoff = now - timedelta(days=SITEMAP_RECENT_DAYS)
     PLAT = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads",
             "x": "X", "bulletin": "公告頁", "website": "官網", "api": "NYCU LIFE"}
     for ent in entries:
@@ -1855,7 +1861,9 @@ def org_pages(entries, events):
                 evs += by_sid.get(next((s for s in ent.get("sids", [])), ""), [])
         evs = list({e["id"]: e for e in evs}.values())
         upcoming = sorted([e for e in evs if event_has_not_ended(e, now)], key=lambda e: e["start_at"])
-        past = sorted([e for e in evs if not event_has_not_ended(e, now)], key=lambda e: e["start_at"], reverse=True)[:20]
+        # 過往活動至少列最近 20 場，並涵蓋 sitemap 收錄範圍內結束的每一場，讓它們都有站內連結。
+        past = sorted([e for e in evs if not event_has_not_ended(e, now)], key=lambda e: e["start_at"], reverse=True)
+        past = [e for i, e in enumerate(past) if i < 20 or (event_end(e) and event_end(e) >= recent_cutoff)]
 
         def ev_row(e):
             return (f'<li class="org-ev"><a href="/event/{e["id"]}/">'
@@ -1937,10 +1945,12 @@ def org_pages(entries, events):
         body.append('<p class="src-desc"><a href="/source/">← 回資料來源名錄</a></p></article>')
         d = SITE / "org" / str(ent["id"])
         d.mkdir(parents=True, exist_ok=True)
+        # 沒有活動也沒有例行時段的單位頁只剩名稱與外連，保留給使用者追蹤，但不送搜尋引擎收錄。
         (d / "index.html").write_text(page_shell(
             f"{ent['name']}｜竹梅活動觀測站",
             f"{ent['name']}的公開帳號與活動記錄。",
-            "\n".join(body), canonical=f"{BASE_URL}/org/{ent['id']}/"))
+            "\n".join(body), canonical=f"{BASE_URL}/org/{ent['id']}/",
+            robots=None if evs or ent.get("schedule") else "noindex,follow"))
     # 清掉已不存在的舊單位頁（條目合併/改名後）
     valid = {str(ent["id"]) for ent in entries}
     import shutil
