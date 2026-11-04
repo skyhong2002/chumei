@@ -75,7 +75,7 @@ SCRIPT = r"""
       const api=u?`<div class="status-method-api">${meta[2]} 24h：${u.requests24h} 次 · ${u.errors24h} 錯誤</div>`:'';
       return `<button class="status-method-card" data-backend-filter="${esc(m.backend)}" aria-pressed="false"><div class="status-method-title"><strong>${esc(meta[0])}</strong><span>${esc(meta[1])}</span></div><div class="status-method-count"><b>${Number(m.sources).toLocaleString()}</b><span>個排程來源</span></div><div class="status-method-meta">目標每 ${targetLabel(m)} · 正常 ${m.fresh} · 待抓 ${m.due} · 暫停 ${m.blocked} · 錯誤 ${m.errors}${api}</div></button>`;
     }).join('');
-    document.querySelector('#pipeline-note').textContent=`快照建立時最後已完成輪次：${fmtTime(d.pipeline?.lastCompletedRun||d.pipeline?.lastRun)}（本次發布完成結果要到下次快照才可見）。流程結果不代表來源資料健康。主 pipeline 每 ${fmtInterval(d.pipeline?.intervalHours)}啟動；Instagram 依帳號近期發文頻率採 12 小時到 14 天的動態間隔。點卡片可篩選下方列表。`;
+    document.querySelector('#pipeline-note').textContent=`快照建立時最後已完成輪次：${fmtTime(d.pipeline?.lastCompletedRun||d.pipeline?.lastRun)}（本次發布完成結果要到下次快照才可見）。流程結果不代表來源資料健康。主 pipeline 每 ${fmtInterval(d.pipeline?.intervalHours)}啟動；Instagram 依帳號近期發文頻率採 12 小時到 14 天的動態間隔；付費抓取的間隔會依 Apify 剩餘額度拉長。點卡片可篩選下方列表。`;
   }
   function renderSnapshot(){
     const generated=Date.parse(state.data.generatedAt),age=(Date.now()-generated)/3600000;
@@ -197,7 +197,7 @@ def build() -> dict:
     <div class="filter-row"><span class="label">狀態</span><span class="fgroup" id="status-filters"></span><label class="search-hit status-search"><span class="sr-only">搜尋來源</span><input id="source-search" type="search" placeholder="搜尋名稱、帳號或後端"></label></div>
     <div class="filter-row"><span class="label">平台</span><span class="fgroup" id="platform-filters"></span></div>
   </section>
-  <p class="status-note">同一個 Instagram 帳號會分成「貼文」與「限時動態」兩列。貼文依近期發文頻率調整為 12 小時到 14 天；限時動態依各帳號最近一次發限動的時間調整為 12 小時到 7 天，先查免費限動檢視網站，查不到才用 Apify。兩者都不使用本站的 Instagram 帳號；Apify 額度由 Facebook 粉專、限時動態與貼文備援每天平分。「實際」需累積至少兩次成功紀錄；沒有新內容仍算抓取成功。</p>
+  <p class="status-note">同一個 Instagram 帳號會分成「貼文」與「限時動態」兩列。貼文依近期發文頻率調整為 12 小時到 14 天；限時動態依各帳號最近一次發限動的時間調整為 12 小時到 7 天，先查免費限動檢視網站，查不到才用 Apify。兩者都不使用本站的 Instagram 帳號；Apify 額度由 Facebook 粉專、限時動態與貼文備援每天平分，額度不夠時 Facebook 與走 Apify 的貼文間隔會依剩餘額度拉長，「目標」顯示的就是目前額度付得起的間隔。「實際」需累積至少兩次成功紀錄；沒有新內容仍算抓取成功，但查無帳號、私人或受限帳號會標成「帳號無法取得」。</p>
   <p id="source-count" class="status-count"></p><p id="status-message" class="status-message" role="status"></p>
   <div class="status-sort-mobile"><label for="source-sort">排序</label><select id="source-sort">{sort_options}</select><button type="button" class="status-sort-direction" id="source-sort-direction">↑ 升冪</button></div>
   <div class="status-src-table"><div class="status-src-head">{sort_headers}</div><div id="source-rows"></div></div>

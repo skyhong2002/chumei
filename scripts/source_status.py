@@ -298,7 +298,8 @@ def error_category(error: str) -> str | None:
         return None
     if any(marker in text for marker in ("reserve", "user_daily_exhausted", "quota", "credit", "budget")):
         return "quota_wait"
-    if any(marker in text for marker in ("not found", "not_found", "does not exist", "doesn't exist", "usernotfound")):
+    if any(marker in text for marker in ("not found", "not_found", "does not exist", "doesn't exist", "usernotfound",
+                                         "private:", "restricted profile")):
         return "account_unavailable"
     return "fetch_error"
 
@@ -445,7 +446,8 @@ def detect_incidents(*, now: float, profile_schedule: dict, story_schedule: dict
             "title": "Apify 共用額度節流中",
             "detail": f"為了讓剩餘 Apify 額度（US${remaining:.2f}）撐到重置日，每天只花平均分攤的額度，"
                       "並由 Facebook 粉專、Instagram 限時動態與 Instagram 貼文備援平分；"
-                      f"Facebook 每個粉專約每 {facebook_interval_hours / 24:.1f} 天輪抓一次。"})
+                      f"依目前額度，Facebook 每個粉專約每 {facebook_interval_hours / 24:.1f} 天輪抓一次，"
+                      "Instagram 貼文的抓取間隔也會依額度等比例拉長；額度重置或增加後會自動縮短。"})
     return incidents
 
 

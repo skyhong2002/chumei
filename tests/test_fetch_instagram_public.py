@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import fetch_instagram_public
 from fetch_instagram_public import normalize_profile
+from source_status import error_category
 
 
 class PublicInstagramTests(unittest.TestCase):
@@ -39,13 +40,14 @@ class PublicInstagramTests(unittest.TestCase):
 
 
 class DirectPathTests(unittest.TestCase):
-    def run_main(self, fetch, *, budget=0.0, actor_items=(), host_open=True):
+    def run_main(self, fetch, *, budget=0.0, actor_items=(), host_open=True, stretch=1.0):
         rows = [{"username": name, "active": "true"} for name in ("a", "b", "c", "d")]
         self.schedule = {"version": 1, "accounts": {}}
         client = Mock()
         client.fetch.side_effect = fetch
         self.run_actor = Mock(return_value=({"usageTotalUsd": 0.01}, list(actor_items)))
         self.mark_failure = Mock()
+        self.mark_success = Mock()
         self.record_fetch = Mock()
         self.report_block = Mock()
         seen = MagicMock()
@@ -69,7 +71,8 @@ class DirectPathTests(unittest.TestCase):
             patch.object(fetch_instagram_public, "record_api_call"),
             patch.object(fetch_instagram_public, "record_fetch", self.record_fetch),
             patch.object(fetch_instagram_public, "mark_failure", self.mark_failure),
-            patch.object(fetch_instagram_public, "mark_success"),
+            patch.object(fetch_instagram_public, "mark_success", self.mark_success),
+            patch.object(fetch_instagram_public, "budget_stretch", return_value=stretch),
             patch.object(fetch_instagram_public.ig_public_host, "wait_turn", return_value=host_open),
             patch.object(fetch_instagram_public.ig_public_host, "report_block", self.report_block),
         ]
@@ -109,6 +112,47 @@ class DirectPathTests(unittest.TestCase):
         self.assertEqual(self.run_actor.call_args.args[1], ["a", "b"])
         # b was sent to Apify but returned nothing; c and d were never tried.
         self.assertEqual([call.args[1] for call in self.mark_failure.call_args_list], ["b"])
+
+    def test_missing_private_and_restricted_profiles_are_failures_not_empty_successes(self):
+        def fetch(username, _limit):
+            raise requests.HTTPError("Instagram public web HTTP 401: Please wait a few minutes")
+
+        items = [
+            {"username": "a", "error": "not_found", "errorDescription": "Profile does not exist"},
+            {"username": "b", "private": True, "postsCount": 0, "latestPosts": []},
+            {"username": "c", "error": "Restricted profile", "latestPosts": []},
+            {"username": "d", "private": False, "postsCount": 0, "latestPosts": []},
+        ]
+        cost = fetch_instagram_public.SOURCE_COST_ESTIMATE_USD["instagram"]
+        self.run_main(fetch, budget=10 * cost, actor_items=items)
+
+        outcome = {call.args[0]: call.kwargs for call in self.record_fetch.call_args_list}
+        for name in ("a", "b", "c"):
+            self.assertFalse(outcome[f"instagram:{name}"]["ok"], name)
+            self.assertEqual(error_category(outcome[f"instagram:{name}"]["error"]),
+                             "account_unavailable")
+        # An existing account that simply has no posts is still an empty success.
+        self.assertTrue(outcome["instagram:d"]["ok"])
+        self.assertEqual(outcome["instagram:d"]["items"], 0)
+        backoff = {call.args[1]: call.kwargs for call in self.mark_failure.call_args_list}
+        self.assertEqual(sorted(backoff), ["a", "b", "c"])
+        self.assertEqual(backoff["a"]["cap_hours"], 336)
+
+    def test_paid_intervals_stretch_to_fit_the_credit_share(self):
+        def fetch(username, _limit):
+            if username == "a":
+                return None, [{"post_id": "X", "posted_at": "2026-10-01T00:00:00Z", "text": "t", "images": []}]
+            raise requests.HTTPError("Instagram public web HTTP 401: Please wait a few minutes")
+
+        item = {"username": "b", "latestPosts": [{"shortCode": "P1", "timestamp": "2026-10-01T00:00:00Z"}]}
+        cost = fetch_instagram_public.SOURCE_COST_ESTIMATE_USD["instagram"]
+        with patch.object(fetch_instagram_public, "adaptive_interval_hours", return_value=24):
+            self.run_main(fetch, budget=1 * cost, actor_items=[item], stretch=2.5)
+
+        intervals = {call.args[1]: call.kwargs["interval_hours"] for call in self.mark_success.call_args_list}
+        # Free direct fetches keep the activity interval; paid ones stretch.
+        self.assertEqual(intervals, {"a": 24, "b": 60.0})
+        self.assertEqual(self.schedule["accounts"]["b"]["wanted_interval_hours"], 24)
 
     def test_host_block_from_another_collector_skips_direct_queries(self):
         _, client = self.run_main(lambda *_: None, host_open=False)

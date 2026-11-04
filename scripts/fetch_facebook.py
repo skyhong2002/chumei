@@ -220,6 +220,29 @@ def usage_usd(run: dict):
     return None
 
 
+def rebase_intervals(schedule: dict, interval_hours: float, *, tolerance: float = 0.1) -> int:
+    """Re-time successfully fetched pages to the interval the credit pays for now.
+
+    The interval follows the Apify budget, so a page fetched under an older,
+    shorter (or longer) interval would otherwise look due too early (or late)
+    until it is fetched again. Pages in failure backoff keep their retry time.
+    Small drifts (within ``tolerance``) are ignored so the per-round wobble of
+    the budget does not rewrite every page and erase its jitter.
+    """
+    changed = 0
+    for account in (schedule.get("accounts") or {}).values():
+        last = account.get("last_success")
+        current = float(account.get("interval_hours") or 0)
+        if (not last or account.get("consecutive_failures")
+                or account.get("last_attempt") != last
+                or (current and abs(current - interval_hours) <= tolerance * interval_hours)):
+            continue
+        account["interval_hours"] = interval_hours
+        account["next_eligible"] = float(last) + interval_hours * 3600
+        changed += 1
+    return changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pages", help="comma-separated page usernames or Facebook URLs")
@@ -238,6 +261,8 @@ def main() -> int:
         sources = [row for row in sources if page_slug(row.get("page", "")) in wanted]
     else:
         by_slug = {page_slug(row["page"]): row for row in sources}
+        if rebase_intervals(schedule, args.account_interval_hours):
+            save_schedule(SCHEDULE_STATE, schedule)
         due = select_due(list(by_slug), schedule, args.max_pages_per_run or len(by_slug), now=time.time())
         if not due:
             print("facebook: no pages due")

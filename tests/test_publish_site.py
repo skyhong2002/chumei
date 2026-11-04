@@ -59,6 +59,16 @@ class AtomicPublicationTests(unittest.TestCase):
         # A repeated rollback after an interrupted operator session is safe.
         self.assertEqual(publish_site.rollback(self.root), first)
 
+    def test_owner_only_source_files_are_published_world_readable(self):
+        # Regression: a 0600 site/assets/app.js was copied into every release and
+        # nginx (another user) answered 403, leaving the nav menu without its JS.
+        os.chmod(self.source / "asset.js", 0o600)
+        release = self.publish()
+        for path in [release, *release.rglob("*")]:
+            bits = 0o555 if path.is_dir() else 0o444
+            self.assertEqual(path.stat().st_mode & bits, bits, path)
+        self.assertEqual((self.source / "asset.js").stat().st_mode & 0o777, 0o600)
+
     def test_failure_at_every_build_step_keeps_entire_current_release(self):
         first = self.publish()
         snapshot = self.snapshot()
