@@ -111,14 +111,14 @@ nthu_acgnsub_club,清大ACGN次文化社,nthu,club,藝術性,true,IG搜尋（202
 nthu_skating_club,清大溜冰社,nthu,club,體育性A,true,linktr.ee/nthu_skating_club 直接連結 IG
 nthu_fitness,清大健身社,nthu,club,體育性B,true,IG帳號標題「清華健身社」；搜尋結果佐證
 nthu_ocsa,清大僑生聯誼會,nthu,club,綜合性,true,IG 已從 nthu.ocsa 改名（2026-08 sweep 查證）; linktr.ee/nthu.ocsa 明示為清大僑生聯誼會並連結 IG
-tzujing.kga_2023,清大雄友會,nthu,club,綜合性,true,清大學務處公告列為高雄校友會 IG；帳號名含屆別、可能逐屆更換
-kga.yummy_nthu,清大雄友會,nthu,club,綜合性,true,雄友週活動帳號；Dcard 官方回覆稱為「清大雄友週 IG」
+tzujing.kga_2023,清大雄友會,nthu,club,綜合性,false,清大學務處公告列為高雄校友會 IG；帳號名含屆別、可能逐屆更換；2026-11-04 Apify 回報 Profile does not exist；營隊帳號改為 tzujing.kga_2025
+kga.yummy_nthu,清大雄友會,nthu,club,綜合性,false,雄友週活動帳號；Dcard 官方回覆稱為「清大雄友週 IG」；2026-11-04 Apify 回報 Profile does not exist；查無新帳號（FB kgacamp2022）
 nthu.tsa,清大轉學生聯誼會同好會,nthu,club,綜合性,true,清大教務處轉學生報到須知直接列出
 nthuhxz,清大附友會,nthu,club,綜合性,true,與中山校友會共用帳號；師大附中官網公告稱活動由清大附友會與中山校友會主辦並提供此帳號
 vsa_nthu,清大越南學生聯誼會,nthu,club,綜合性,true,清大全球事務處活動公告直接標示 VSA NTHU 及此帳號
 nthugsa27,清大畢業生聯誼會,nthu,official,自治,true,IG 顯示名「清大25級-畢聯會」；屆別帳號（每屆換帳號）；2026-08 sweep r3 換屆 25→27
 nthu_phys,清大物理系學會,nthu,department,自治,true,IG 顯示名「清大物理系學會」；bio 另載 FB「清華大學物理系系學會」
-nthuchem26,化學系會,nthu,department,自治,true,IG 顯示名「清大化學系學會」；26級屆別帳號、貼文少
+nthuchem26,化學系會,nthu,department,自治,false,IG 顯示名「清大化學系學會」；26級屆別帳號、貼文少；2026-11-04 Apify 回報 Profile does not exist；nthuchem27 也不存在，查無新帳號
 nthumseofficial,清大材料系學會,nthu,department,自治,true,材料系學會 FB 頁面說明載明 IG 為 nthumseofficial；unverified
 nthu_pmesa,動機系會,nthu,department,自治,true,IG 顯示名「清大動機系學會」
 nthu_qf,清大計財系系學會,nthu,department,自治,true,IG 顯示名「清大計財系系學會」；bio 自稱計財28級系學會
@@ -139,9 +139,9 @@ ymfd__is_the_best,陽明民族舞蹈社,nycu,club,康樂性社團,true,NYCU官�
 ymrm_27th,陽明熱門音樂社,nycu,club,學藝性社團,true,NYCU官方社團連結頁直連此IG;27屆帳號（2026-08 sweep 由 26th 更新）;陽明校區
 nycu_ym_hsnu_alumni,陽明校區師大附中校友會,nycu,club,綜合性社團,true,學務處社團介紹頁列出；陽明校區
 tsc.nycu,交大轉學生聯誼會,nycu,club,綜合性社團,true,學務處頁列 linktr.ee/tsc.nycu，linktree 內含 IG；光復校區
-nycuisag,陽明國際大使團112（ISAG）,nycu,club,綜合性社團,true,學務處社團介紹頁列出；陽明校區
+nycuisag,陽明國際大使團112（ISAG）,nycu,club,綜合性社團,false,學務處社團介紹頁列出；陽明校區；2026-11-04 Apify 回報 Profile does not exist；查無新帳號（FB nycuisag 仍追蹤）
 nycu_if,陽明勵青社,nycu,club,服務性社團,true,學務處社團介紹頁列出；陽明校區
-nymudooooooooogs,陽明關懷生命社,nycu,club,服務性社團,true,學務處社團介紹頁列出（校犬關懷主題帳號）；陽明校區
+nymudooooooooogs,陽明關懷生命社,nycu,club,服務性社團,false,學務處社團介紹頁列出（校犬關懷主題帳號）；陽明校區；2026-11-04 Apify 回報 Profile does not exist；查無新帳號（FB lifecareclub）
 nycu_chingeuo,陽明交通大學青少年幼兒服務社,nycu,club,服務性社團,true,學務處社團介紹頁列出；陽明校區
 nycuhellolove,陽明愛呀，你好！社,nycu,club,服務性社團,true,學務處社團介紹頁列出；陽明校區
 ym_baseball.strong,陽明棒球社（國立陽明交通大學棒球社）,nycu,club,體能性社團,true,學務處社團介紹頁列出；陽明校區
@@ -166,7 +166,7 @@ nthumdclub,清大音樂文化發展社,nthu,club,學術性A,true,IG 簡介「清
 igem_nthu,清大iGEM基因工程研究社,nthu,club,學術性A,true,iGEM NTHU-Taiwan 隊伍帳號、逐年沿用
 nthucg,清大管理顧問社,nthu,club,學術性A,true,NTHU Consulting Group；LinkedIn 有 Threads 短網址但無法確認 handle 故未收
 nthu_dsc,清大資料科學社,nthu,club,學術性A,true,清大管院職涯辦公告正文標示 @nthu_dsc
-hultprize_nthu,清大霍特獎社,nthu,club,學術性A,true,清大國際處2026校園賽公告列出；註冊社團2025曾遭停權一年但賽事續辦
+hultprize_nthu,清大霍特獎社,nthu,club,學術性A,false,清大國際處2026校園賽公告列出；註冊社團2025曾遭停權一年但賽事續辦；2026-11-04 Apify 回報 Profile does not exist；hultprize.nthu 也不存在，查無新帳號（FB hpnthu2022 仍追蹤）
 maygong.official,清大梅竹工作會,nthu,club,功能性,true,清大電子報招募公告佐證
 mei.chuuuuu,清大梅竹火力班,nthu,club,功能性,true,清大電子報招募公告佐證
 nthucarelife,清大關懷生命社,nthu,club,服務性B,true,清大懷生社/校園流浪犬關懷社、IG約4800粉絲
@@ -187,7 +187,7 @@ nthuacc_since_1973,清大原住民文化社,nthu,club,綜合性,true,清大課�
 nthu_wenfu,清大基層文化服務社,nthu,club,服務性,true,清大課指組社團系統直連（2026-08 sweep 驗證）
 nthu_sanda,清大散打搏擊社,nthu,club,體育性A,true,清大課指組社團系統直連（2026-08 sweep 驗證）
 nthuarchery,現代弓射箭社,nthu,club,體育性A,true,清大課指組社團系統直連（2026-08 sweep 驗證）
-nthu.itvc_1st,原住民清華村社,nthu,club,綜合性,true,清大課指組社團系統直連（2026-08 sweep 驗證）
+nthu.itvc_1st,原住民清華村社,nthu,club,綜合性,false,清大課指組社團系統直連（2026-08 sweep 驗證）；2026-11-04 Apify 回報 Profile does not exist；查無新帳號
 nthu_kga,清大雄友會,nthu,club,聯誼性,true,清大課指組社團系統直連（2026-08 sweep 驗證）
 nthu.lanyo,宜蘭校友會,nthu,club,聯誼性,true,清大課指組社團系統直連（2026-08 sweep 驗證）
 nycugoclub,交大圍棋社,nycu,club,康樂性,true,2026-08 sweep：研究 nycu_0（high）
@@ -218,7 +218,7 @@ thsm088,學士後醫學系系學會,nthu,official,自治性,true,2026-08 sweep�
 nthu_rainbowclub,彩虹同志社,nthu,club,學術性B,true,2026-08 sweep：研究 nthu_1（high）
 nthu_happy_child,快樂兒童社,nthu,club,服務性B,true,2026-08 sweep：研究 nthu_1（high）
 educationservice_nthu,教育服務團,nthu,club,服務性B,true,2026-08 sweep：研究 nthu_1（high）
-nycu_birs_27th,陽明生物醫學影像暨放射科學系學生會,nycu,official,學生自治組織,true,2026-08 sweep：研究 nycu_2（high）
+nycu_birs_27th,陽明生物醫學影像暨放射科學系學生會,nycu,official,學生自治組織,false,2026-08 sweep：研究 nycu_2（high）；2026-11-04 Apify 回報 Profile does not exist；已換屆為 nycu_birs_28th
 nycu_mountain_cc,陽明登山社,nycu,club,體能性,true,2026-08 sweep：研究 nycu_2（high）
 nycu.steamedu,交大科技教育研討社,nycu,club,任務性,true,2026-08 sweep：研究 nycu_2（high）
 nycu.orchestra,交大管弦樂團,nycu,club,音樂戲劇性,true,2026-08 sweep：研究 nycu_2（high）
@@ -247,7 +247,7 @@ nthu_kss,運動科學系系學會,nthu,official,自治性,true,2026-08 sweep：�
 nthu.yueren.cafe,閱人咖啡館社,nthu,club,學術性B,true,2026-08 sweep：研究 nthu_3（high）
 nthu_eecsgsa,電資院學士班國際組學生會,nthu,official,自治性,true,2026-08 sweep：研究 nthu_3（high）
 nthu.msa,馬來西亞同學會,nthu,club,綜合性,true,2026-08 sweep：研究 nthu_3（high）
-nctu_bible_study_club,交大聖經研習社,nycu,club,學術性,true,2026-08 sweep：OSA 官方頁（high）
+nctu_bible_study_club,交大聖經研習社,nycu,club,學術性,false,2026-08 sweep：OSA 官方頁（high）；2026-11-04 已轉私人且 0 篇；同社團的 nycu_bible_study_club 已在清單
 nthumathsa,清大數學系系學會,nthu,department,,true,2026-08 sweep：ig_hunt_0（high）
 nthu_aiyu_club,愛慾實務社,nthu,club,學術性B,true,2026-08 sweep：ig_hunt_0（high）
 nthu.mount,登山社,nthu,club,體育性B,true,2026-08 sweep：ig_hunt_0（high）
@@ -273,7 +273,7 @@ nthukipe,竹師教育學院學士班系學會,nthu,official,自治性,true,2026-
 nycu.dea.ct,陽明交大課外活動輔導組(交大校區),nycu,official,,true,2026-08 sweep：ig_hunt_1（high）
 nthu.acgacademic,ACG蔓延社,nthu,club,學術性A,true,2026-08 sweep：ig_hunt_1（high）
 nycu_sanfu_baby,交大Smrangi山福團,nycu,club,服務性,true,2026-08 sweep：ig_hunt_1（high）
-yccmc_52th,陽明中國傳統醫學研究社,nycu,club,學術性,true,2026-08 sweep：ig_hunt_1（med）
+yccmc_52th,陽明中國傳統醫學研究社,nycu,club,學術性,false,2026-08 sweep：ig_hunt_1（med）；2026-11-04 Apify 回報 Profile does not exist；yccmc_53th 也不存在，查無新帳號（FB YMchinesemedicine）
 cie_nthu,中國工程師學會清華分會,nthu,club,學術性B,true,2026-08 sweep：ig_hunt_1（med）
 nycu.fhl,交大信望愛社,nycu,club,學術性,true,2026-08 sweep：ig_hunt_1（high）
 nycu_yoga_club,交大瑜珈社,nycu,club,體能性,true,2026-08 sweep：ig_hunt_1（high）
@@ -292,7 +292,7 @@ nycu.tc,交大慈濟青年社,nycu,club,服務性,true,2026-08 sweep：ig_hunt_2
 nycu_ic_2021,交大投資理財社,nycu,club,學術性,true,2026-08 sweep：ig_hunt_2（high）
 nthu.photoclub,攝影社,nthu,club,藝術性,true,2026-08 sweep：ig_hunt_2（high）
 nycu_dmcc,交大數位音樂創作社,nycu,club,音樂戲劇性,true,2026-08 sweep：ig_hunt_2（high）
-nthu_yuehan39,月涵文學獎工作會,nthu,club,功能性,true,2026-08 sweep：ig_hunt_2（high）
+nthu_yuehan39,月涵文學獎工作會,nthu,club,功能性,false,2026-08 sweep：ig_hunt_2（high）；2026-11-04 Apify 回報 Profile does not exist；已換屆為 nthu_yuehan40
 nycumayhou,交大梅竹後援會,nycu,club,任務性,true,2026-08 sweep：ig_hunt_2（high）
 nycusea,陽明舞臺效果藝術社,nycu,club,學藝性,true,2026-08 sweep：ig_hunt_4（high）
 nycu_art_fest,交大藝趣節團隊,nycu,club,學藝性,true,2026-08 sweep：ig_hunt_4（high）
@@ -320,7 +320,7 @@ nycu.insect.club,交大昆蟲社,nycu,club,學術性,true,2026-08 sweep r2：clu
 nycu_cosplay_club,交大角色扮演社,nycu,club,康樂性,true,2026-08 sweep r2：clubportal 官方登記＋IG 驗證
 nycunatural,交大自然保育社,nycu,club,學術性,true,2026-08 sweep r2：clubportal 官方登記＋IG 驗證
 psclub.nycu,交大科普科技研究社,nycu,club,學術性,true,2026-08 sweep r2：clubportal 官方登記＋IG 驗證（交大科普科技社）
-semi_cum_doctor_,半導體工程學系學生會,nycu,department,學生自治組織,true,2026-08 sweep r3：topsearch（交大半導體工程學系學會）
+semi_cum_doctor_,半導體工程學系學生會,nycu,department,學生自治組織,false,2026-08 sweep r3：topsearch（交大半導體工程學系學會）；2026-11-04 Apify 回報 Profile does not exist；查無新帳號（FB NYCU.Nano）
 nycu.ai,人工智慧社,nycu,club,學術性,true,2026-08 sweep r3：topsearch（陽明交大AI社）
 nycu.life,NYCU LIFE,nycu,club,,true,2026-08-30：NYCU LIFE 團隊帳號，全校性；經團隊（SteveYi）確認不掛數碼寶貝社名下以免混淆
 nthu_bioengineering,生醫工程創新創業社,nthu,club,學術性A,true,2026-08 deep search：IG 全名一字不差（新帳號 22f）
@@ -333,3 +333,6 @@ blazesquad1896,交大火力班,nycu,club,應援社團,true,2026-09-13 使用者�
 je_mental.guts,國立陽明交通大學精神醫學服務隊,nycu,club,學生服務,true,2026-09-14 使用者回報 sub_7d5f282a3b48：自動審核通過（陽明交大學生服務隊，持續發布校內招募、例行活動與服務活動資訊。）
 nthu_fic,清華大學理財投資研習社,nthu,club,投資理財,true,2026-09-14 使用者回報 sub_d626d2bc4b9c：自動審核通過（清大學生社團，持續發布社課、社博及招募等公開活動資訊。）
 nycu.jcc,交大日本文化研究社,nycu,club,學藝性,true,2026-09-27 人工核對社團官網 https://jcc.nycu.cc/
+nycu_birs_28th,陽明生物醫學影像暨放射科學系學生會,nycu,official,學生自治組織,true,2026-11-04 取代 nycu_birs_27th；Apify 驗證顯示名「陽明交通大學第28屆醫放系系學會」
+nthu_yuehan40,月涵文學獎工作會,nthu,club,功能性,true,2026-11-04 取代 nthu_yuehan39；Apify 驗證顯示名「月涵文學獎YueHanLiterary」
+tzujing.kga_2025,清大雄友會,nthu,club,綜合性,true,2026-11-04 取代 tzujing.kga_2023；清大招生組 2025 營隊頁列出，最後貼文 2025-03（逐年營隊帳號）

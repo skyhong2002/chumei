@@ -115,11 +115,23 @@ class AllocationTests(unittest.TestCase):
                 apify_pool.record_run("A", consumer=consumer, cost_usd=0.01, source_count=2, ok=True,
                                       now=MIDNIGHT - day * 24 * HOUR)
         with_history = apify_pool.recommended_interval_hours(status, source_count=100, now=MIDNIGHT)
-        # 100 pages x 0.013 at 0.10/day (capped at one week) vs 0.28/day.
-        self.assertEqual(without_history, apify_pool.MAX_INTERVAL_HOURS)
+        # 100 pages x 0.013 at 0.10/day vs 0.28/day; no one-week ceiling, so the
+        # target is what the credit can actually pay for.
+        self.assertEqual(without_history, round(24 * 100 * 0.013 / 0.10, 2))
+        self.assertGreater(without_history, 168)
         self.assertEqual(with_history, round(24 * 100 * 0.013 / 0.28, 2))
         self.assertEqual(apify_pool.recommended_interval_hours({"accounts": []}, source_count=300,
                                                                now=MIDNIGHT), apify_pool.MAX_INTERVAL_HOURS)
+
+    def test_budget_stretch_scales_intervals_only_when_demand_exceeds_credit(self):
+        status = _status()
+        daily = apify_pool.expected_daily_usd(status, "instagram", now=MIDNIGHT)
+        affordable = daily / apify_pool.SOURCE_COST_ESTIMATE_USD["instagram"]
+        self.assertEqual(apify_pool.budget_stretch(status, "instagram", daily_fetches=affordable / 2,
+                                                   now=MIDNIGHT), 1.0)
+        self.assertAlmostEqual(apify_pool.budget_stretch(status, "instagram", daily_fetches=affordable * 3,
+                                                         now=MIDNIGHT), 3.0, places=2)
+        self.assertEqual(apify_pool.budget_stretch(status, "instagram", daily_fetches=0, now=MIDNIGHT), 1.0)
 
 
 if __name__ == "__main__":

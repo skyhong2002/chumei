@@ -71,6 +71,27 @@ def copy_tree(source, target):
     shutil.copytree(source, target, dirs_exist_ok=True)
 
 
+def make_world_readable(tree):
+    """Grant read (and directory traversal) to everyone on a release tree.
+
+    copy_tree preserves source modes, so one owner-only file in site/ (e.g. an
+    editor's atomic save leaving 0600) would be copied into every release and
+    served as 403 by a web server running as another user. A release is public
+    static content, so normalising here keeps any source mode from leaking.
+    """
+    def grant(path, bits):
+        if path.is_symlink():
+            return
+        mode = path.stat().st_mode
+        if mode & bits != bits:
+            os.chmod(path, mode | bits)
+
+    for dirpath, _dirnames, filenames in os.walk(tree):
+        grant(Path(dirpath), 0o555)
+        for name in filenames:
+            grant(Path(dirpath) / name, 0o444)
+
+
 def step_timeout(script, deadline):
     """Per-step limit, capped by what is left of the whole publication's budget."""
     remaining = deadline - time.monotonic()
@@ -130,6 +151,7 @@ def publish(root=ROOT, *, runner=None, offline=False):
                 "id": name, "validated": True,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }) + "\n")
+            make_world_readable(stage)
             candidate = releases / name
             os.replace(stage, candidate)
             if old:

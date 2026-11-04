@@ -22,7 +22,9 @@ CACHE_PATH = ROOT / "state" / "apify_quota.json"
 POOL_STATE_PATH = ROOT / "state" / "apify_pool.json"
 MIN_ACCOUNT_RESERVE_USD = 0.02
 MIN_INTERVAL_HOURS = 24.0
-MAX_INTERVAL_HOURS = 168.0
+# Revisit intervals follow the credit actually available; this ceiling only
+# guards against a dry pool (no credit left) producing an unbounded wait.
+MAX_INTERVAL_HOURS = 720.0
 # intropix/instagram-stories-scraper free-plan guard: per Apify account it
 # grants 40 result items per day, at most 10 result items and 10 scanned
 # profiles per run, and always lets the first run of the day through even
@@ -508,21 +510,48 @@ def story_runs_available(status: dict, *, now: float | None = None) -> int:
     return max(0, min(total, _story_share_runs(status, now)))
 
 
-def recommended_interval_hours(status: dict, *, source_count: int, now: float | None = None) -> float:
-    """Facebook page revisit interval that its expected daily credit can sustain.
+def expected_daily_usd(status: dict, consumer: str, *, now: float | None = None) -> float:
+    """Credit a consumer can expect to spend per day at the current pace.
 
-    Facebook gets its equal share plus whatever the other consumers have
-    recently left unused (judged by their last week, never more than a share).
+    It gets its equal share plus whatever the other consumers have recently
+    left unused (judged by their last week, never more than a share).
     """
     now = time.time() if now is None else float(now)
     allocation = apify_allocation(status, now=now)
     share = allocation["shareUsd"]
     others = sum(
         share if row["averageDailyUsd"] is None else min(share, row["averageDailyUsd"])
-        for consumer, row in allocation["consumers"].items() if consumer != "facebook"
+        for name, row in allocation["consumers"].items() if name != consumer
     )
-    daily = allocation["paceUsd"] - others
+    return max(0.0, allocation["paceUsd"] - others)
+
+
+def recommended_interval_hours(status: dict, *, source_count: int, now: float | None = None) -> float:
+    """Facebook page revisit interval that its expected daily credit can sustain.
+
+    There is deliberately no one-week ceiling: a target the credit cannot pay
+    for only makes every page look overdue while the real rotation is slower.
+    The interval shrinks again by itself when the pool's credit recovers.
+    """
+    daily = expected_daily_usd(status, "facebook", now=now)
     if daily <= 0:
         return MAX_INTERVAL_HOURS
     interval = 24 * max(1, source_count) * SOURCE_COST_ESTIMATE_USD["facebook"] / daily
     return round(min(MAX_INTERVAL_HOURS, max(MIN_INTERVAL_HOURS, interval)), 2)
+
+
+def budget_stretch(status: dict, consumer: str, *, daily_fetches: float,
+                   now: float | None = None) -> float:
+    """Factor (>= 1) by which a consumer's wanted intervals must grow to fit its credit.
+
+    ``daily_fetches`` is how many sources per day the wanted intervals ask for.
+    Stretching every interval by the same factor keeps the relative order the
+    activity-based schedule chose while making the targets payable.
+    """
+    demand = max(0.0, daily_fetches) * SOURCE_COST_ESTIMATE_USD[consumer]
+    if demand <= 0:
+        return 1.0
+    daily = expected_daily_usd(status, consumer, now=now)
+    if daily <= 0:
+        return MAX_INTERVAL_HOURS / MIN_INTERVAL_HOURS
+    return round(max(1.0, demand / daily), 3)

@@ -17,8 +17,8 @@ import time
 from datetime import datetime, timezone
 
 import ig_public_host
-from apify_pool import (SOURCE_COST_ESTIMATE_USD, choose_token, pool_status, record_run,
-                        round_budget_usd)
+from apify_pool import (SOURCE_COST_ESTIMATE_USD, budget_stretch, choose_token, pool_status,
+                        record_run, round_budget_usd)
 from chumei_lib import (ROOT, SeenState, append_inbox, load_env, now_iso,
                         read_sources_csv, save_avatar)
 from fetch_facebook import apify_request, usage_usd
@@ -61,6 +61,38 @@ def normalize_profile(item: dict, limit: int) -> tuple[str, str | None, list[dic
         })
     avatar = item.get("profilePicUrlHD") or item.get("profilePicUrl")
     return username, avatar, posts
+
+
+def profile_unavailable(item: dict) -> str | None:
+    """Why a profile actor item carries no readable posts, or None if it is usable.
+
+    The actor answers a missing profile with an item like
+    ``{"error": "not_found", "errorDescription": "Profile does not exist"}``.
+    Treating that as an empty success hid renamed cohort accounts for weeks.
+    An existing profile with zero posts is still a real (empty) success.
+    """
+    error = str(item.get("error") or "").strip()
+    if error:
+        description = str(item.get("errorDescription") or "").strip()
+        if error == "not_found":
+            return f"not_found: {description or 'Profile does not exist'}（帳號可能已改名或刪除）"
+        if "restricted" in error.lower():
+            return f"restricted: {error}（帳號受限，無法讀取貼文）"
+        return f"{error}: {description}".rstrip(": ")
+    if item.get("private") and not item.get("latestPosts"):
+        return "private: 帳號已轉為私人，無法讀取貼文"
+    return None
+
+
+def wanted_daily_fetches(schedule: dict, metadata: dict) -> float:
+    """Fetches per day the activity-based (unstretched) intervals ask for."""
+    accounts = schedule.get("accounts") or {}
+    total = 0.0
+    for username in metadata:
+        account = accounts.get(username) or {}
+        hours = account.get("wanted_interval_hours") or account.get("interval_hours") or 168
+        total += 24 / max(1.0, float(hours))
+    return total
 
 
 def run_actor(token: str, usernames: list[str]):
@@ -178,6 +210,8 @@ def main() -> int:
     actor_run = None
     actor_label = None
     batch = []
+    quota = None
+    unavailable: dict[str, str] = {}
     if fallback:
         quota = pool_status(refresh=True)
         budget = round_budget_usd("instagram", quota)
@@ -189,7 +223,12 @@ def main() -> int:
                 actor_run, items = run_actor(token, batch)
                 for item in items:
                     username, avatar, posts = normalize_profile(item, args.limit)
-                    if username in metadata:
+                    if username not in metadata:
+                        continue
+                    problem = profile_unavailable(item)
+                    if problem:
+                        unavailable[username] = problem
+                    else:
                         resolved[username] = (avatar, posts, "Apify Instagram")
             except RuntimeError as exc:
                 print(f"Apify Instagram fallback failed: {exc}", file=sys.stderr)
@@ -197,9 +236,27 @@ def main() -> int:
             print(f"Apify Instagram: {len(fallback) - len(batch)} accounts wait for the "
                   f"Instagram share of Apify credit (US${budget:.3f} this round)")
 
+    # Paid fetches follow the Instagram share of the credit: when the activity-
+    # based intervals ask for more than it pays for, all of them stretch alike.
+    stretch = 1.0
+    if any(result[2] == "Apify Instagram" for result in resolved.values()):
+        quota = quota or pool_status(refresh=False)
+        stretch = budget_stretch(quota, "instagram", daily_fetches=wanted_daily_fetches(schedule, metadata))
+        if stretch > 1:
+            print(f"Apify Instagram: intervals x{stretch:g} to fit the Instagram credit share")
+
     total = 0
     failures = 0
     for username in selected:
+        if username in unavailable:
+            failures += 1
+            # A missing, private or restricted profile will not come back soon;
+            # retry rarely so a renamed account does not keep spending credit.
+            mark_failure(schedule, username, base_hours=72, cap_hours=336)
+            record_fetch(f"instagram:{username}", backend="Apify Instagram", ok=False,
+                         error=unavailable[username])
+            print(f"@{username}: {unavailable[username]}")
+            continue
         result = resolved.get(username)
         if not result:
             failures += 1
@@ -212,8 +269,10 @@ def main() -> int:
             continue
         avatar, posts, backend = result
         total += ingest(username, avatar, posts, metadata[username], seen)
-        interval = adaptive_interval_hours([post.get("posted_at") for post in posts])
+        wanted = adaptive_interval_hours([post.get("posted_at") for post in posts])
+        interval = round(wanted * stretch, 1) if backend == "Apify Instagram" else wanted
         mark_success(schedule, username, interval_hours=interval, jitter_hours=3)
+        schedule["accounts"].setdefault(username, {})["wanted_interval_hours"] = wanted
         record_fetch(f"instagram:{username}", backend=backend, ok=True, items=len(posts))
         record_api_call(backend, operation="instagram profile", ok=True)
         print(f"@{username}: {len(posts)} posts via {backend}; next ~{interval:g}h")
