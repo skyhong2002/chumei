@@ -900,7 +900,7 @@ def page_shell(title, desc, content, og_image=None, canonical=None, robots=None)
 <meta name="twitter:image" content="{og_img}">
 {robots_meta}<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/logo-mark-32.png"><link rel="icon" type="image/png" sizes="64x64" href="/assets/brand/logo-mark-64.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/logo-square-180.png">
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#F7F9FC" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-title" content="竹梅">
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/site.css">
@@ -2219,12 +2219,12 @@ FEED_ICON = {
 }
 
 
-def heart_btn(org_id, org_name, extra_class=""):
+def heart_btn(org_id, org_name, extra_class="", icon=None):
     """追蹤愛心：狀態由 app.js 依 push-prefs 的 orgs 同步。"""
     return (f'<button class="heart-btn{" " + extra_class if extra_class else ""}" '
             f'data-org-id="{org_id}" data-org-name="{esc(org_name)}" '
             f'aria-pressed="false" aria-label="追蹤主辦：{esc(org_name)}" '
-            f'title="追蹤主辦：{esc(org_name)}">{FEED_ICON["heart"]}</button>')
+            f'title="追蹤主辦：{esc(org_name)}">{icon or FEED_ICON["heart"]}</button>')
 FEED_PLAT = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X", "bulletin": "公告", "api": "官方"}
 # 貼文右上角的平台標誌（Simple Icons，CC0）。公告頁與官方 API 沒有品牌，用訂閱源符號。
 FEED_PLAT_ICON = {
@@ -2235,6 +2235,34 @@ FEED_PLAT_ICON = {
     "bulletin": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.199 24C19.199 13.467 10.533 4.8 0 4.8V0c13.165 0 24 10.835 24 24h-4.801zM3.291 17.415c1.814 0 3.293 1.479 3.293 3.295 0 1.813-1.485 3.29-3.301 3.29C1.47 24 0 22.526 0 20.71s1.475-3.294 3.291-3.295zM15.909 24h-4.665c0-6.169-5.075-11.245-11.244-11.245V8.09c8.727 0 15.909 7.184 15.909 15.91z"/></svg>',
 }
 FEED_PLAT_ICON["api"] = FEED_PLAT_ICON["bulletin"]
+
+
+def svg_sprite(icons):
+    """把重複出現的 inline SVG 收成一份 <symbol>，各處改用 <use> 參照。
+    外層 <svg> 保留原本的 fill／stroke 屬性，由 <use> 的內容繼承，外觀不變。
+    回傳 (sprite markup, {name: 參照用的 <svg>})。"""
+    symbols, refs, seen = [], {}, {}
+    for name, svg in icons.items():
+        match = re.fullmatch(r"(<svg\b[^>]*>)(.*)</svg>", svg, re.S)
+        if svg in seen:  # 同一個圖示（例如 api 與 bulletin）共用同一個 symbol
+            refs[name] = refs[seen[svg]]
+            continue
+        seen[svg] = name
+        symbols.append(f'<symbol id="i-{name}" viewBox="0 0 24 24">{match.group(2)}</symbol>')
+        refs[name] = f'{match.group(1)}<use href="#i-{name}"/></svg>'
+    sprite = ('<svg class="svg-sprite" width="0" height="0" aria-hidden="true" focusable="false" '
+              'style="position:absolute;overflow:hidden">' + "".join(symbols) + "</svg>")
+    return sprite, refs
+
+
+# 首頁河道每則貼文都有平台標誌與四顆動作圖示；SSR 只放一份 symbol（見 prerender_feed）。
+FEED_SPRITE, FEED_SPRITE_REF = svg_sprite({
+    **{k: FEED_ICON[k] for k in ("heart", "send", "ext", "ticket")},
+    **{f"plat-{k}": v for k, v in FEED_PLAT_ICON.items()},
+})
+FEED_PLAT_REF = {k: FEED_SPRITE_REF[f"plat-{k}"] for k in FEED_PLAT_ICON}
+# 首屏外的頭貼延後載入：每欄前幾則直接載，其餘 lazy。與 app.js FEED_EAGER_ROWS 一致。
+FEED_EAGER_ROWS = 3
 # 拉丁字前留一個空格：「陽明游泳社的 Instagram 主頁」
 FEED_PLAT_PAGE = {"instagram": " Instagram 主頁", "facebook": " Facebook 粉專", "threads": " Threads 主頁",
                   "x": " X 主頁", "bulletin": "公告頁", "api": "官方網站"}
@@ -2283,7 +2311,7 @@ def _feed_ago(iso, now):
     return f"{prefix}{d.month}/{d.day}"
 
 
-def _feed_ev_chip(e):
+def _feed_ev_chip(e, icons=FEED_ICON):
     esc = html.escape
     d = _iso_dt(e["start_at"]).astimezone(TZ_TAIPEI)
     when = f"{d.month}/{d.day}" + ("" if e.get("all_day") else f" {d.hour:02d}:{d.minute:02d}")
@@ -2291,7 +2319,7 @@ def _feed_ev_chip(e):
             f'<span class="feed-ev-date">{esc(when)}</span><span class="feed-ev-title">{esc(e["title"])}</span></a>'
             f'<button class="going-btn feed-ev-going" data-event-id="{esc(e["id"])}" '
             f'data-event-title="{esc(e["title"])}" aria-pressed="false" '
-            f'aria-label="我會去：{esc(e["title"])}" title="我會去：{esc(e["title"])}">{FEED_ICON["ticket"]}'
+            f'aria-label="我會去：{esc(e["title"])}" title="我會去：{esc(e["title"])}">{icons["ticket"]}'
             '<span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button></div>')
 
 
@@ -2307,15 +2335,15 @@ def _feed_school_label(post):
 def feed_img(p):
     esc = html.escape
     size = f' width="{p["image_w"]}" height="{p["image_h"]}"' if p.get("image_w") and p.get("image_h") else ""
-    return f'<img class="feed-img" src="{esc(p["image"])}" alt=""{size} loading="lazy">'
+    return f'<img class="feed-img" src="{esc(p["image"])}" alt=""{size} loading="lazy" decoding="async">'
 
 
-def feed_plat_badge(p):
+def feed_plat_badge(p, icons=None):
     """右上角的平台標誌：一眼看出貼文來自 IG／FB／Threads／X 還是公告頁，點了到來源帳號主頁
     （原文連結在下方動作列已經有了）。"""
     esc = html.escape
     plat = p.get("platform") or ""
-    icon = FEED_PLAT_ICON.get(plat)
+    icon = (icons or FEED_PLAT_ICON).get(plat)
     if not icon:
         return ""
     page = FEED_PLAT_PAGE.get(plat, plat)
@@ -2327,10 +2355,12 @@ def feed_plat_badge(p):
             f'title="{esc(label)}" aria-label="{esc(label)}">{icon}</a>')
 
 
-def _feed_row(p, now):
+def _feed_row(p, now, eager=True):
     esc = html.escape
+    icons = FEED_SPRITE_REF
     if p.get("avatar"):
-        avatar = f'<img class="feed-avatar" src="{esc(p["avatar"])}" alt="">'
+        lazy = "" if eager else ' loading="lazy"'
+        avatar = f'<img class="feed-avatar" src="{esc(p["avatar"])}" alt="" width="36" height="36"{lazy} decoding="async">'
     else:
         initial = re.sub(r"^(清大|交大|陽明|國立)", "", p.get("source_name") or "？")[:1]
         avatar = f'<span class="feed-avatar src-avatar-fallback av-{esc(p.get("school") or "")}">{esc(initial)}</span>'
@@ -2338,7 +2368,7 @@ def _feed_row(p, now):
     avatar_el = (f'<a class="feed-org-link" href="{org_href}" aria-label="{esc(p.get("source_name") or "")} 的單位頁">{avatar}</a>'
                  if org_href else avatar)
     school_label = _feed_school_label(p)
-    menu = feed_plat_badge(p)
+    menu = feed_plat_badge(p, FEED_PLAT_REF)
     name = (f'<a class="feed-org-link" href="{org_href}">{esc(p.get("source_name") or "")}</a>'
             if org_href else esc(p.get("source_name") or ""))
     head = ('<div class="feed-head">'
@@ -2350,14 +2380,14 @@ def _feed_row(p, now):
     body = ((f'<p class="feed-text{" is-long" if long_text else ""}">{esc(p["text"])}</p>' if p.get("text") else "") +
             ('<button class="feed-text-toggle" type="button">顯示全文</button>' if long_text else "") +
             (feed_img(p) if p.get("image") else ""))
-    evs = ('<div class="feed-evs">' + "".join(_feed_ev_chip(e) for e in p["events"]) + "</div>") if p["events"] else ""
+    evs = ('<div class="feed-evs">' + "".join(_feed_ev_chip(e, icons) for e in p["events"]) + "</div>") if p["events"] else ""
     ev0 = p["events"][0] if p["events"] else None
     share_url = f'{BASE_URL}/event/{ev0["id"]}/' if ev0 else (p.get("url") or BASE_URL)
     share_title = ev0["title"] if ev0 else (p.get("source_name") or "竹梅活動觀測站")
     actions = ('<div class="feed-actions">' +
-               (heart_btn(p["org_id"], p.get("source_name") or "", "feed-action") if p.get("org_id") else "") +
-               f'<button class="feed-action btn-share" data-url="{esc(share_url)}" data-title="{esc(share_title)}" title="分享">{FEED_ICON["send"]}</button>' +
-               (f'<a class="feed-action" href="{esc(p["url"])}" target="_blank" rel="noopener" title="開啟原文">{FEED_ICON["ext"]}</a>' if p.get("url") else "") +
+               (heart_btn(p["org_id"], p.get("source_name") or "", "feed-action", icons["heart"]) if p.get("org_id") else "") +
+               f'<button class="feed-action btn-share" data-url="{esc(share_url)}" data-title="{esc(share_title)}" title="分享">{icons["send"]}</button>' +
+               (f'<a class="feed-action" href="{esc(p["url"])}" target="_blank" rel="noopener" title="開啟原文">{icons["ext"]}</a>' if p.get("url") else "") +
                "</div>")
     return f'<article class="feed-post">{avatar_el}<div class="feed-content">{head}{body}{evs}{actions}</div></article>'
 
@@ -2377,11 +2407,6 @@ def _inject_ssr(path, marker, body):
 # 慢速網路下 app.js 可能好幾秒後才跑；首屏就要長得跟 JS 畫完一樣，JS 接手時原地重繪、不跳版。
 FEED_SCHOOL_L = {"all": "全部", "nycu-guangfu": "交大", "nthu": "清大", "nycu-yangming": "陽明"}
 FEED_DEFAULT_COLS = ["nycu-guangfu", "nthu", "nycu-yangming"]
-FEED_KIND_OPTS = [("all", "全部貼文"), ("events", "僅活動貼文")]
-FEED_FOLLOW_OPTS = [("all", "所有單位"), ("on", "已追蹤單位")]
-FEED_SCHOOL_OPTS = [("all", "全部"), ("nycu-guangfu", "交大"), ("nthu", "清大"), ("nycu-yangming", "陽明")]
-FEED_PLAT_OPTS = [("all", "全部"), ("instagram", "IG"), ("facebook", "FB"), ("threads", "Threads"), ("bulletin", "公告")]
-FEED_ORG_OPTS = [("all", "全部主辦"), ("official", "校方"), ("department", "系所"), ("club", "社團"), ("external", "校外")]
 FEED_CARET = FEED_SVG_OPEN + '<path d="M6 9l6 6l6 -6"/></svg>'
 FEED_ADD_RIVER = (FEED_SVG_OPEN + '<path d="M4 5a2 2 0 0 1 2 -2h9a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2z"/>'
                   '<path d="M9 3v18"/><path d="M14 12h6"/><path d="M17 9v6"/></svg>')
@@ -2423,32 +2448,16 @@ def feed_school_buckets(posts, schools=FEED_DEFAULT_COLS):
     return buckets
 
 
-def _feed_menu_row(label, key, opts, cur="all"):
-    chips = "".join(f'<button class="fchip" data-ck="{key}" data-cv="{v}" aria-pressed="{"true" if v == cur else "false"}">'
-                    f'<span class="fchip-label">{html.escape(t)}</span></button>' for v, t in opts)
-    return f'<div class="filter-row"><span class="label">{label}</span><span class="fgroup">{chips}</span></div>'
-
-
-def _feed_col_menu(school, source_idx, cat_opts):
-    inner = ('<input class="cf-q" type="search" placeholder="搜尋貼文、社團…" aria-label="搜尋這一欄" value="">'
-             + _feed_menu_row("貼文", "kind", FEED_KIND_OPTS)
-             + _feed_menu_row("單位", "follow", FEED_FOLLOW_OPTS)
-             + (_feed_menu_row("學校", "school", FEED_SCHOOL_OPTS, school) if source_idx >= 0 else "")
-             + _feed_menu_row("平台", "platform", FEED_PLAT_OPTS)
-             + _feed_menu_row("類型", "cat", cat_opts)
-             + _feed_menu_row("主辦", "org", FEED_ORG_OPTS))
-    remove = '<button class="col-remove">移除這一欄</button>' if source_idx >= 0 else ""
-    return f'<div class="col-picker-menu col-menu-filters">{inner}{remove}</div>'
-
-
-def feed_col_html(i, school, rows, source_idx, cat_opts, more):
+def feed_col_html(i, school, rows, source_idx, more):
+    """欄標題與內容。篩選選單不進 SSR：沒有 JS 時按鈕本來就不能用，
+    app.js 載入 posts.json 後由 colMenu() 依同一份選項生成（原本每欄各帶一整份）。"""
     if school == "all":
         label, dot = "貼文", "all"
     else:
         label, dot = FEED_SCHOOL_L[school], ("nycu" if school.startswith("nycu-") else school)
     picker = (f'<details class="col-picker"><summary aria-label="這一欄的內容與篩選">'
               f'<span class="feed-col-dot dot-{dot}"></span><h2>{label}</h2><span class="caret">{FEED_CARET}</span></summary>'
-              f'{_feed_col_menu(school, source_idx, cat_opts)}</details>')
+              '</details>')
     body = "".join(rows) or '<p class="empty">沒有符合的貼文。</p>'
     if more:
         body += '<button class="fchip feed-more">載入更多</button>'
@@ -2469,20 +2478,19 @@ def prerender_feed(posts, shown=30, deck_shown=12):
     由 index.html 內的行內腳本依視窗寬度決定 .feed-wide／.feed-pager，CSS 只顯示對應的一份。
     欄是固定高度的捲動容器，SSR 每欄放 deck_shown 則就夠首屏；JS 載入 posts.json 後原地重繪接手。"""
     now = datetime.now(TZ_TAIPEI)
-    cats = sorted({(e.get("category") or "其他") for p in posts for e in p["events"]})
-    cat_opts = [("all", "全部類型")] + [(c, c) for c in cats]
     cols = []
     for i, (school, bucket) in enumerate(zip(FEED_DEFAULT_COLS, feed_school_buckets(posts))):
-        rows = [_feed_row(p, now) for p in bucket[:deck_shown]]
-        cols.append(feed_col_html(i, school, rows, i, cat_opts, more=len(bucket) > deck_shown))
+        rows = [_feed_row(p, now, eager=n < FEED_EAGER_ROWS) for n, p in enumerate(bucket[:deck_shown])]
+        cols.append(feed_col_html(i, school, rows, i, more=len(bucket) > deck_shown))
     deck = (f'<div class="feed-cols ssr-deck has-deck-add" style="--ncols:{len(cols)}">'
             + "".join(cols) + feed_deck_add_html() + "</div>")
-    rows = [_feed_row(p, now) for p in posts[:shown]]
+    rows = [_feed_row(p, now, eager=n < FEED_EAGER_ROWS) for n, p in enumerate(posts[:shown])]
     pager = ('<div class="feed-cols ssr-pager" style="--ncols:1">'
-             + feed_col_html(0, "all", rows, -1, cat_opts, more=len(posts) > shown) + "</div>")
+             + feed_col_html(0, "all", rows, -1, more=len(posts) > shown) + "</div>")
     if not posts:
         deck = pager = '<p class="empty">尚無貼文。</p>'
-    _inject_ssr(SITE / "index.html", "ssr-feed", deck + pager)
+    # 圖示 sprite 放在 SSR 區塊內：JS 重繪 #post-feed 時一起被換掉，JS 版自帶完整 inline SVG。
+    _inject_ssr(SITE / "index.html", "ssr-feed", (FEED_SPRITE if posts else "") + deck + pager)
     print(f"prerender: {min(shown, len(posts))} posts + {len(cols)}-col deck into index.html")
 
 
@@ -2700,7 +2708,7 @@ def source_table_html(entries):
             + "</a>" for l in e["links"])
         links_html = links or '<span class="src-none">尚未找到公開帳號</span>'
         if e.get("avatar"):
-            avatar = f'<img class="src-avatar src-c-ava" src="{esc(e["avatar"])}" alt="" loading="lazy">'
+            avatar = f'<img class="src-avatar src-c-ava" src="{esc(e["avatar"])}" alt="" width="34" height="34" loading="lazy" decoding="async">'
         else:
             initial = re.sub(r"^(清大|交大|陽明|國立)", "", e["name"])[:1] or "？"
             avatar = f'<span class="src-avatar src-c-ava src-avatar-fallback av-{esc(e["school"])}">{esc(initial)}</span>'

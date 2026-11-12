@@ -145,6 +145,54 @@ def check_column_windows(page):
     page.reload(wait_until='networkidle')
 
 
+def check_load_failures(browser, origin):
+    """A failed posts.json keeps the SSR feed, explains why and recovers on retry;
+    the directory falls back to its SSR table with the same retry control."""
+    context = browser.new_context(viewport={'width': 1440, 'height': 900}, service_workers='block')
+    failing = {'/data/posts.json': 1, '/data/sources.json': 1}
+
+    def route(request):
+        parsed = urlparse(request.request.url)
+        if parsed.netloc != urlparse(origin).netloc:
+            request.abort()
+        elif parsed.path.startswith(('/auth/', '/push/')):
+            request.fulfill(status=200, content_type='application/json',
+                            body=json.dumps({'authenticated': False, 'following': [], 'going': [], 'counts': {}}))
+        elif failing.get(parsed.path):
+            failing[parsed.path] -= 1
+            request.fulfill(status=503, content_type='text/html', body='<h1>Service Unavailable</h1>')
+        else:
+            request.continue_()
+    context.route('**/*', route)
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.goto(origin + '/', wait_until='networkidle')
+    alert = page.locator('.load-error[role="alert"]')
+    alert.wait_for()
+    assert 'HTTP 503' in alert.inner_text(), alert.inner_text()
+    assert page.locator('.feed-cols.ssr-deck .feed-post').count() > 0, 'SSR feed was discarded on failure'
+    alert.locator('.load-retry').click()
+    page.wait_for_selector('.feed-cols:not(.ssr-deck) .col-picker')
+    assert alert.count() == 0, 'Retry banner stayed after recovery'
+    # Breakpoint changes are observed through matchMedia, without reloading.
+    page.set_viewport_size({'width': 390, 'height': 900})
+    page.wait_for_function('document.getElementById("post-feed").classList.contains("feed-pager")')
+    page.set_viewport_size({'width': 1440, 'height': 900})
+    page.wait_for_function('document.getElementById("post-feed").classList.contains("feed-wide")')
+
+    page.goto(origin + '/source/', wait_until='networkidle')
+    failing['/data/sources.json'] = 1
+    page.reload(wait_until='networkidle')
+    alert = page.locator('.load-error[role="alert"]')
+    alert.wait_for()
+    assert page.locator('#source-table .src-row').count() > 0, 'Directory fallback is empty'
+    alert.locator('.load-retry').click()
+    alert.wait_for(state='detached')
+    assert not errors, errors
+    context.close()
+
+
 def main():
     site = Path(sys.argv[1]).resolve()
     server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(site)))
@@ -188,6 +236,7 @@ def main():
                 assert page.locator('a[href="/event/evt_000000000001/"]').count() > 0
                 assert not errors, errors
                 context.close()
+            check_load_failures(browser, origin)
             browser.close()
     finally:
         server.shutdown()
@@ -195,7 +244,7 @@ def main():
     print('Browser smoke passed at 390/1024/1440/1920px: six pages, search, same-time venues, '
           'contained deck, independent vertical/gap wheel scrolling, sticky headers, '
           'per-column pagination/filter windows, breakpoint restoration, '
-          'keyboard navigation/filter popovers, no JS errors.')
+          'keyboard navigation/filter popovers, load-failure retry, no JS errors.')
 
 
 if __name__ == '__main__':

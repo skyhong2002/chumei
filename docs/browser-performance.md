@@ -28,3 +28,25 @@ The initial event data is **78.6% smaller decoded / 76.9% smaller gzipped**. A c
 Local Chromium smoke used a cold cache, 390×844 viewport, 4× CPU slowdown and 150 ms / 1.6 Mbps network during initial loading. A sampled LCP was 632 ms; observed initial resource transfers were about 1.49 MB including images/fonts/styles from the existing SSR snapshot. This is one local fixture observation, not a before/after LCP claim or field Core Web Vitals result. Navigation retained 131 current list rows; All restored all 2,838 events with one archive request; searching 聯電 found 20 entries; map opt-in and earlier calendar loading worked. Directory enhancement showed 60 rows and expanded to 120. No uncaught browser errors occurred. Subsequent functional interactions used normal CPU/network speed, so their event timings are **not a throttled INP validation**.
 
 For release verification, repeat cold-cache mobile measurements on the staged release with real generated SSR and collect LCP plus interaction latency for search, All, calendar navigation and directory expansion. Field INP requires representative real visits; it cannot be certified by this single smoke run.
+
+## Homepage SSR and resilient loading (2026-11-12)
+
+The homepage prerenders the desktop deck and the mobile column. Column filter menus are no longer repeated in the SSR markup: they did nothing without JS, and `app.js` (`colMenu()`) builds them from the same option lists once `posts.json` arrives. The platform badge and the four action icons of every SSR post now reference a single inline `<symbol>` sprite with `<use>`. The outer `<svg>` keeps its fill/stroke attributes, so rendering is unchanged. Client-rendered rows keep full inline SVG.
+
+All feed, search and directory avatars carry intrinsic `width`/`height` and `decoding="async"`. Only the first `FEED_EAGER_ROWS` (3) rows of each column load eagerly, and the rest are `loading="lazy"`. The same constant exists in `build_site.py` and `app.js`. Post images keep their existing presentation and only gain `decoding="async"`. Story media is unchanged pending the school-version compliance work (#60, #65).
+
+`window.chumeiFetchJSON` reads every `/data/*.json` file. It rejects non-2xx responses, aborts after 15 s (30 s for event data) and tags errors as `http`, `timeout`, `network` or `parse`. `.shared(url)` deduplicates concurrent requests and does not cache failures. Feed, directory and search failures show `window.chumeiLoadError` with a 重試 button. When SSR content exists it stays visible and the alert appears above it. Layout mode follows `matchMedia("(min-width: 700px)")` changes instead of a one-time `innerWidth` check.
+
+Fixed fixture (72 posts with avatars, 58 with images, 18 events; same data built from `main` and this change, Chromium 151, cold cache):
+
+| Homepage | Before | After |
+| --- | ---: | ---: |
+| `index.html` decoded bytes | 351,765 | 194,326 |
+| `index.html` gzip -9 bytes | 18,734 | 15,243 |
+| Inline SVG bytes | 211,596 | 63,904 |
+| `<img>` with width/height | 54 / 120 | 120 / 120 |
+| `<img loading="lazy">` | 54 / 120 | 108 / 120 |
+| Requests until network idle, 1440×900 | 60 (49 images) | 56 (45 images) |
+| Requests until network idle, 390×844 | 48 (37 images) | 33 (22 images) |
+
+Before/after screenshots at 1440 and 390 in dark and light themes matched pixel for pixel, both after JS rendering and with `app.js` blocked (SSR only).
