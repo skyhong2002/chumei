@@ -62,7 +62,7 @@ class OrgPageIndexSignalTests(unittest.TestCase):
         ]
         pages = self.render(entries, [])
         self.assertEqual(ROBOTS_RE.findall(pages["empty"]), ["noindex,follow"])
-        self.assertIn("尚未從這個來源收錄到活動", pages["empty"])  # 頁面內容與追蹤按鈕照舊
+        self.assertIn("還沒有收錄到這個單位的活動", pages["empty"])  # 頁面內容與追蹤按鈕照舊
         self.assertIn('data-org-id="empty"', pages["empty"])
         self.assertEqual(ROBOTS_RE.findall(pages["weekly"]), [])
 

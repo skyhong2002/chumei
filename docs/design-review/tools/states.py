@@ -32,7 +32,7 @@ STATES = [
     s('home-error', '/', data='error'),
     s('home-empty', '/', data='empty'),
     s('home-events-only', '/?kind=events'),
-    s('home-search-open', '/', click=['.topbar-search'], type='演講', viewport_only=True),
+    s('home-search-open', '/', click=['.topbar-search:visible, .nav-search:visible'], type='演講', viewport_only=True),
     s('home-signed-in', '/', session='in', click=['.nav-more > summary'], viewport_only=True),
     # Events
     s('events', '/events/'),
