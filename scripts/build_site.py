@@ -2729,19 +2729,20 @@ def source_table_html(entries):
         d = dt.astimezone(TZ_TAIPEI)
         return f"{d.year}/{d.month}/{d.day}"
 
-    def link_label(l, per_platform):
+    def link_html(l, per_platform):
         short = PLAT.get(l["platform"], l["platform"])
         label = l.get("label") if l.get("label") not in (None, "", "Facebook", "公告頁", short) else ""
-        if not label and per_platform[l["platform"]] > 1:
+        dup = per_platform[l["platform"]] > 1
+        if not label and dup:
             label = link_handle(l["url"])  # 同平台兩個帳號時，用帳號名稱區分（避免「FB FB」）
-        return short + (" " + label if label else "")
+        # 桌面表格只顯示平台；帳號名稱放在 title，同平台多帳號時才顯示
+        return (f'<a class="src-link{" src-link-dup" if dup else ""}" href="{esc(l["url"])}" rel="noopener" target="_blank"'
+                + (f' title="{esc(label)}"' if label else "") + ">" + esc(short)
+                + (f'<span class="src-link-label"> {esc(label)}</span>' if label else "") + "</a>")
 
     def row(e):
         per_platform = Counter(l["platform"] for l in e["links"])
-        links = "".join(
-            f'<a class="src-link" href="{esc(l["url"])}" rel="noopener" target="_blank">'
-            + esc(link_label(l, per_platform))
-            + "</a>" for l in e["links"])
+        links = "".join(link_html(l, per_platform) for l in e["links"])
         links_html = links or '<span class="src-none">尚未找到公開帳號</span>'
         if e.get("avatar"):
             avatar = f'<img class="src-avatar src-c-ava" src="{esc(e["avatar"])}" alt="" loading="lazy">'

@@ -52,5 +52,59 @@
    }
   },
   "note": "A/A calibration: the new set is a byte-identical copy of the baseline (main b5cf91d; PR #70 was not merged by the 05:16 cutoff). The reviewer detected this by hashing the files. home-search-open desktop missed the dialog (capture clicked the mobile-only search button); fixed in states.py and re-shot for both sets from round 2."
+ },
+ {
+  "round": "2",
+  "reviewer": "opus-5-5",
+  "means": {
+   "new": 7.08,
+   "reference": 7.17,
+   "baseline": 5.71
+  },
+  "scores": {
+   "new": {
+    "資訊層級": 7,
+    "字體排印": 6.5,
+    "色彩": 7.5,
+    "間距與版面": 6.5,
+    "一致性": 7.5,
+    "資訊密度": 6.5,
+    "導覽": 7.5,
+    "狀態與回饋": 8,
+    "響應式": 7.5,
+    "文案": 8,
+    "無障礙": 6.5,
+    "動畫與轉場": 6
+   },
+   "reference": {
+    "資訊層級": 8,
+    "字體排印": 7.5,
+    "色彩": 7.5,
+    "間距與版面": 7.5,
+    "一致性": 7.5,
+    "資訊密度": 7,
+    "導覽": 7,
+    "狀態與回饋": 6,
+    "響應式": 7,
+    "文案": 7.5,
+    "無障礙": 7,
+    "動畫與轉場": 6.5
+   },
+   "baseline": {
+    "資訊層級": 6,
+    "字體排印": 6,
+    "色彩": 6.5,
+    "間距與版面": 6,
+    "一致性": 5,
+    "資訊密度": 6,
+    "導覽": 7,
+    "狀態與回饋": 4,
+    "響應式": 6,
+    "文案": 5,
+    "無障礙": 5.5,
+    "動畫與轉場": 5.5
+   }
+  },
+  "note": ""
  }
 ]

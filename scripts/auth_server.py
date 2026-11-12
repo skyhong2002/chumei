@@ -1659,7 +1659,8 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
         form = f"""
         <form method="post" action="/auth/submissions" class="submit-form">
           <label class="submit-label" for="submit-url">連結</label>
-          <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="貼文或帳號主頁，例如 https://www.instagram.com/p/…" autocomplete="off">
+          <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="貼上貼文或帳號主頁網址" aria-describedby="submit-url-hint" autocomplete="off">
+          <p class="submit-hint" id="submit-url-hint">例如 https://www.instagram.com/p/… 或公告頁網址</p>
           <label class="submit-label" for="submit-note">備註（選填，只有你和站長看得到）</label>
           <input id="submit-note" class="submit-input" type="text" name="note" maxlength="{MAX_NOTE_LENGTH}" placeholder="例如：主辦是清大天文社、活動在 9/20">
           <button class="btn btn-primary account-action" type="submit">送出</button>
@@ -1676,6 +1677,7 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
     else:
         form = ""
     return f"""
+        <div class="submit-main">
         <p class="eyebrow">回報連結</p>
         <h2>看到活動，貼連結給竹梅</h2>
         <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。</p>
@@ -1683,8 +1685,11 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
         <p>每個連結的處理狀態都公開在下面。</p>
         {alert}
         {form}
+        </div>
+        <div class="submit-side">
         <h3 class="submit-list-title">最近的回報</h3>
         {listing}
+        </div>
     """
 
 
@@ -2106,7 +2111,7 @@ def _account_html(
     {logout_form}
   </div>
   {alert}
-  {"".join(sections)}
+  <div class="account-sections{' is-signed-in' if user else ''}">{"".join(sections)}</div>
 </section>
 <script>
 document.addEventListener("click",function(event){{

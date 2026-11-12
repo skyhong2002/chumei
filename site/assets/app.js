@@ -411,6 +411,23 @@
     }, true);
   })();
 
+  // 桌機欄板：右邊還有欄位時，右緣淡出提示可以橫向捲動
+  (function () {
+    function check(deck) {
+      deck.classList.toggle("more-right", deck.scrollLeft + deck.clientWidth < deck.scrollWidth - 4);
+    }
+    function checkAll() { document.querySelectorAll(".feed-cols").forEach(check); }
+    document.addEventListener("scroll", function (ev) {
+      if (ev.target.classList && ev.target.classList.contains("feed-cols")) check(ev.target);
+    }, true);
+    window.addEventListener("resize", checkAll);
+    window.addEventListener("load", checkAll);
+    if (window.MutationObserver) {
+      var feed = document.getElementById("post-feed");
+      if (feed) new MutationObserver(checkAll).observe(feed, { childList: true, subtree: false });
+    }
+  })();
+
   // Shared compact index; history is fetched only when a view needs it.
   var eventIndexPromise;
   // 讀 /data/*.json：非 2xx、逾時、斷線、格式錯誤都轉成帶 kind 的錯誤，畫面才說得出原因
@@ -1699,8 +1716,10 @@
           var label = l.label && l.label !== "Facebook" && l.label !== "公告頁" && l.label !== PLAT[l.platform] ? l.label : "";
           // 同平台有兩個帳號時，用帳號名稱區分（避免「FB FB」）
           if (!label && perPlatform[l.platform] > 1) label = linkHandle(l.url);
-          return '<a class="src-link" href="' + esc(l.url) + '" rel="noopener" target="_blank">' +
-            esc(PLAT[l.platform] || l.platform) + (label ? " " + esc(label) : "") + "</a>";
+          var dup = perPlatform[l.platform] > 1;
+          return '<a class="src-link' + (dup ? " src-link-dup" : "") + '" href="' + esc(l.url) + '" rel="noopener" target="_blank"' +
+            (label ? ' title="' + esc(label) + '"' : "") + ">" +
+            esc(PLAT[l.platform] || l.platform) + (label ? '<span class="src-link-label"> ' + esc(label) + "</span>" : "") + "</a>";
         }).join("");
         var avatar = e.avatar
           ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
