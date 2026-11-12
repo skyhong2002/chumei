@@ -34,7 +34,7 @@
 | `home-error` | 首頁 | 載入錯誤 | `data=error` |
 | `home-empty` | 首頁 | 空資料 | `data=empty` |
 | `home-events-only` | 首頁 | 篩選：只看活動貼文 | `?kind=events` |
-| `home-search-open` | 首頁 | 搜尋對話框，輸入「演講」 | 點 `.topbar-search`，只截視窗 |
+| `home-search-open` | 首頁 | 搜尋對話框，輸入「演講」 | 點可見的搜尋按鈕（手機 `.topbar-search`、桌面 `.nav-search`），只截視窗 |
 | `home-signed-in` | 首頁 | 登入後，「更多」選單展開 | 模擬 session，點 `.nav-more > summary`，只截視窗 |
 | `events` | 活動 `/events/` | 有資料 | — |
 | `events-light` | 活動 | 淺色 | 外觀設為淺色 |

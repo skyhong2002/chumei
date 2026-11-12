@@ -1,0 +1,56 @@
+[
+ {
+  "round": "1",
+  "reviewer": "opus-5-5",
+  "means": {
+   "baseline": 6.04,
+   "new": 6.04,
+   "reference": 6.96
+  },
+  "scores": {
+   "baseline": {
+    "資訊層級": 6.5,
+    "字體排印": 7,
+    "色彩": 6.5,
+    "間距與版面": 6,
+    "一致性": 6,
+    "資訊密度": 7.5,
+    "導覽": 7,
+    "狀態與回饋": 4,
+    "響應式": 6.5,
+    "文案": 5.5,
+    "無障礙": 5.5,
+    "動畫與轉場": 4.5
+   },
+   "new": {
+    "資訊層級": 6.5,
+    "字體排印": 7,
+    "色彩": 6.5,
+    "間距與版面": 6,
+    "一致性": 6,
+    "資訊密度": 7.5,
+    "導覽": 7,
+    "狀態與回饋": 4,
+    "響應式": 6.5,
+    "文案": 5.5,
+    "無障礙": 5.5,
+    "動畫與轉場": 4.5
+   },
+   "reference": {
+    "資訊層級": 7.5,
+    "字體排印": 7.5,
+    "色彩": 8,
+    "間距與版面": 7.5,
+    "一致性": 7.5,
+    "資訊密度": 7,
+    "導覽": 7,
+    "狀態與回饋": 5.5,
+    "響應式": 7,
+    "文案": 7.5,
+    "無障礙": 6.5,
+    "動畫與轉場": 5
+   }
+  },
+  "note": "A/A calibration: the new set is a byte-identical copy of the baseline (main b5cf91d; PR #70 was not merged by the 05:16 cutoff). The reviewer detected this by hashing the files. home-search-open desktop missed the dialog (capture clicked the mobile-only search button); fixed in states.py and re-shot for both sets from round 2."
+ }
+]

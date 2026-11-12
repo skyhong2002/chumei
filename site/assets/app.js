@@ -27,6 +27,7 @@
       h1: h1 ? h1.textContent.trim() : "竹梅活動觀測站",
       description: description ? description.getAttribute("content") || "" : ""
     };
+    var baseH1Html = h1 ? h1.innerHTML : "";
     var canonicalHref = (canonical && canonical.getAttribute("href")) ||
       ("https://chumei.observe.tw" + location.pathname);
     canonicalHref = canonicalHref.split("?", 1)[0].split("#", 1)[0];
@@ -90,12 +91,15 @@
       var parts = contextParts();
       var context = parts.join("、");
       var nextTitle = context ? context + "｜" + base.title : base.title;
-      var nextH1 = context ? base.h1 + "｜" + context : base.h1;
+      // 篩選條件放在標題下方的小字，文字內容仍是「標題｜條件」
+      var nextH1Html = context
+        ? baseH1Html + '<span class="h1-sub"><span class="sr-only">｜</span>' + esc(context) + "</span>"
+        : baseH1Html;
       var nextDescription = context
         ? base.description + "目前條件：" + context + "。" + (resultSummary || "")
         : base.description;
       document.title = nextTitle;
-      if (h1) h1.textContent = nextH1;
+      if (h1 && h1.innerHTML !== nextH1Html) h1.innerHTML = nextH1Html;
       setMeta('meta[name="description"]', "content", nextDescription);
       setMeta('meta[property="og:title"]', "content", nextTitle);
       setMeta('meta[property="og:description"]', "content", nextDescription);
@@ -409,11 +413,102 @@
 
   // Shared compact index; history is fetched only when a view needs it.
   var eventIndexPromise;
-  function fetchEventJSON(url) {
-    return fetch(url).then(function (r) {
-      if (!r.ok) throw new Error("活動資料載入失敗");
-      return r.json();
+  // 讀 /data/*.json：非 2xx、逾時、斷線、格式錯誤都轉成帶 kind 的錯誤，畫面才說得出原因
+  function fetchDataJSON(url) {
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctrl && setTimeout(function () { ctrl.abort(); }, 20000);
+    function fail(kind, status) {
+      var err = new Error(url + " " + kind); err.kind = kind; err.status = status; return err;
+    }
+    return fetch(url, ctrl ? { signal: ctrl.signal } : undefined).then(function (r) {
+      if (!r.ok) throw fail("http", r.status);
+      return r.json().catch(function () { throw fail("parse"); });
+    }, function (e) {
+      throw fail(e && e.name === "AbortError" ? "timeout" : "network");
+    }).finally(function () { if (timer) clearTimeout(timer); });
+  }
+  var fetchEventJSON = fetchDataJSON;
+
+  // 社群網址的帳號名稱：facebook.com/NCTUBG → NCTUBG
+  function linkHandle(url) {
+    try {
+      var u = new URL(url);
+      var part = u.pathname.split("/").filter(Boolean)[0] || "";
+      if (part === "profile.php") part = u.searchParams.get("id") || "";
+      var handle = decodeURIComponent(part).replace(/^@/, "").replace(/-\d{6,}$/, "");
+      return handle.length > 20 ? handle.slice(0, 19) + "…" : handle;
+    } catch (e) { return ""; }
+  }
+  // 空狀態：說明原因並給一個下一步
+  function emptyState(title, body, href, action) {
+    return '<div class="empty-state"><p class="empty-state-title">' + esc(title) + "</p>" +
+      '<p class="empty-state-body">' + esc(body) + "</p>" +
+      (href ? '<a class="btn" href="' + esc(href) + '">' + esc(action) + "</a>" : "") + "</div>";
+  }
+  // 手機版：第一列以外的篩選收進「更多篩選」，按鈕上顯示已套用幾個條件
+  function collapsibleFilters(el, activeCount) {
+    if (!el) return null;
+    var rows = el.querySelectorAll(":scope > .filter-row");
+    if (rows.length < 2) return null;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fchip filters-toggle";
+    btn.setAttribute("aria-expanded", "false");
+    rows[0].after(btn);
+    el.classList.add("filters-collapsible", "is-collapsed");
+    function update() {
+      var n = activeCount();
+      btn.textContent = (el.classList.contains("is-collapsed") ? "更多篩選" : "收合篩選") + (n ? "（" + n + "）" : "");
+    }
+    btn.addEventListener("click", function () {
+      el.classList.toggle("is-collapsed");
+      btn.setAttribute("aria-expanded", String(!el.classList.contains("is-collapsed")));
+      update();
     });
+    update();
+    return { update: update };
+  }
+
+  // ---- 資料載入狀態：慢的時候顯示「載入中」，失敗時說明原因並提供重試 ----
+  function loadErrorReason(err) {
+    var kind = err && err.kind;
+    if (kind === "http") return "伺服器暫時無法回應（錯誤代碼 " + err.status + "）";
+    if (kind === "timeout") return "連線逾時";
+    if (kind === "network") return "網路連線中斷";
+    if (kind === "parse") return "收到的資料不完整";
+    return "發生未預期的錯誤";
+  }
+  function dataStatus(anchor, what, opts) {
+    opts = opts || {};
+    var box = null, settled = false;
+    function place(html, cls, role) {
+      if (!anchor || !anchor.parentNode) return;
+      if (!box) { box = document.createElement("div"); anchor.parentNode.insertBefore(box, anchor); }
+      box.className = "data-status " + cls;
+      box.setAttribute("role", role);
+      box.innerHTML = html;
+    }
+    document.body.classList.add("data-pending");
+    var timer = setTimeout(function () {
+      if (settled) return;
+      place('<span class="data-spinner" aria-hidden="true"></span><span>正在載入最新' + what + "…</span>", "is-loading", "status");
+    }, 250);
+    return {
+      done: function () {
+        settled = true; clearTimeout(timer);
+        document.body.classList.remove("data-pending");
+        if (box) { box.remove(); box = null; }
+      },
+      fail: function (err) {
+        settled = true; clearTimeout(timer);
+        document.body.classList.remove("data-pending");
+        document.body.classList.add("data-failed");
+        place('<div class="data-status-text"><strong>' + what + "暫時載入不了</strong>" +
+          "<span>" + loadErrorReason(err) + "。" + (opts.fallback || "") + "</span></div>" +
+          '<button type="button" class="btn data-retry">重新載入</button>', "is-error", "alert");
+        box.querySelector(".data-retry").addEventListener("click", function () { location.reload(); });
+      }
+    };
   }
   function loadEventIndex() {
     if (!eventIndexPromise) eventIndexPromise = fetchEventJSON("/data/events-index.json").catch(function (err) {
@@ -604,16 +699,21 @@
   initFeed();
   if (!listEl && !calEl) return;
 
+  var eventStatus = dataStatus(document.querySelector("main .filters") || listEl || calEl, "活動資料", {
+    fallback: "下方是稍早整理的版本，篩選與搜尋要等資料載入後才能使用。"
+  });
   loadEventIndex()
     .then(function (bundle) {
+      eventStatus.done();
       if (listEl) initList(bundle);
       if (calEl) initCalendar(bundle);
     })
     .catch(function (err) {
       console.error("chumei init failed:", err);
+      eventStatus.fail(err);
       var el = listEl || calEl;
       // SSR 已預渲染預設檢視；抓不到 events.json 就留著靜態內容
-      if (!el.firstElementChild) el.innerHTML = '<p class="empty">活動資料載入失敗，請稍後再試。</p>';
+      if (!el.firstElementChild) el.innerHTML = '<p class="empty">目前沒有可顯示的活動。</p>';
     });
 
   // ---- 首頁貼文河道 ----
@@ -632,7 +732,9 @@
     // 拉丁字前留一個空格：「陽明游泳社的 Instagram 主頁」
     var PLAT_PAGE = { instagram: " Instagram 主頁", facebook: " Facebook 粉專", threads: " Threads 主頁", x: " X 主頁", bulletin: "公告頁", api: "官方網站" };
 
-    fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
+    var feedStatus = dataStatus(feed, "貼文", { fallback: "下方是稍早整理的貼文，篩選要等資料載入後才能使用。" });
+    fetchDataJSON("/data/posts.json").then(function (data) {
+      feedStatus.done();
       var posts = data.posts;
       // 手機單欄的全域篩選＋檢視切換；桌機欄位各自帶篩選（見 cols）
       var state = { kind: "all", follow: "all", school: "all", platform: "all", cat: "all", org: "all", q: "" };
@@ -1055,9 +1157,11 @@
         if (c.t === "stories") return storyCards(list, shown) + moreBtn(list, shown);
         var emptyMsg = c.follow === "on"
           ? (window.chumeiFollow && window.chumeiFollow.following().length
-              ? '<p class="empty">追蹤的單位最近沒有貼文。</p>'
-              : '<p class="empty">還沒追蹤任何單位——在貼文或<a href="/source/">資料來源</a>按 🔔 就會出現在這裡。</p>')
-          : '<p class="empty">沒有符合的貼文。</p>';
+              ? emptyState("追蹤的單位最近沒有貼文", "它們發了新貼文就會出現在這一欄。", "/source/", "追蹤更多單位")
+              : emptyState("還沒有追蹤任何單位", "在貼文或名錄按鈴鐺追蹤單位，它們的新貼文就會集中在這一欄。", "/source/", "到名錄挑選單位"))
+          : posts.length
+            ? emptyState("沒有符合條件的貼文", "換個關鍵字或減少篩選條件再試一次。", "/", "清除篩選")
+            : emptyState("目前還沒有貼文", "竹梅會定期整理兩校單位的公開貼文，新的貼文會出現在這裡。先看看接下來的活動吧。", "/events/", "看即將舉行的活動");
         return (list.slice(0, shown).map(row).join("") || emptyMsg) + moreBtn(list, shown);
       }
       function colHtml(i, c, list, sourceIdx) {
@@ -1464,6 +1568,7 @@
       render();
     }).catch(function (err) {
       console.error("chumei feed init failed:", err);
+      feedStatus.fail(err);
       // SSR 已預先渲染第一頁；抓不到 posts.json 就留著靜態內容
       if (!feed.firstElementChild) feed.innerHTML = '<p class="empty">貼文載入失敗。</p>';
     });
@@ -1476,7 +1581,11 @@
     var KIND = { club: "社團", gov: "自治組織", dept: "系所", unit: "校方單位", bulletin: "公告系統", ext: "校外" };
     var PLAT = { instagram: "IG", facebook: "FB", threads: "Threads", x: "X", bulletin: "公告", website: "官網" };
 
-    fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
+    var sourceStatus = dataStatus(document.querySelector("main .filters") || table, "名錄", {
+      fallback: "下方是稍早整理的完整名錄，篩選、排序與搜尋要等資料載入後才能使用。"
+    });
+    fetchDataJSON("/data/sources.json").then(function (data) {
+      sourceStatus.done();
       var entries = data.entries;
       var state = { follow: "all", school: "all", status: "all", kind: "all", tag: "all", platform: "all", sort: "follow", dir: "desc", q: "" };
       var params = new URLSearchParams(location.search);
@@ -1584,9 +1693,14 @@
       }
 
       function row(e) {
+        var perPlatform = {};
+        e.links.forEach(function (l) { perPlatform[l.platform] = (perPlatform[l.platform] || 0) + 1; });
         var links = e.links.map(function (l) {
+          var label = l.label && l.label !== "Facebook" && l.label !== "公告頁" && l.label !== PLAT[l.platform] ? l.label : "";
+          // 同平台有兩個帳號時，用帳號名稱區分（避免「FB FB」）
+          if (!label && perPlatform[l.platform] > 1) label = linkHandle(l.url);
           return '<a class="src-link" href="' + esc(l.url) + '" rel="noopener" target="_blank">' +
-            esc(PLAT[l.platform] || l.platform) + (l.label && l.label !== "Facebook" && l.label !== "公告頁" ? " " + esc(l.label) : "") + "</a>";
+            esc(PLAT[l.platform] || l.platform) + (label ? " " + esc(label) : "") + "</a>";
         }).join("");
         var avatar = e.avatar
           ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
@@ -1639,6 +1753,9 @@
           th("follow", "追蹤", "src-th-follow") + "</div>";
       }
 
+      var filterToggle = collapsibleFilters(document.querySelector("main .filters"), function () {
+        return ["status", "kind", "tag", "platform"].filter(function (k) { return state[k] !== "all"; }).length;
+      });
       var sourceLimit = 60;
       var moreSources = document.createElement("button");
       moreSources.className = "fchip";
@@ -1658,7 +1775,11 @@
         if (state.dir !== natural) list.reverse();
         document.getElementById("src-count").textContent = "符合 " + list.length + " 個單位，已顯示 " + Math.min(sourceLimit, list.length) + " 個。";
         moreSources.hidden = sourceLimit >= list.length;
-        table.innerHTML = headHtml() + (list.slice(0, sourceLimit).map(row).join("") || '<p class="empty">沒有符合的單位。</p>');
+        var emptyHtml = state.follow === "on" && !(window.chumeiFollow && window.chumeiFollow.following().length)
+          ? emptyState("你還沒有追蹤任何單位", "在名錄或活動頁按「追蹤」，之後就能在這裡只看你追蹤的單位，也能讓推播和訂閱只通知它們。", "/source/", "瀏覽全部單位")
+          : emptyState("沒有符合條件的單位", "換個關鍵字，或減少篩選條件再試一次。若你知道某個單位的公開帳號，也可以回報給竹梅。", "/source/", "清除篩選");
+        table.innerHTML = list.length ? headHtml() + list.slice(0, sourceLimit).map(row).join("") : emptyHtml;
+        if (filterToggle) filterToggle.update();
         var qs = new URLSearchParams();
         Object.keys(state).forEach(function (k) {
           if (!state[k] || state[k] === "all") return;
@@ -1682,7 +1803,8 @@
         render();
       });
       render();
-    }).catch(function () {
+    }).catch(function (err) {
+      sourceStatus.fail(err);
       // If enhancement fails, expose the full SSR directory kept for no-JS clients.
       var fallback = table.querySelector("noscript");
       if (fallback) { fallback.insertAdjacentHTML("beforebegin", fallback.textContent); fallback.remove(); }
@@ -2631,7 +2753,7 @@
             return group[1].length ? '<h2 class="event-section-title">' + group[0] + ' · ' + group[1].length + ' 場</h2>' +
               group[1].map(displayMode === "list" ? listRow : card).join("") : "";
           }).join("")
-        : '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>';
+        : emptyState("沒有符合條件的活動", "試著放寬篩選，或把時間改成「全部」，也會列出已經結束的活動。", "/events/?time=all", "看全部時間的活動");
       updateChipCounts();
       if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
       renderMap(list);

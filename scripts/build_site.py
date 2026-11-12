@@ -13,7 +13,7 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, unquote, urljoin, urlparse, urlsplit
 
 import requests
 
@@ -1166,6 +1166,26 @@ def related_events(event, events, limit=8):
     return [(candidate, reason) for _, _, _, candidate, reason in ranked[:limit]]
 
 
+def link_handle(url):
+    """社群網址的帳號名稱：https://www.facebook.com/NCTUBG → NCTUBG。"""
+    parts = urlsplit(url or "")
+    first = next((p for p in parts.path.split("/") if p), "")
+    if first == "profile.php":
+        first = dict(parse_qsl(parts.query)).get("id", "")
+    handle = re.sub(r"-\d{6,}$", "", unquote(first).lstrip("@"))  # 去掉 Facebook 網址尾端的數字 ID
+    return handle if len(handle) <= 20 else handle[:19] + "…"
+
+
+def heading_markup(title, page_heading):
+    """活動頁 H1：活動名稱為主，日期（與同名場次的時間、地點）是較小的第二行。
+    文字內容仍等於 page_heading，搜尋引擎與螢幕閱讀器讀到的標題不變。"""
+    suffix = page_heading[len(title):] if page_heading.startswith(title) else ""
+    if not suffix.startswith("｜"):
+        return esc(page_heading)
+    return (esc(title) + '<span class="h1-sub"><span class="sr-only">｜</span>'
+            + esc(suffix[1:]) + "</span>")
+
+
 def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_time=False):
     st, en = e.get("start_at"), e.get("end_at")
     if not e.get("all_day"):
@@ -1296,6 +1316,11 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
         "sameAs": [p["url"] for p in alt_posts] or None,
     }, ensure_ascii=False)
     school = e.get("school") or "other"
+    # 摘要只是描述的開頭時（公告常見），不重複顯示同一段文字
+    summary, description = (e.get("summary") or "").strip(), (e.get("description") or "").strip()
+    squash = lambda text: re.sub(r"\s+", "", text)
+    lede_html = ("" if not summary or squash(description).startswith(squash(summary).rstrip("…")[:40])
+                 else f'<p class="lede">{esc(summary)}</p>')
     content = f"""<article class="detail">
 {review}
 <div class="detail-grid">
@@ -1303,8 +1328,8 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
   <div class="detail-body">
     <p class="chips"><span class="chip chip-{school}">{SCHOOL_LABEL.get(school, school)}</span>
     <span class="chip">{esc(e.get('category'))}</span></p>
-    <h1>{esc(page_heading)}</h1>
-    <p class="lede">{esc(e.get('summary'))}</p>
+    <h1>{heading_markup(e['title'], page_heading)}</h1>
+    {lede_html}
     <dl class="meta">{meta_html}</dl>
     <div class="actions">{actions}</div>
     <div class="desc">{''.join(f'<p>{esc(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
@@ -1390,7 +1415,7 @@ def refresh_legacy_event_seo(current_ids):
         h1_pattern = re.compile(r"(<h1(?:\s[^>]*)?>).*?(</h1>)", re.S)
         if h1_pattern.search(source):
             source = h1_pattern.sub(
-                lambda match: match.group(1) + esc(page_heading) + match.group(2),
+                lambda match: match.group(1) + heading_markup(title, page_heading) + match.group(2),
                 source,
                 count=1,
             )
@@ -1876,10 +1901,14 @@ def org_pages(entries, events):
         follow_btn = (f'<button class="btn heart-btn heart-btn-label" data-org-id="{ent["id"]}" '
                       f'data-org-name="{esc(ent["name"])}" aria-pressed="false" '
                       f'aria-label="追蹤主辦：{esc(ent["name"])}" title="追蹤主辦：{esc(ent["name"])}">{FEED_ICON["heart"]}'
-                      f'<span class="hb-follow">追蹤主辦</span>'
+                      f'<span class="hb-follow">追蹤</span>'
                       f'<span class="hb-following">追蹤中</span></button>')
+        per_platform = Counter(l["platform"] for l in ent["links"])
         links = follow_btn + "".join(
-            f'<a class="btn" href="{esc(l["url"])}" rel="noopener">{PLAT.get(l["platform"], l["platform"])}</a>'
+            f'<a class="btn" href="{esc(l["url"])}" rel="noopener">{PLAT.get(l["platform"], l["platform"])}'
+            # 同平台有兩個帳號時，加上帳號名稱區分
+            + (f' <span class="btn-sub">{esc(link_handle(l["url"]))}</span>' if per_platform[l["platform"]] > 1 and link_handle(l["url"]) else "")
+            + '</a>'
             for l in ent["links"])
         campus_chip = ""
         if ent.get("campus") in ("yangming", "guangfu"):
@@ -1891,8 +1920,9 @@ def org_pages(entries, events):
         body = [f'<article class="org-page"><div class="org-head">{avatar}<div class="org-head-main">'
                 f'<h1>{esc(ent["name"])}</h1><p class="chips">{chips}</p>'
                 f'<div class="actions org-links">{links}</div></div></div>']
+        left, right = [], []
         if not ent["links"]:
-            body.append('<p class="review-note">這個單位還沒有被竹梅收錄——如果你知道它的公開社群帳號，'
+            left.append('<p class="review-note">這個單位還沒有被竹梅收錄——如果你知道它的公開社群帳號，'
                         '歡迎到<a href="/about/">回報管道</a>告訴我們。</p>')
         if ent.get("schedule"):
             def sched_row(r):
@@ -1902,17 +1932,20 @@ def org_pages(entries, events):
                 if r.get("url"):
                     inner = f'<a href="{esc(r["url"])}" rel="noopener">{inner}</a>'
                 return f'<li class="org-ev org-sched-row">{inner}</li>'
-            body.append('<h2>例行時段</h2><ul class="org-evs">'
+            left.append('<h2>例行時段</h2><ul class="org-evs">'
                         + "".join(sched_row(r) for r in ent["schedule"])
                         + '</ul><p class="src-desc">依社團近期公開貼文整理，實際時間以社團公告為準。</p>')
         if upcoming:
-            body.append(f'<h2>即將舉行（{len(upcoming)}）</h2><ul class="org-evs">'
+            left.append(f'<h2>即將舉行（{len(upcoming)}）</h2><ul class="org-evs">'
                         + "".join(ev_row(e) for e in upcoming) + "</ul>")
         if past:
-            body.append(f'<h2>過往活動</h2><ul class="org-evs">'
+            left.append(f'<h2>過往活動</h2><ul class="org-evs">'
                         + "".join(ev_row(e) for e in past) + "</ul>")
         if not evs and ent["links"]:
-            body.append('<p class="src-desc">尚未從這個來源收錄到活動。</p>')
+            left.append('<div class="empty-state"><p class="empty-state-title">還沒有收錄到這個單位的活動</p>'
+                        '<p class="empty-state-body">竹梅會持續整理它的公開帳號；有新活動時會列在這裡。'
+                        '如果你看到它的活動沒被收錄，可以把貼文連結回報給我們。</p>'
+                        '<a class="btn" href="/submit/">回報活動</a></div>')
 
         # 收錄貼文：各來源合流、含沒抽出活動的，最新在前
         posts = {(p["source_id"], p["post_id"]): p
@@ -1940,8 +1973,10 @@ def org_pages(entries, events):
                 return f'<li class="org-ev org-post"><span class="org-post-static">{inner}</span></li>'
 
             more = f"，顯示最近 {len(shown)} 則" if len(ordered) > len(shown) else ""
-            body.append(f'<h2>收錄貼文（{len(ordered)} 則{more}）</h2><ul class="org-evs">'
+            right.append(f'<h2>收錄貼文（{len(ordered)} 則{more}）</h2><ul class="org-evs">'
                         + "".join(post_row(p) for p in shown) + "</ul>")
+        body.append('<div class="org-cols"><div class="org-col">' + "".join(left) + '</div>'
+                    + (f'<div class="org-col org-col-posts">{"".join(right)}</div>' if right else '') + '</div>')
         body.append('<p class="src-desc"><a href="/source/">← 回資料來源名錄</a></p></article>')
         d = SITE / "org" / str(ent["id"])
         d.mkdir(parents=True, exist_ok=True)
@@ -2585,7 +2620,9 @@ def prerender_events(events):
                    + "".join(_ev_list_row(e) for e in group)
                    for label, group in (("定時活動", [e for e in rows if not is_period_event(e)]),
                                         ("期間活動", [e for e in rows if is_period_event(e)])) if group) or \
-        '<p class="empty">沒有符合條件的活動。試著放寬篩選，或到「全部」看看過去的活動。</p>'
+        ('<div class="empty-state"><p class="empty-state-title">沒有符合條件的活動</p>'
+         '<p class="empty-state-body">試著放寬篩選，或把時間改成「全部」，也會列出已經結束的活動。</p>'
+         '<a class="btn" href="/events/?time=all">看全部時間的活動</a></div>')
     _inject_ssr(SITE / "events" / "index.html", "ssr-events", body)
     print(f"prerender: {len(rows)} events (7d) into events/index.html")
 
@@ -2692,11 +2729,18 @@ def source_table_html(entries):
         d = dt.astimezone(TZ_TAIPEI)
         return f"{d.year}/{d.month}/{d.day}"
 
+    def link_label(l, per_platform):
+        short = PLAT.get(l["platform"], l["platform"])
+        label = l.get("label") if l.get("label") not in (None, "", "Facebook", "公告頁", short) else ""
+        if not label and per_platform[l["platform"]] > 1:
+            label = link_handle(l["url"])  # 同平台兩個帳號時，用帳號名稱區分（避免「FB FB」）
+        return short + (" " + label if label else "")
+
     def row(e):
+        per_platform = Counter(l["platform"] for l in e["links"])
         links = "".join(
             f'<a class="src-link" href="{esc(l["url"])}" rel="noopener" target="_blank">'
-            + esc(PLAT.get(l["platform"], l["platform"]))
-            + (" " + esc(l["label"]) if l.get("label") and l["label"] not in ("Facebook", "公告頁") else "")
+            + esc(link_label(l, per_platform))
             + "</a>" for l in e["links"])
         links_html = links or '<span class="src-none">尚未找到公開帳號</span>'
         if e.get("avatar"):
@@ -2725,7 +2769,7 @@ def source_table_html(entries):
                 + (f'<button class="heart-btn heart-btn-label src-c-follow" data-org-id="{e["id"]}" '
                    f'data-org-name="{esc(e["name"])}" aria-pressed="false" aria-label="追蹤主辦：{esc(e["name"])}" '
                    f'title="追蹤主辦：{esc(e["name"])}">'
-                   f'{FEED_ICON["heart"]}<span class="hb-follow">追蹤主辦</span>'
+                   f'{FEED_ICON["heart"]}<span class="hb-follow">追蹤</span>'
                    f'<span class="hb-following">追蹤中</span></button>') + "</div>")
 
     def th(key, label, extra_cls="", on=False, arrow=" ↕"):

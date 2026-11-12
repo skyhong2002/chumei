@@ -2133,3 +2133,122 @@ button.btn:hover { background: var(--color-surface-soft); }
 @media (max-width: 699px) { body.feed-locked .feed-hubs { padding-left: 14px; padding-right: 14px; } }
 .hero .feed-hubs { margin: 12px 0 0; padding: 0; }
 .hub-hero p { max-width: var(--layout-reading, 720px); }
+
+/* ---------- 活動頁：標題、待確認框、手機版閱讀順序 ---------- */
+h1 .h1-sub {
+  display: block; margin-top: 4px;
+  font-size: 0.6em; font-weight: 600; line-height: 1.5; color: var(--color-text-secondary);
+}
+.detail > .review-note { margin: 0 0 20px; }
+.review-note ul { margin: 6px 0; padding-left: 1.2em; }
+.review-note a { color: inherit; font-weight: 600; }
+@media (max-width: 800px) {
+  /* 手機先看到名稱、時間地點與行動按鈕，海報放在後面 */
+  .detail-grid { display: flex; flex-direction: column; gap: 0; }
+  .detail-body { display: contents; }
+  .detail-body > .chips { order: 1; margin: 0; }
+  .detail-body > h1 { order: 2; }
+  .detail-body > .lede { order: 3; }
+  .detail-body > .meta { order: 4; }
+  .detail-body > .actions { order: 5; }
+  .detail-media { order: 6; margin: 0 0 24px; }
+  .detail-media .detail-poster { max-height: 70vh; object-fit: contain; background: var(--color-surface-soft); }
+  .detail-body > .desc { order: 7; }
+  .detail-body > section { order: 8; }
+}
+
+/* ---------- 資料載入狀態、空狀態 ---------- */
+.data-status {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 8px 0 12px; padding: 12px 16px; border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle); background: var(--color-surface-raised);
+  color: var(--color-text-secondary); font-size: 0.9rem; line-height: 1.6;
+}
+.data-status.is-loading { color: var(--color-info-text); background: var(--color-info-surface); border-color: transparent; }
+.data-status.is-error { background: var(--color-danger-surface); color: var(--color-danger-text); border-color: transparent; }
+.data-status-text { flex: 1 1 260px; display: flex; flex-direction: column; }
+.data-status-text strong { color: inherit; font-size: 0.98rem; }
+.data-status .btn { min-height: 40px; background: var(--color-surface); color: var(--color-text-primary); border-color: transparent; }
+.data-spinner {
+  width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: data-spin 0.8s linear infinite;
+}
+@keyframes data-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .data-spinner { animation-duration: 2.4s; } }
+.post-feed > .data-status, .feed-main > .data-status { margin-left: auto; margin-right: auto; max-width: 660px; }
+@media (min-width: 700px) { .feed-main > .data-status { max-width: 1160px; } }
+/* 篩選選項要等資料才長得出來：載入中先放骨架，失敗就整區收掉（反正用不了） */
+.data-pending main .filters .fgroup:empty {
+  min-height: 32px; border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--color-surface-soft) 0 64px, transparent 64px 72px,
+    var(--color-surface-soft) 72px 136px, transparent 136px 144px, var(--color-surface-soft) 144px 208px, transparent 208px);
+  max-width: 220px;
+}
+.data-failed main .filters { display: none; }
+.fchip[hidden] { display: none; }
+
+.empty-state {
+  max-width: 520px; margin: 24px auto; padding: 28px 24px; text-align: center;
+  border: 1px dashed var(--color-border-strong); border-radius: var(--radius-lg);
+}
+.empty-state-title { margin: 0 0 6px; font-size: 1.05rem; font-weight: 700; color: var(--color-text-primary); }
+.empty-state-body { margin: 0 0 16px; color: var(--color-text-secondary); font-size: 0.92rem; line-height: 1.7; }
+.empty-state .btn { min-height: 40px; }
+.org-page .empty-state { margin: 16px 0; text-align: left; }
+
+/* ---------- 手機：篩選收合、活動頁首屏 ---------- */
+.filters-toggle { display: none; }
+@media (max-width: 700px) {
+  .filters-collapsible .filters-toggle { display: inline-flex; align-self: flex-start; }
+  .filters-collapsible.is-collapsed > .filter-row ~ .filter-row { display: none; }
+  /* 排序、時間等單列選項改成橫向捲動，不再換成好幾行 */
+  main > .filters .fgroup { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  main > .filters .fgroup::-webkit-scrollbar { display: none; }
+  main > .filters .fchip { flex: 0 0 auto; }
+  main:has(> #map-view) { display: flex; flex-direction: column; }
+  main:has(> #map-view) > #map-view { order: 10; }
+  main:has(> #map-view) > .site-footer { order: 11; }
+}
+.evr-when .chip { white-space: nowrap; }
+
+/* ---------- 單位頁：桌面兩欄、日期對比、同平台多帳號 ---------- */
+.org-page { max-width: 1120px; }
+.org-head { max-width: var(--layout-reading, 720px); }
+.org-col { min-width: 0; }
+@media (min-width: 1100px) {
+  .org-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+  .org-col > h2:first-child, .org-col > .empty-state:first-child { margin-top: 8px; }
+}
+main :where(p, li, dd) .org-ev a[href] { text-decoration: none; }
+.org-ev-date { color: var(--color-text-secondary); }
+.btn-sub { margin-left: 4px; font-weight: 500; color: var(--color-text-muted); }
+
+/* emoji 走彩色字型，不再出現方框 */
+body { font-family: var(--font-sans, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif), "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"; }
+
+/* ---------- 帳號、回報、404：按鈕層級與表單元件 ---------- */
+.account-card button.account-action.btn-primary {
+  background: var(--color-action-primary); border-color: var(--color-action-primary); color: var(--color-action-on-primary);
+}
+.account-card button.account-action.btn-primary:hover { background: var(--color-action-primary-hover); }
+.btn-danger, .account-card button.account-action.btn-danger {
+  background: var(--color-danger-surface); border-color: var(--color-danger-text); color: var(--color-danger-text);
+}
+.btn-danger:hover, .account-card button.account-action.btn-danger:hover { background: var(--color-danger-text); color: var(--color-canvas); }
+.login-lead { margin: 18px 0 0; font-weight: 600; color: var(--color-text-primary) !important; }
+.login-options { display: grid; gap: 10px; max-width: 360px; margin-top: 16px; }
+.login-options .account-action { margin: 0 !important; justify-content: center; }
+.login-option { background: var(--color-surface-raised); border-color: var(--color-border-strong); }
+.login-option:hover { border-color: var(--color-text-primary); }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-primary); }
+.account-check input[type="checkbox"] { width: 20px; height: 20px; }
+.not-found-code { margin: 0; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; color: var(--color-text-brand); }
+.inline-search { display: flex; gap: 8px; flex-wrap: wrap; max-width: 520px; margin: 20px 0; }
+.inline-search input {
+  flex: 1 1 240px; min-height: 44px; padding: 0 14px; font: inherit;
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-pill);
+  background: var(--color-surface); color: var(--color-text-primary);
+}
+.inline-search input::placeholder { color: var(--color-text-muted); }
+.inline-search .btn { cursor: pointer; font: inherit; font-weight: 600; }
