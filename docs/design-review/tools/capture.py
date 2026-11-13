@@ -4,17 +4,19 @@
   python3 capture.py site http://127.0.0.1:8411 OUT_DIR --session-file BUILD/session.txt [--only ID-substring]
   python3 capture.py references OUT_DIR
 
-Waits while load1 > 10 before each state. FONTCONFIG/fonts: the host must have
-Noto Sans CJK TC installed so Chinese renders the same in every set.
+Waits for room on the host (hostload.py) before each state. Fonts come from
+the host: every set compared in one round must be shot on the same host
+(sky-server: Noto Sans CJK; sky-mini: PingFang TC, see states.md).
 """
 import argparse
 import json
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+
+from hostload import wait_for_load
 
 from states import NOW, REFERENCES, SIZES, STATES
 
@@ -22,21 +24,6 @@ DATA_PATTERN = '**/data/*.json'
 STATUS_PATTERN = '**/api/status.json'
 IPHONE_UA = ('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 '
              '(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1')
-
-
-def mem_available_gib():
-    with open('/proc/meminfo') as info:
-        for line in info:
-            if line.startswith('MemAvailable:'):
-                return int(line.split()[1]) / 1024 / 1024
-    return 99.0
-
-
-def wait_for_load(limit=10.0, min_mem_gib=1.0):
-    # One browser at a time, and only when the shared host has room for it.
-    while os.getloadavg()[0] > limit or mem_available_gib() < min_mem_gib:
-        print(f'load1 {os.getloadavg()[0]:.1f}, MemAvailable {mem_available_gib():.1f} GiB; waiting', flush=True)
-        time.sleep(30)
 
 
 def emptied(body):
@@ -104,7 +91,7 @@ def capture_site(base, out, session_token, only):
             for state in [st for st in STATES if not only or only in st['id']]:
                 if os.environ.get('RESUME') and (out / f"{state['id']}_{size_name}.png").exists():
                     continue  # resume a capture the host interrupted
-                wait_for_load()
+                wait_for_load(30)
                 context = browser.new_context(
                     viewport={'width': size['width'], 'height': size['height']}, device_scale_factor=size['scale'],
                     is_mobile=size['mobile'], has_touch=size['mobile'], user_agent=IPHONE_UA if size['mobile'] else None,
@@ -150,7 +137,7 @@ def capture_references(out):
         browser = p.chromium.launch()
         for size_name, size in SIZES.items():
             for ref in REFERENCES:
-                wait_for_load()
+                wait_for_load(30)
                 context = browser.new_context(
                     viewport={'width': size['width'], 'height': size['height']}, device_scale_factor=size['scale'],
                     is_mobile=size['mobile'], has_touch=size['mobile'], locale=ref.get('locale', 'en-US'),

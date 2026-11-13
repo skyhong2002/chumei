@@ -8,7 +8,8 @@
 Copies REF's tracked files to OUT/src, adds the fixture from prepare_fixture.py
 (state/, data/feeds/inbox/, cached images, mocked stories) and runs the normal
 build steps with the clock started at the snapshot time and every non-loopback
-connection blocked. Runs under nice/ionice and waits while load1 > 10. The
+connection blocked. Runs under nice (and ionice on Linux) and waits while the
+host is busy (hostload.py: load1 > CM_MAX_LOAD or memory below CM_MIN_MEM_GIB). The
 repository's own state/, data/feeds/ and published/ are never read or written.
 """
 import os
@@ -20,26 +21,14 @@ import io
 import time
 from pathlib import Path
 
+from hostload import low_priority, wait_for_load
+
 TOOLS = Path(__file__).resolve().parent
 REPO = TOOLS.parents[2]
 REVIEW = Path(os.environ.get('CM_REVIEW', '/tmp/cm-review'))
 NOW = os.environ.get('CHUMEI_PREVIEW_NOW', '2026-11-12T15:30:00+08:00')
 PYTHON = os.environ.get('CM_PYTHON', str(REVIEW / 'venv/bin/python'))
 STEPS = ('build_map_data.py', 'build_site.py', 'build_status_page.py')
-
-
-def mem_available_gib():
-    with open('/proc/meminfo') as info:
-        for line in info:
-            if line.startswith('MemAvailable:'):
-                return int(line.split()[1]) / 1024 / 1024
-    return 99.0
-
-
-def wait_for_load(limit=10.0, min_mem_gib=1.0):
-    while os.getloadavg()[0] > limit or mem_available_gib() < min_mem_gib:
-        print(f'load1 {os.getloadavg()[0]:.1f}, MemAvailable {mem_available_gib():.1f} GiB; waiting', flush=True)
-        time.sleep(60)
 
 
 def export(ref, src):
@@ -78,7 +67,7 @@ def main():
     for step in STEPS:
         wait_for_load()
         started = time.monotonic()
-        subprocess.run(['nice', '-n', '15', 'ionice', '-c3', PYTHON, str(src / 'scripts' / step)],
+        subprocess.run(low_priority([PYTHON, str(src / 'scripts' / step)]),
                        cwd=src, env=env, check=True, stdout=subprocess.DEVNULL if step != 'build_site.py' else None)
         print(f'{step}: {time.monotonic() - started:.0f}s', flush=True)
     # The status page reads its data client-side; use the public snapshot so it is not empty.
