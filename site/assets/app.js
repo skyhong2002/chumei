@@ -1728,10 +1728,10 @@
         var days = (Date.now() - d.getTime()) / 864e5;
         if (days < 1) return "今天";
         if (days < 30) return Math.round(days) + " 天前";
-        // 今年只寫月/日，往年寫年/月：手機的窄欄也放得下，不會被截斷（完整時間在 title）
+        // 今年只寫月/日，往年寫完整年/月/日（手機欄寬放得下）
         return d.getFullYear() === new Date().getFullYear()
           ? (d.getMonth() + 1) + "/" + d.getDate()
-          : d.getFullYear() + "/" + (d.getMonth() + 1);
+          : d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate();
       }
 
       function row(e) {
@@ -1744,7 +1744,7 @@
           var label = l.label && l.label !== "Facebook" && l.label !== "公告頁" && l.label !== PLAT[l.platform] ? l.label : linkHandle(l.url);
           var full = (PLAT_FULL[l.platform] || l.platform) + (label ? " " + label : "");
           return '<a class="src-link" href="' + esc(l.url) + '" rel="noopener" target="_blank" title="' + esc(full) + '" aria-label="' + esc(full) + '">' +
-            esc(PLAT[l.platform] || l.platform) + (perPlatform[l.platform] > 1 && n > 1 ? '<span class="src-link-n">' + n + "</span>" : "") + "</a>";
+            esc(PLAT[l.platform] || l.platform) + (perPlatform[l.platform] > 1 && n > 1 ? '<span class="src-link-n">（' + n + "）</span>" : "") + "</a>";
         }).join("");
         var avatar = e.avatar
           ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
@@ -2504,7 +2504,7 @@
         '" aria-pressed="false" aria-label="我會去：' + esc(e.title) + '" title="我會去：' + esc(e.title) + '">' +
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg><span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button>';
       return '<div class="ev-row-wrap">' + rowGoing + rowHeart + '<a class="ev-row ev-row-' + esc(e.school) + '" href="/event/' + e.id + '/">' + thumb +
-        '<span class="evr-main"><span class="evr-when">' + esc(when) +
+        '<span class="evr-main"><span class="evr-when"><span class="evr-date">' + esc(when) + "</span>" +
         (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">自由入場</span>' : "") +
         (e.fee === "free" ? '<span class="chip chip-fee-free">免費</span>' : e.fee === "paid" ? '<span class="chip chip-fee-paid">$</span>' : "") +
         (e.extraction && e.extraction.needs_review ? '<span class="chip chip-review">待確認</span>' : "") +

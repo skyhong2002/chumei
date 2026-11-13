@@ -10,11 +10,12 @@ review) plus a row in results/scores.json (mean of the 12 category scores).
 """
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 
 DOCS = Path(__file__).resolve().parents[1]
-PRIVATE = Path('/tmp/cm-review/private')
+PRIVATE = Path(os.environ.get('CM_REVIEW', '/tmp/cm-review')) / 'private'
 
 
 def last_text(transcript):
