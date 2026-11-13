@@ -489,7 +489,7 @@
   // ---- 資料載入狀態：慢的時候顯示「載入中」，失敗時說明原因並提供重試 ----
   function loadErrorReason(err) {
     var kind = err && err.kind;
-    if (kind === "http") return "伺服器暫時無法回應（錯誤代碼 " + err.status + "）";
+    if (kind === "http") return "伺服器暫時沒有回應";
     if (kind === "timeout") return "連線逾時";
     if (kind === "network") return "網路連線中斷";
     if (kind === "parse") return "收到的資料不完整";
@@ -521,7 +521,8 @@
         document.body.classList.remove("data-pending");
         document.body.classList.add("data-failed");
         place('<div class="data-status-text"><strong>' + what + "暫時載入不了</strong>" +
-          "<span>" + loadErrorReason(err) + "。" + (opts.fallback || "") + "</span></div>" +
+          "<span>" + loadErrorReason(err) + "。" + (opts.fallback || "") +
+          (err && err.status ? ' <span class="data-status-code">（代碼 ' + err.status + "）</span>" : "") + "</span></div>" +
           '<button type="button" class="btn data-retry">重新載入</button>', "is-error", "alert");
         box.querySelector(".data-retry").addEventListener("click", function () { location.reload(); });
       }
@@ -896,10 +897,11 @@
 
       function evChip(e) {
         var d = new Date(e.start_at);
-        var when = (d.getMonth() + 1) + "/" + d.getDate() +
+        var when = (d.getMonth() + 1) + "/" + d.getDate() + "（" + "日一二三四五六".charAt(d.getDay()) + "）" +
           (e.all_day ? "" : " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"));
         return '<div class="feed-ev-row"><a class="feed-ev" data-id="' + esc(e.id) + '" href="/event/' + e.id + '/">' +
-          '<span class="feed-ev-date">' + esc(when) + '</span><span class="feed-ev-title">' + esc(e.title) + "</span></a>" +
+          '<span class="feed-ev-date"><span class="feed-ev-kicker">活動</span>' + esc(when) + '</span><span class="feed-ev-title">' + esc(e.title) + "</span>" +
+          (e.venue ? '<span class="feed-ev-where">' + esc(e.venue) + "</span>" : "") + "</a>" +
           '<button class="going-btn feed-ev-going" data-event-id="' + esc(e.id) + '" data-event-title="' + esc(e.title) +
           '" aria-pressed="false" aria-label="我會去：' + esc(e.title) + '" title="我會去：' + esc(e.title) + '">' + I.ticket +
           '<span class="sr-only going-state-label">我會去</span><span class="going-count" hidden></span></button></div>';
@@ -1046,8 +1048,8 @@
           '<button data-add="stories"><span class="feed-col-dot dot-stories"></span>限時動態</button></div>';
       }
       function deckAddHtml() {
-        return '<details class="deck-add"><summary aria-label="新增河道">' + ADD_RIVER_ICON +
-          '</summary>' + addColMenu() + '</details>';
+        return '<details class="deck-add"><summary title="新增一欄河道">' + ADD_RIVER_ICON +
+          '<span class="deck-add-label">新增一欄</span></summary>' + addColMenu() + '</details>';
       }
       function upcomingEvents() {
         var seen = {}, evs = [];

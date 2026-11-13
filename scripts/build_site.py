@@ -2329,9 +2329,12 @@ def _feed_ago(iso, now):
 def _feed_ev_chip(e):
     esc = html.escape
     d = _iso_dt(e["start_at"]).astimezone(TZ_TAIPEI)
-    when = f"{d.month}/{d.day}" + ("" if e.get("all_day") else f" {d.hour:02d}:{d.minute:02d}")
+    when = (f"{d.month}/{d.day}（{'日一二三四五六'[(d.weekday() + 1) % 7]}）"
+            + ("" if e.get("all_day") else f" {d.hour:02d}:{d.minute:02d}"))
+    where = f'<span class="feed-ev-where">{esc(e["venue"])}</span>' if e.get("venue") else ""
     return (f'<div class="feed-ev-row"><a class="feed-ev" data-id="{esc(e["id"])}" href="/event/{e["id"]}/">'
-            f'<span class="feed-ev-date">{esc(when)}</span><span class="feed-ev-title">{esc(e["title"])}</span></a>'
+            f'<span class="feed-ev-date"><span class="feed-ev-kicker">活動</span>{esc(when)}</span>'
+            f'<span class="feed-ev-title">{esc(e["title"])}</span>{where}</a>'
             f'<button class="going-btn feed-ev-going" data-event-id="{esc(e["id"])}" '
             f'data-event-title="{esc(e["title"])}" aria-pressed="false" '
             f'aria-label="我會去：{esc(e["title"])}" title="我會去：{esc(e["title"])}">{FEED_ICON["ticket"]}'
