@@ -1728,7 +1728,10 @@
         var days = (Date.now() - d.getTime()) / 864e5;
         if (days < 1) return "今天";
         if (days < 30) return Math.round(days) + " 天前";
-        return d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate();
+        // 今年只寫月/日，往年寫年/月：手機的窄欄也放得下，不會被截斷（完整時間在 title）
+        return d.getFullYear() === new Date().getFullYear()
+          ? (d.getMonth() + 1) + "/" + d.getDate()
+          : d.getFullYear() + "/" + (d.getMonth() + 1);
       }
 
       function row(e) {
