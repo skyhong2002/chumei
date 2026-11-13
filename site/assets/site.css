@@ -2151,7 +2151,9 @@ h1 .h1-sub {
   .detail-body > .lede { order: 3; }
   .detail-body > .meta { order: 4; }
   .detail-body > .actions { order: 5; }
-  .detail-media { order: 6; margin: 0 0 24px; }
+  .detail-media { display: contents; }
+  .detail-media > :first-child { order: 6; margin: 0 0 24px; }
+  .detail-media > section { order: 8; }
   .detail-media .detail-poster { max-height: 70vh; object-fit: contain; background: var(--color-surface-soft); }
   .detail-body > .desc { order: 7; }
   .detail-body > section { order: 8; }
@@ -2371,9 +2373,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 main.prose { max-width: var(--layout-content, 1200px); }
 main.prose > * { max-width: var(--layout-reading, 720px); }
 /* 活動頁桌面：海報跟著捲動，不在下方留一大片空白 */
-@media (min-width: 801px) { .detail-media { position: sticky; top: 16px; } }
+/* 活動頁桌面：「更多活動」接在左欄海報下方，左右兩欄長度相近 */
+@media (min-width: 801px) { .detail-media > section { margin-top: 28px; } .detail-media > section h2 { font-size: 1.05rem; } }
 /* 危險按鈕：實心紅底白字，兩種外觀都清楚 */
 .btn-danger, .account-card button.account-action.btn-danger {
   background: var(--color-red-700, #A81F28); border-color: var(--color-red-700, #A81F28); color: #fff;
 }
 .btn-danger:hover, .account-card button.account-action.btn-danger:hover { background: #8A1820; color: #fff; }
+
+/* ---------- 第 9 輪 ---------- */
+.evr-date { white-space: nowrap; }
+.org-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 8px 0 8px; }
+.org-stats > div { padding: 12px 14px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface-raised); }
+.org-stats dt { font-size: 0.85rem; color: var(--color-text-secondary); }
+.org-stats dd { margin: 2px 0 0; font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (min-width: 1100px) { .org-col-posts > .org-stats { margin-top: 8px; } }
+@media (min-width: 701px) { .src-links { flex-wrap: wrap; row-gap: 2px; } }
+.src-link-n { vertical-align: baseline; font-size: 0.85em; line-height: inherit; margin-left: 0; }
+@media (max-width: 700px) {
+  .src-c-name .src-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .src-upd { max-width: none; white-space: nowrap; }
+}

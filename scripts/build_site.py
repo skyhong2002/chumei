@@ -1329,19 +1329,7 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
     squash = lambda text: re.sub(r"\s+", "", text)
     lede_html = ("" if not summary or squash(description).startswith(squash(summary).rstrip("…")[:40])
                  else f'<p class="lede">{esc(summary)}</p>')
-    content = f"""<article class="detail">
-{review}
-<div class="detail-grid">
-  <div class="detail-media">{poster}</div>
-  <div class="detail-body">
-    <p class="chips"><span class="chip chip-{school}">{SCHOOL_LABEL.get(school, school)}</span>
-    <span class="chip">{esc(e.get('category'))}</span></p>
-    <h1>{heading_markup(e['title'], page_heading)}</h1>
-    {lede_html}
-    <dl class="meta">{meta_html}</dl>
-    <div class="actions">{actions}</div>
-    <div class="desc">{''.join(f'<p>{esc(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
-    {(f'<section class="related-events"><h2>可能相關的活動</h2>'
+    more_sections = f"""{(f'<section class="related-events"><h2>可能相關的活動</h2>'
       f'<p class="src-desc">依標題、日期、時間、校區與場地自動整理，實際關係以主辦單位公告為準。</p>'
       f'<ul class="org-evs">'
       + ''.join(f'<li class="org-ev related-event"><a href="/event/{candidate["id"]}/">'
@@ -1357,7 +1345,19 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
       if sibs else
       (f'<section class="org-more"><h2>來自 <a href="/org/{oid}/">{esc(oname)}</a> 的更多活動</h2>'
        f'<p class="src-desc">這是目前收錄自該單位的唯一活動。<a href="/org/{oid}/">查看 {esc(oname)} 的完整頁面 →</a></p></section>')
-      for oid, oname, sibs in org_sections)}
+      for oid, oname, sibs in org_sections)}"""
+    content = f"""<article class="detail">
+{review}
+<div class="detail-grid">
+  <div class="detail-media">{poster}{more_sections}</div>
+  <div class="detail-body">
+    <p class="chips"><span class="chip chip-{school}">{SCHOOL_LABEL.get(school, school)}</span>
+    <span class="chip">{esc(e.get('category'))}</span></p>
+    <h1>{heading_markup(e['title'], page_heading)}</h1>
+    {lede_html}
+    <dl class="meta">{meta_html}</dl>
+    <div class="actions">{actions}</div>
+    <div class="desc">{''.join(f'<p>{esc(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
   </div>
 </div>
 <script type="application/ld+json">{jsonld}</script>
@@ -1968,7 +1968,7 @@ def org_pages(entries, events):
                       "bulletin": "公告", "website": "官網", "api": "LIFE"}
 
             def post_row(p):
-                snippet = re.sub(r"\s+", " ", display_text(p.get("text"))).strip()[:60] or "（無文字）"
+                snippet = re.sub(r"\s+", " ", display_text(p.get("text"))).strip()[:60].rstrip("\u200d\ufe0f") or "（無文字）"
                 d8 = post_key(p)[:10]
                 d_lab = f"{int(d8[5:7])}/{int(d8[8:10])}" if len(d8) == 10 else "—"
                 n_ev = ev_per_post.get((p["source_id"], p["post_id"]), 0)
@@ -1983,8 +1983,19 @@ def org_pages(entries, events):
             more = f"，顯示最近 {len(shown)} 則" if len(ordered) > len(shown) else ""
             right.append(f'<h2>收錄貼文（{len(ordered)} 則{more}）</h2><ul class="org-evs">'
                         + "".join(post_row(p) for p in shown) + "</ul>")
+        # 右欄頂端：單位的收錄概況，讓雙欄在貼文少時也不失衡
+        stats = [("收錄活動", f"{len(evs)} 場"), ("即將舉行", f"{len(upcoming)} 場"),
+                 ("公開帳號", f"{len(ent['links'])} 個")]
+        if ent.get("updated"):
+            u = _iso_dt(ent["updated"])
+            if u:
+                u = u.astimezone(TZ_TAIPEI)
+                stats.append(("最近更新", f"{u.year}/{u.month}/{u.day}"))
+        stats_html = ('<dl class="org-stats">' + "".join(
+            f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in stats) + "</dl>")
+        right.insert(0, stats_html)
         body.append('<div class="org-cols"><div class="org-col">' + "".join(left) + '</div>'
-                    + (f'<div class="org-col org-col-posts">{"".join(right)}</div>' if right else '') + '</div>')
+                    + f'<div class="org-col org-col-posts">{"".join(right)}</div></div>')
         body.append('<p class="src-desc"><a href="/source/">← 回資料來源名錄</a></p></article>')
         d = SITE / "org" / str(ent["id"])
         d.mkdir(parents=True, exist_ok=True)
@@ -2588,7 +2599,7 @@ def _ev_list_row(e):
                  if e.get("org_id") else "")
     return (f'<div class="ev-row-wrap">{row_heart}'
             f'<a class="ev-row ev-row-{esc(sch or "")}" href="/event/{e["id"]}/">{thumb}'
-            f'<span class="evr-main"><span class="evr-when">{esc(_ev_when(e))}{chips}</span>'
+            f'<span class="evr-main"><span class="evr-when"><span class="evr-date">{esc(_ev_when(e))}</span>{chips}</span>'
             f'<span class="evr-title">{esc(e["title"])}</span>'
             f'<span class="evr-meta">{esc(meta)}</span></span></a></div>')
 
@@ -2740,8 +2751,8 @@ def source_table_html(entries):
         if days < 30:
             return f"{round(days)} 天前"
         d = dt.astimezone(TZ_TAIPEI)
-        # 今年只寫月/日，往年寫年/月：手機的窄欄也放得下（完整時間在 title）
-        return f"{d.month}/{d.day}" if d.year == now.astimezone(TZ_TAIPEI).year else f"{d.year}/{d.month}"
+        # 今年只寫月/日，往年寫完整年/月/日（手機欄寬放得下）
+        return f"{d.month}/{d.day}" if d.year == now.astimezone(TZ_TAIPEI).year else f"{d.year}/{d.month}/{d.day}"
 
     PLAT_FULL = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads", "x": "X",
                  "bulletin": "公告頁", "website": "官網"}
@@ -2752,7 +2763,7 @@ def source_table_html(entries):
         full = PLAT_FULL.get(l["platform"], l["platform"]) + (" " + label if label else "")
         # 只列平台短名、一行排開；同平台多帳號加序號，完整帳號放 tooltip 與 aria-label
         return (f'<a class="src-link" href="{esc(l["url"])}" rel="noopener" target="_blank" title="{esc(full)}" aria-label="{esc(full)}">'
-                + esc(short) + (f'<span class="src-link-n">{n}</span>' if per_platform[l["platform"]] > 1 and n > 1 else "") + "</a>")
+                + esc(short) + (f'<span class="src-link-n">（{n}）</span>' if per_platform[l["platform"]] > 1 and n > 1 else "") + "</a>")
 
     def row(e):
         per_platform = Counter(l["platform"] for l in e["links"])

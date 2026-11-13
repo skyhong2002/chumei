@@ -12,13 +12,14 @@ byte-identical copy of brief.md. The A/B/C mapping is written outside the
 review folder, to /tmp/cm-review/private/rROUND.json.
 """
 import hashlib
+import os
 import json
 import random
 import shutil
 import sys
 from pathlib import Path
 
-ROOT = Path('/tmp/cm-review')
+ROOT = Path(os.environ.get('CM_REVIEW', '/tmp/cm-review'))
 DOCS = Path(__file__).resolve().parents[1]
 
 
