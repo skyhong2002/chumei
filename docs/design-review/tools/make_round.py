@@ -3,13 +3,16 @@
 
   python3 docs/design-review/tools/make_round.py ROUND NEW_SET_DIR [BRIEF] [REFERENCE_SET_DIR]
 
-ROUND is a label such as 1 or c1 (council). BRIEF defaults to brief.md, which
-never changes after round 1.
+ROUND is a label such as 1, c1 (council) or m9 (rounds shot on sky-mini).
+Numeric labels get an r prefix (r1); labels that start with a letter are used
+as is (m9). BRIEF defaults to brief.md, which never changes after round 1.
+CM_HOST (default sky-mini) is recorded with the mapping; every set in one
+round must be shot on that host.
 
 Copies the fixed baseline set, this round's new set and the fixed reference
-set into /tmp/cm-review/rounds/rROUND/{A,B,C} in random order, plus a
+set into $CM_REVIEW/rounds/<label>/{A,B,C} in random order, plus a
 byte-identical copy of brief.md. The A/B/C mapping is written outside the
-review folder, to /tmp/cm-review/private/rROUND.json.
+review folder, to $CM_REVIEW/private/<label>.json.
 """
 import hashlib
 import os
@@ -21,6 +24,11 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get('CM_REVIEW', '/tmp/cm-review'))
 DOCS = Path(__file__).resolve().parents[1]
+HOST = os.environ.get('CM_HOST', 'sky-mini')
+
+
+def round_label(number):
+    return number if number[:1].isalpha() else f'r{number}'
 
 
 def main():
@@ -31,7 +39,7 @@ def main():
     labels = ['A', 'B', 'C']
     random.SystemRandom().shuffle(labels)
     mapping = dict(zip(labels, sets))
-    out = ROOT / f'rounds/r{number}'
+    out = ROOT / 'rounds' / round_label(number)
     if out.exists():
         shutil.rmtree(out)
     for label, name in mapping.items():
@@ -43,7 +51,7 @@ def main():
     digest = hashlib.sha256(brief.read_bytes()).hexdigest()
     private = ROOT / 'private'
     private.mkdir(parents=True, exist_ok=True)
-    (private / f'r{number}.json').write_text(json.dumps({'round': number, 'mapping': mapping, 'new': str(new_set), 'brief': brief.name, 'briefSha256': digest}, indent=2))
+    (private / f'{round_label(number)}.json').write_text(json.dumps({'round': number, 'host': HOST, 'mapping': mapping, 'new': str(new_set), 'brief': brief.name, 'briefSha256': digest}, indent=2))
     print(out, digest)
 
 
