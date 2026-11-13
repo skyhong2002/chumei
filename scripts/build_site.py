@@ -2394,7 +2394,7 @@ def _feed_row(p, now):
                f'<button class="feed-action btn-share" data-url="{esc(share_url)}" data-title="{esc(share_title)}" title="分享">{FEED_ICON["send"]}</button>' +
                (f'<a class="feed-action" href="{esc(p["url"])}" target="_blank" rel="noopener" title="開啟原文">{FEED_ICON["ext"]}</a>' if p.get("url") else "") +
                "</div>")
-    return f'<article class="feed-post">{avatar_el}<div class="feed-content">{head}{body}{evs}{actions}</div></article>'
+    return f'<article class="feed-post">{avatar_el}<div class="feed-content">{head}{evs}{body}{actions}</div></article>'
 
 
 def _inject_ssr(path, marker, body):

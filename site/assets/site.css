@@ -2289,3 +2289,21 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
   .src-link:not(.src-link-dup) .src-link-label { display: none; }
   .src-links { flex-wrap: nowrap; gap: 8px; }
 }
+
+/* 貼文卡：已收錄成活動的日期列放在原文之前 */
+.feed-content > .feed-evs { margin: 4px 0 10px; }
+/* 欄板：視窗夠放就全部放下（欄寬在 340px 與預設寬之間伸縮），真的放不下才橫向捲 */
+@media (min-width: 700px) {
+  body.feed-locked .feed-cols { grid-template-columns: repeat(var(--ncols, 2), minmax(340px, var(--feed-col-w))); }
+  body.feed-locked .feed-cols.has-deck-add { grid-template-columns: repeat(var(--ncols, 2), minmax(340px, var(--feed-col-w))) 84px; }
+}
+
+/* 活動卡：動作列變矮，追蹤主辦只留圖示（螢幕閱讀器仍讀得到 aria-label） */
+.card-actions { min-height: 0; padding: 6px 10px; }
+.card-going, .card-heart { height: 40px; }
+.card-heart.heart-btn-label .hb-follow, .card-heart.heart-btn-label .hb-following { display: none; }
+.card-heart { width: 40px; min-width: 40px; padding: 0; }
+
+/* 名錄表格：ID、標籤、更新時間不再是 11px 灰字 */
+.src-id, .src-upd { font-size: 0.85rem; color: var(--color-text-secondary); }
+.src-c-chips .chip { font-size: 0.8rem; }

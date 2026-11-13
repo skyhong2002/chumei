@@ -946,7 +946,7 @@
           '<button class="feed-action btn-share" data-url="' + esc(shareUrl) + '" data-title="' + esc(shareTitle) + '" title="分享">' + I.send + "</button>" +
           (p.url ? '<a class="feed-action" href="' + esc(p.url) + '" target="_blank" rel="noopener" title="開啟原文">' + I.ext + "</a>" : "") +
           "</div>";
-        return '<article class="feed-post">' + avatarEl + '<div class="feed-content">' + head + body + evs + actions + "</div></article>";
+        return '<article class="feed-post">' + avatarEl + '<div class="feed-content">' + head + evs + body + actions + "</div></article>";
       }
 
       // Keep pagination with the column, so loading one river never expands its
@@ -2519,11 +2519,14 @@
         badge +
         "</div>" +
         '<div class="card-body">' +
+        // 卡片最多三個標籤：學校、類型，再加一個最需要知道的狀態
         '<p class="chips"><span class="chip chip-' + esc(e.school) + '">' + esc(labels.school[e.school] || e.school) + "</span>" +
         '<span class="chip">' + esc(e.category || "其他") + "</span>" +
-        (e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>' : e.reg === "free" ? '<span class="chip chip-reg-free">自由入場</span>' : "") +
-        (e.fee === "free" ? '<span class="chip chip-fee-free">免費</span>' : e.fee === "paid" ? '<span class="chip chip-fee-paid">' + esc(e.price || "付費") + "</span>" : "") +
-        (e.extraction && e.extraction.needs_review ? '<span class="chip chip-review">待確認</span>' : "") +
+        ((e.extraction && e.extraction.needs_review) ? '<span class="chip chip-review">待確認</span>'
+          : e.reg === "required" ? '<span class="chip chip-reg-req">需報名</span>'
+          : e.fee === "free" ? '<span class="chip chip-fee-free">免費</span>'
+          : e.fee === "paid" ? '<span class="chip chip-fee-paid">' + esc(e.price || "付費") + "</span>"
+          : e.reg === "free" ? '<span class="chip chip-reg-free">自由入場</span>' : "") +
         "</p>" +
         '<h2 class="card-title">' + esc(e.title) + "</h2>" +
         '<p class="card-meta">' + esc(when) + (where ? "｜" + esc(where) : "") + "</p>" +
