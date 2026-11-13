@@ -275,6 +275,26 @@
       var displayName = String(user.displayName || handle || "竹梅使用者");
       var initial = Array.from(displayName.trim())[0] || "竹";
       var avatarUrl = String(user.avatarUrl || "");
+      // 手機頂欄：登入後在搜尋旁邊放頭像，首屏就看得出已登入
+      var header = document.querySelector(".site-header");
+      if (header && !header.querySelector(".topbar-account")) {
+        var top = document.createElement("a");
+        top.className = "topbar-account";
+        top.href = "/account/";
+        top.setAttribute("aria-label", (handle ? "@" + handle : displayName) + " 的帳號設定");
+        top.innerHTML = '<span class="nav-account-avatar" aria-hidden="true"></span>';
+        var topAvatar = top.firstChild;
+        topAvatar.textContent = initial;
+        if (avatarUrl) {
+          var topImg = document.createElement("img");
+          topImg.alt = "";
+          topImg.referrerPolicy = "no-referrer";
+          topImg.src = avatarUrl;
+          topImg.addEventListener("error", function () { topImg.remove(); }, { once: true });
+          topAvatar.appendChild(topImg);
+        }
+        header.appendChild(top);
+      }
       document.querySelectorAll('[data-account-link], .site-nav a[href="/account/"], .nav-more-menu a[href="/account/"]').forEach(function (a) {
         var label = a.querySelector("[data-account-label]") || a.querySelector(".nav-label") || a.querySelector("span");
         if (label) label.textContent = handle ? "@" + handle : "帳號";
@@ -522,7 +542,7 @@
         document.body.classList.add("data-failed");
         place('<div class="data-status-text"><strong>' + what + "暫時載入不了</strong>" +
           "<span>" + loadErrorReason(err) + "。" + (opts.fallback || "") +
-          (err && err.status ? ' <span class="data-status-code">（代碼 ' + err.status + "）</span>" : "") + "</span></div>" +
+          "</span>" + (err && err.status ? '<details class="data-status-more"><summary>詳細資訊</summary>伺服器回應代碼 ' + err.status + "</details>" : "") + "</div>" +
           '<button type="button" class="btn data-retry">重新載入</button>', "is-error", "alert");
         box.querySelector(".data-retry").addEventListener("click", function () { location.reload(); });
       }

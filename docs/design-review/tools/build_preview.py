@@ -28,9 +28,17 @@ PYTHON = os.environ.get('CM_PYTHON', str(REVIEW / 'venv/bin/python'))
 STEPS = ('build_map_data.py', 'build_site.py', 'build_status_page.py')
 
 
-def wait_for_load(limit=10.0):
-    while os.getloadavg()[0] > limit:
-        print(f'load1 {os.getloadavg()[0]:.1f} > {limit}; waiting', flush=True)
+def mem_available_gib():
+    with open('/proc/meminfo') as info:
+        for line in info:
+            if line.startswith('MemAvailable:'):
+                return int(line.split()[1]) / 1024 / 1024
+    return 99.0
+
+
+def wait_for_load(limit=10.0, min_mem_gib=1.0):
+    while os.getloadavg()[0] > limit or mem_available_gib() < min_mem_gib:
+        print(f'load1 {os.getloadavg()[0]:.1f}, MemAvailable {mem_available_gib():.1f} GiB; waiting', flush=True)
         time.sleep(60)
 
 

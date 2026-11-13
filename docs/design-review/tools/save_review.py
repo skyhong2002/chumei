@@ -18,18 +18,27 @@ PRIVATE = Path('/tmp/cm-review/private')
 
 
 def last_text(transcript):
+    # Stream the file: reviewer transcripts embed every screenshot and run to
+    # hundreds of MB, so reading them whole can exhaust a busy host's memory.
     text = None
-    for line in transcript.read_text().splitlines():
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        message = item.get('message') or {}
-        if item.get('type') == 'assistant' and message.get('role') == 'assistant':
-            parts = [c.get('text', '') for c in message.get('content', []) if isinstance(c, dict) and c.get('type') == 'text']
-            if ''.join(parts).strip():
-                text = ''.join(parts)
+    with transcript.open(encoding='utf-8') as lines:
+        for line in lines:
+            if '"type":"assistant"' not in line or '"type":"text"' not in line:
+                continue
+            text = _text_of(line) or text
     return text
+
+
+def _text_of(line):
+    try:
+        item = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    message = item.get('message') or {}
+    if item.get('type') != 'assistant' or message.get('role') != 'assistant':
+        return None
+    parts = [c.get('text', '') for c in message.get('content', []) if isinstance(c, dict) and c.get('type') == 'text']
+    return ''.join(parts) if ''.join(parts).strip() else None
 
 
 def main():
