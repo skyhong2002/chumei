@@ -93,6 +93,8 @@ def capture_site(base, out, session_token, only):
         browser = p.chromium.launch()
         for size_name, size in SIZES.items():
             for state in [st for st in STATES if not only or only in st['id']]:
+                if os.environ.get('RESUME') and (out / f"{state['id']}_{size_name}.png").exists():
+                    continue  # resume a capture the host interrupted
                 wait_for_load()
                 context = browser.new_context(
                     viewport={'width': size['width'], 'height': size['height']}, device_scale_factor=size['scale'],

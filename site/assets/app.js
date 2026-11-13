@@ -1710,16 +1710,16 @@
       }
 
       function row(e) {
-        var perPlatform = {};
+        var perPlatform = {}, seenPlatform = {};
         e.links.forEach(function (l) { perPlatform[l.platform] = (perPlatform[l.platform] || 0) + 1; });
+        var PLAT_FULL = { instagram: "Instagram", facebook: "Facebook", threads: "Threads", x: "X", bulletin: "公告頁", website: "官網" };
+        // 只列平台短名、一行排開；同平台多帳號加序號，完整帳號放 tooltip 與 aria-label
         var links = e.links.map(function (l) {
-          var label = l.label && l.label !== "Facebook" && l.label !== "公告頁" && l.label !== PLAT[l.platform] ? l.label : "";
-          // 同平台有兩個帳號時，用帳號名稱區分（避免「FB FB」）
-          if (!label && perPlatform[l.platform] > 1) label = linkHandle(l.url);
-          var dup = perPlatform[l.platform] > 1;
-          return '<a class="src-link' + (dup ? " src-link-dup" : "") + '" href="' + esc(l.url) + '" rel="noopener" target="_blank"' +
-            (label ? ' title="' + esc(label) + '"' : "") + ">" +
-            esc(PLAT[l.platform] || l.platform) + (label ? '<span class="src-link-label"> ' + esc(label) + "</span>" : "") + "</a>";
+          var n = seenPlatform[l.platform] = (seenPlatform[l.platform] || 0) + 1;
+          var label = l.label && l.label !== "Facebook" && l.label !== "公告頁" && l.label !== PLAT[l.platform] ? l.label : linkHandle(l.url);
+          var full = (PLAT_FULL[l.platform] || l.platform) + (label ? " " + label : "");
+          return '<a class="src-link" href="' + esc(l.url) + '" rel="noopener" target="_blank" title="' + esc(full) + '" aria-label="' + esc(full) + '">' +
+            esc(PLAT[l.platform] || l.platform) + (perPlatform[l.platform] > 1 && n > 1 ? '<span class="src-link-n">' + n + "</span>" : "") + "</a>";
         }).join("");
         var avatar = e.avatar
           ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
@@ -1853,7 +1853,7 @@
         if (!Array.isArray(stories)) throw new Error("Stories response is invalid");
         if (!stories.length) {
           storyShare.data = { flat: [] };
-          if (wall) wall.innerHTML = '<p class="empty">目前沒有可顯示的限時動態，晚點再來看看。</p>';
+          if (wall) wall.innerHTML = emptyState("現在沒有限時動態", "限動發布 48 小時後就會下架，晚點再來看看；也可以先逛逛接下來的活動。", "/events/", "看即將舉行的活動");
           notifyStoryColumns();
           return;
         }
