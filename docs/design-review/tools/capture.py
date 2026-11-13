@@ -76,14 +76,14 @@ def shoot(page, file, size, state):
     if state.get('viewport_only'):
         page.evaluate(f'window.scrollTo(0, {top})')
         page.wait_for_timeout(300)
-        return page.screenshot(path=file)
+        return page.screenshot(path=file, timeout=120000)
     full = page.evaluate('document.documentElement.scrollHeight')
     height = max(size['height'], min(full - top, size['max_height']))
     page.set_viewport_size({'width': size['width'], 'height': int(min(height, max(full - top, size['height'])))})
     page.wait_for_timeout(800)
     page.evaluate(f'window.scrollTo(0, {top})')
     page.wait_for_timeout(300)
-    return page.screenshot(path=file)
+    return page.screenshot(path=file, timeout=120000)
 
 
 def capture_site(base, out, session_token, only):
