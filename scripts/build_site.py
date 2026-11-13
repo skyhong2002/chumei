@@ -1166,6 +1166,14 @@ def related_events(event, events, limit=8):
     return [(candidate, reason) for _, _, _, candidate, reason in ranked[:limit]]
 
 
+# 社群貼文常拿罕用字當裝飾（𓂃𓂃꙳），一般裝置沒有字型，只會顯示成方框
+_UNRENDERABLE_DECOR = re.compile("[\U00013000-\U0001345F\uA66F-\uA67F\U0001D100-\U0001D1FF]+")
+
+
+def display_text(text):
+    return _UNRENDERABLE_DECOR.sub("", text or "")
+
+
 def link_handle(url):
     """社群網址的帳號名稱：https://www.facebook.com/NCTUBG → NCTUBG。"""
     parts = urlsplit(url or "")
@@ -1960,7 +1968,7 @@ def org_pages(entries, events):
                       "bulletin": "公告", "website": "官網", "api": "LIFE"}
 
             def post_row(p):
-                snippet = re.sub(r"\s+", " ", p.get("text") or "").strip()[:60] or "（無文字）"
+                snippet = re.sub(r"\s+", " ", display_text(p.get("text"))).strip()[:60] or "（無文字）"
                 d8 = post_key(p)[:10]
                 d_lab = f"{int(d8[5:7])}/{int(d8[8:10])}" if len(d8) == 10 else "—"
                 n_ev = ev_per_post.get((p["source_id"], p["post_id"]), 0)
@@ -2179,7 +2187,7 @@ def build_posts_data(events, sid_to_entry=None):
                 image = cache_post_image(sid, pid, image) or image
         image_size = local_image_size(image)
         # 保留段落換行；壓掉行內多餘空白與過多空行
-        text = re.sub(r"[ \t]+", " ", it.get("text") or "")
+        text = re.sub(r"[ \t]+", " ", display_text(it.get("text")))
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
         if text in FEED_PLACEHOLDER_TEXTS:
             text = ""  # 抓取器的占位字串：有圖就只放圖
@@ -2697,7 +2705,9 @@ def prerender_stories():
     flat = [s for u in order for s in groups[u]]
 
     if not flat:
-        body = '<p class="empty">現在沒有進行中的限時動態 — 限動發布 48 小時後就會下架，晚點再來看看。</p>'
+        body = ('<div class="empty-state"><p class="empty-state-title">現在沒有限時動態</p>'
+                '<p class="empty-state-body">限動發布 48 小時後就會下架，晚點再來看看；也可以先逛逛接下來的活動。</p>'
+                '<a class="btn" href="/events/">看即將舉行的活動</a></div>')
     else:
         body = "".join(
             f'<button class="story-card" data-i="{i}">'
@@ -2729,20 +2739,25 @@ def source_table_html(entries):
         d = dt.astimezone(TZ_TAIPEI)
         return f"{d.year}/{d.month}/{d.day}"
 
-    def link_html(l, per_platform):
+    PLAT_FULL = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads", "x": "X",
+                 "bulletin": "公告頁", "website": "官網"}
+
+    def link_html(l, per_platform, n):
         short = PLAT.get(l["platform"], l["platform"])
-        label = l.get("label") if l.get("label") not in (None, "", "Facebook", "公告頁", short) else ""
-        dup = per_platform[l["platform"]] > 1
-        if not label and dup:
-            label = link_handle(l["url"])  # 同平台兩個帳號時，用帳號名稱區分（避免「FB FB」）
-        # 桌面表格只顯示平台；帳號名稱放在 title，同平台多帳號時才顯示
-        return (f'<a class="src-link{" src-link-dup" if dup else ""}" href="{esc(l["url"])}" rel="noopener" target="_blank"'
-                + (f' title="{esc(label)}"' if label else "") + ">" + esc(short)
-                + (f'<span class="src-link-label"> {esc(label)}</span>' if label else "") + "</a>")
+        label = l.get("label") if l.get("label") not in (None, "", "Facebook", "公告頁", short) else link_handle(l["url"])
+        full = PLAT_FULL.get(l["platform"], l["platform"]) + (" " + label if label else "")
+        # 只列平台短名、一行排開；同平台多帳號加序號，完整帳號放 tooltip 與 aria-label
+        return (f'<a class="src-link" href="{esc(l["url"])}" rel="noopener" target="_blank" title="{esc(full)}" aria-label="{esc(full)}">'
+                + esc(short) + (f'<span class="src-link-n">{n}</span>' if per_platform[l["platform"]] > 1 and n > 1 else "") + "</a>")
 
     def row(e):
         per_platform = Counter(l["platform"] for l in e["links"])
-        links = "".join(link_html(l, per_platform) for l in e["links"])
+        seen = Counter()
+
+        def numbered(l):
+            seen[l["platform"]] += 1
+            return link_html(l, per_platform, seen[l["platform"]])
+        links = "".join(numbered(l) for l in e["links"])
         links_html = links or '<span class="src-none">尚未找到公開帳號</span>'
         if e.get("avatar"):
             avatar = f'<img class="src-avatar src-c-ava" src="{esc(e["avatar"])}" alt="" loading="lazy">'

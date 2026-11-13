@@ -2220,7 +2220,7 @@ h1 .h1-sub {
   .org-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
   .org-col > h2:first-child, .org-col > .empty-state:first-child { margin-top: 8px; }
 }
-main :where(p, li, dd) .org-ev a[href] { text-decoration: none; }
+main .org-evs .org-ev a[href]:not(.btn):not(.fchip) { text-decoration: none; }
 .org-ev-date { color: var(--color-text-secondary); }
 .btn-sub { margin-left: 4px; font-weight: 500; color: var(--color-text-muted); }
 
@@ -2307,3 +2307,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 /* 名錄表格：ID、標籤、更新時間不再是 11px 灰字 */
 .src-id, .src-upd { font-size: 0.85rem; color: var(--color-text-secondary); }
 .src-c-chips .chip { font-size: 0.8rem; }
+
+/* 名錄連結：平台短名一行排開，多帳號用序號區分 */
+.src-links { flex-wrap: nowrap; }
+.src-link { max-width: none; overflow: visible; }
+.src-link-n { margin-left: 1px; font-size: 0.72em; vertical-align: super; line-height: 0; }
+.story-wall > .empty-state { grid-column: 1 / -1; }
+@media (min-width: 1100px) {
+  /* 危險區塊單獨橫跨兩欄放在最後，左右兩欄的其他卡片自然平衡 */
+  .account-sections.is-signed-in > .account-card:last-child { column-span: all; margin-top: 4px; }
+}
