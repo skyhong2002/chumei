@@ -1194,6 +1194,21 @@ def heading_markup(title, page_heading):
             + esc(suffix[1:]) + "</span>")
 
 
+_URL_RE = re.compile(r"https?://[^\s<>\"'（）「」【】，。、；！？]+")
+
+
+def linkify(text):
+    """Escape plain text and turn bare http(s) URLs into links (description paragraphs)."""
+    out, last = [], 0
+    for m in _URL_RE.finditer(text):
+        url = m.group(0).rstrip(".,;:!?)")
+        out.append(esc(text[last:m.start()]))
+        out.append(f'<a href="{esc(url)}" rel="noopener nofollow" target="_blank">{esc(url)}</a>')
+        last = m.start() + len(url)
+    out.append(esc(text[last:]))
+    return "".join(out)
+
+
 def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_time=False):
     st, en = e.get("start_at"), e.get("end_at")
     if not e.get("all_day"):
@@ -1349,7 +1364,7 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
     content = f"""<article class="detail">
 {review}
 <div class="detail-grid">
-  <div class="detail-media">{poster}{more_sections}</div>
+  <div class="detail-media">{poster}</div>
   <div class="detail-body">
     <p class="chips"><span class="chip chip-{school}">{SCHOOL_LABEL.get(school, school)}</span>
     <span class="chip">{esc(e.get('category'))}</span></p>
@@ -1357,9 +1372,10 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
     {lede_html}
     <dl class="meta">{meta_html}</dl>
     <div class="actions">{actions}</div>
-    <div class="desc">{''.join(f'<p>{esc(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
+    <div class="desc">{''.join(f'<p>{linkify(p)}</p>' for p in (e.get('description') or '').split(chr(10)) if p.strip())}</div>
   </div>
 </div>
+{f'<div class="detail-more">{more_sections}</div>' if more_sections.strip() else ''}
 <script type="application/ld+json">{jsonld}</script>
 </article>"""
     return page_shell(
@@ -1993,9 +2009,11 @@ def org_pages(entries, events):
                 stats.append(("最近更新", f"{u.year}/{u.month}/{u.day}"))
         stats_html = ('<dl class="org-stats">' + "".join(
             f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in stats) + "</dl>")
-        right.insert(0, stats_html)
+        # 沒有活動的單位：空狀態已經說明，不再排一列「0 場」的統計卡
+        if evs:
+            right.insert(0, stats_html)
         body.append('<div class="org-cols"><div class="org-col">' + "".join(left) + '</div>'
-                    + f'<div class="org-col org-col-posts">{"".join(right)}</div></div>')
+                    + (f'<div class="org-col org-col-posts">{"".join(right)}</div>' if right else '') + '</div>')
         body.append('<p class="src-desc"><a href="/source/">← 回資料來源名錄</a></p></article>')
         d = SITE / "org" / str(ent["id"])
         d.mkdir(parents=True, exist_ok=True)
@@ -2803,14 +2821,20 @@ def source_table_html(entries):
                    f'{FEED_ICON["heart"]}<span class="hb-follow">追蹤</span>'
                    f'<span class="hb-following">追蹤中</span></button>') + "</div>")
 
-    def th(key, label, extra_cls="", on=False, arrow=" ↕"):
+    # 線條排序圖示：↕ 在 Apple Color Emoji 會變成 emoji 方塊
+    sort_icon = {k: ('<svg class="sort-ico" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">'
+                     f'<path d="{d}" fill="none" stroke="currentColor" stroke-width="1.5" '
+                     'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+                 for k, d in (("both", "M3.5 4.5 6 2l2.5 2.5M3.5 7.5 6 10l2.5-2.5"), ("down", "M6 2v7.5M3 6.5l3 3 3-3"))}
+
+    def th(key, label, extra_cls="", on=False, arrow="both"):
         cls = "src-th" + (f" {extra_cls}" if extra_cls else "") + (" src-th-on" if on else "")
-        return f'<button class="{cls}" data-sort="{key}">{label}{arrow}</button>'
+        return f'<button class="{cls}" data-sort="{key}">{label}{sort_icon[arrow]}</button>'
 
     head = ('<div class="src-head">' + th("id", "ID") + th("name", "名稱", "src-th-left") +
             '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
             th("updated", "更新") + th("events", "收錄") +
-            th("follow", "追蹤", "src-th-follow", on=True, arrow=" ↓") + "</div>")
+            th("follow", "追蹤", "src-th-follow", on=True, arrow="down") + "</div>")
     # 公開追蹤數由 /auth/follows 動態載入；載入前沿用穩定的收錄數排序，JS 隨即重排。
     ordered = sorted(entries, key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
     return head + "".join(row(e) for e in ordered[:60]) + (

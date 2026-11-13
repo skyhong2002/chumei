@@ -744,7 +744,7 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .evr-meta {
-  font-size: 0.85rem; color: var(--color-text-muted);
+  font-size: 0.875rem; color: var(--color-text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -2057,7 +2057,7 @@ button.btn:hover { background: var(--color-surface-soft); }
   .cal-preview.ev-nthu { border-left-color: var(--chumei-plum-text); }
   .cal-preview.ev-both { border-left-color: var(--chumei-both-text); }
   .cal-preview > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cal-preview-time { flex-shrink: 0; color: var(--color-text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  .cal-preview-time { flex-shrink: 0; color: var(--color-text-secondary); font-size: 0.875rem; font-variant-numeric: tabular-nums; }
   .cal-preview:hover, .cal-date-button:hover, .cal-more:hover { background: var(--color-surface-soft); }
   .cal-more { display: block; width: 100%; border: 0; padding: 3px 0; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer; }
   .cal-day-panel { display: block; position: sticky; bottom: 0; background: var(--color-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); padding: 16px; max-height: 60vh; overflow-y: auto; scroll-margin-top: 12px; }
@@ -2067,8 +2067,8 @@ button.btn:hover { background: var(--color-surface-soft); }
   .cal-day-event > summary { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; cursor: pointer; list-style: none; }
   .cal-day-event > summary::-webkit-details-marker { display: none; }
   .cal-day-event strong { display: block; font-size: 0.92rem; line-height: 1.55; overflow-wrap: anywhere; }
-  .cal-detail-time { color: var(--color-text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; padding-top: 3px; }
-  .cal-detail-meta { display: block; color: var(--color-text-muted); font-size: 0.85rem; line-height: 1.6; margin-top: 4px; }
+  .cal-detail-time { color: var(--color-text-secondary); font-size: 0.875rem; font-variant-numeric: tabular-nums; padding-top: 3px; }
+  .cal-detail-meta { display: block; color: var(--color-text-secondary); font-size: 0.875rem; line-height: 1.6; margin-top: 4px; }
   .cal-detail-body { padding: 8px 0 0 52px; font-size: 0.85rem; line-height: 1.7; overflow-wrap: anywhere; }
   .cal-detail-body p { margin: 0 0 8px; }
   .cal-detail-going { display: flex; margin-top: 8px; }
@@ -2151,9 +2151,7 @@ h1 .h1-sub {
   .detail-body > .lede { order: 3; }
   .detail-body > .meta { order: 4; }
   .detail-body > .actions { order: 5; }
-  .detail-media { display: contents; }
-  .detail-media > :first-child { order: 6; margin: 0 0 24px; }
-  .detail-media > section { order: 8; }
+  .detail-media { order: 6; margin: 0 0 24px; }
   .detail-media .detail-poster { max-height: 70vh; object-fit: contain; background: var(--color-surface-soft); }
   .detail-body > .desc { order: 7; }
   .detail-body > section { order: 8; }
@@ -2197,6 +2195,8 @@ h1 .h1-sub {
 .empty-state-title { margin: 0 0 6px; font-size: 1.05rem; font-weight: 700; color: var(--color-text-primary); }
 .empty-state-body { margin: 0 0 16px; color: var(--color-text-secondary); font-size: 0.92rem; line-height: 1.7; }
 .empty-state .btn { min-height: 40px; }
+.empty-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.org-page .empty-state-actions { justify-content: flex-start; }
 .org-page .empty-state { margin: 16px 0; text-align: left; }
 
 /* ---------- 手機：篩選收合、活動頁首屏 ---------- */
@@ -2263,6 +2263,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 .home-intro a { margin-left: 6px; font-weight: 600; white-space: nowrap; }
 @media (min-width: 700px) { body.feed-locked .home-intro { flex: 0 0 auto; width: 100%; padding: 4px 4px 0; } }
 @media (max-width: 699px) { .home-intro { padding: 4px 14px 6px; font-size: 0.85rem; } }
+/* 手機首屏：導言只給第一次來的人看，回訪時貼文更早出現 */
+@media (max-width: 699px) { .intro-seen .home-intro { display: none; } }
 @media (min-width: 700px) {
   body.feed-locked .feed-cols.more-right {
     -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 72px), transparent);
@@ -2373,8 +2375,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 main.prose { max-width: var(--layout-content, 1200px); }
 main.prose > * { max-width: var(--layout-reading, 720px); }
 /* 活動頁桌面：海報跟著捲動，不在下方留一大片空白 */
-/* 活動頁桌面：「更多活動」接在左欄海報下方，左右兩欄長度相近 */
-@media (min-width: 801px) { .detail-media > section { margin-top: 28px; } .detail-media > section h2 { font-size: 1.05rem; } }
+/* 活動頁：「更多活動」放在兩欄下方的全寬區，桌面排成兩欄，標題有足夠的行長 */
+.detail-more > section { margin-top: 40px; }
+.detail-more > section h2 { font-size: 1.1rem; }
+@media (min-width: 801px) {
+  .detail-more .org-evs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
+}
+.desc a { overflow-wrap: anywhere; }
 /* 危險按鈕：實心紅底白字，兩種外觀都清楚 */
 .btn-danger, .account-card button.account-action.btn-danger {
   background: var(--color-red-700, #A81F28); border-color: var(--color-red-700, #A81F28); color: #fff;
@@ -2394,3 +2401,4 @@ main.prose > * { max-width: var(--layout-reading, 720px); }
   .src-c-name .src-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .src-upd { max-width: none; white-space: nowrap; }
 }
+.sort-ico { display: inline-block; flex-shrink: 0; width: 0.75rem; height: 0.75rem; margin-left: 3px; vertical-align: -0.05em; }

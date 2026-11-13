@@ -477,6 +477,12 @@
     } catch (e) { return ""; }
   }
   // 空狀態：說明原因並給一個下一步
+  // 線條排序圖示（↕ 在 Apple 裝置會被畫成 emoji）
+  function sortIcon(dir) {
+    var d = dir === "asc" ? "M6 10V2.5M3 5.5l3-3 3 3" : dir === "desc" ? "M6 2v7.5M3 6.5l3 3 3-3" : "M3.5 4.5 6 2l2.5 2.5M3.5 7.5 6 10l2.5-2.5";
+    return '<svg class="sort-ico" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="' + d +
+      '" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
   function emptyState(title, body, href, action) {
     return '<div class="empty-state"><p class="empty-state-title">' + esc(title) + "</p>" +
       '<p class="empty-state-body">' + esc(body) + "</p>" +
@@ -1786,7 +1792,7 @@
 
       function headHtml() {
         function th(key, label, extraCls) {
-          var arrow = state.sort === key ? (state.dir === "asc" ? " ↑" : " ↓") : " ↕";
+          var arrow = sortIcon(state.sort === key ? state.dir : "both");
           return '<button class="src-th' + (extraCls ? " " + extraCls : "") +
             (state.sort === key ? " src-th-on" : "") + '" data-sort="' + key + '">' + label + arrow + "</button>";
         }
@@ -2746,13 +2752,28 @@
       setTimeout(function () { m.resize(); }, 60);
     }
 
-    function syncUrl(resultCount) {
-      var qs = new URLSearchParams();
-      Object.keys(state).forEach(function (k) {
-        if (state[k] && (state[k] !== "all" || k === "time") && !(k === "time" && state[k] === "7d")) qs.set(k, state[k]);
+    function stateUrl(overrides) {
+      var qs = new URLSearchParams(), next = Object.assign({}, state, overrides || {});
+      Object.keys(next).forEach(function (k) {
+        if (next[k] && (next[k] !== "all" || k === "time") && !(k === "time" && next[k] === "7d")) qs.set(k, next[k]);
       });
-      history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : location.pathname);
+      return qs.toString() ? "?" + qs.toString() : location.pathname;
+    }
+    function syncUrl(resultCount) {
+      history.replaceState(null, "", stateUrl());
       pageSEO.refresh(resultCount + " 場活動符合條件。");
+    }
+    // 有搜尋字串時，最可能的下一步是換關鍵字或清除搜尋，而不是改時間。
+    function noResults() {
+      if (!state.q) {
+        return emptyState("沒有符合條件的活動", "試著放寬篩選，或把時間改成「全部」，也會列出已經結束的活動。", "/events/?time=all", "看全部時間的活動");
+      }
+      var clear = stateUrl({ q: "" });
+      return '<div class="empty-state"><p class="empty-state-title">找不到符合「' + esc(state.q) + '」的活動</p>' +
+        '<p class="empty-state-body">換個關鍵字試試，或清除搜尋、看目前條件下的所有活動。</p>' +
+        '<div class="empty-state-actions"><a class="btn btn-primary" href="' + esc(clear.charAt(0) === "?" ? location.pathname + clear : clear) + '">清除搜尋</a>' +
+        (state.time !== "all" ? '<a class="btn" href="' + esc(location.pathname + stateUrl({ time: "all" })) + '">在已結束的活動裡找</a>' : "") +
+        "</div></div>";
     }
 
     window.addEventListener("chumei-going-change", function () {
@@ -2800,7 +2821,7 @@
             return group[1].length ? '<h2 class="event-section-title">' + group[0] + ' · ' + group[1].length + ' 場</h2>' +
               group[1].map(displayMode === "list" ? listRow : card).join("") : "";
           }).join("")
-        : emptyState("沒有符合條件的活動", "試著放寬篩選，或把時間改成「全部」，也會列出已經結束的活動。", "/events/?time=all", "看全部時間的活動");
+        : noResults();
       updateChipCounts();
       if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
       renderMap(list);
