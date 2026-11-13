@@ -73,6 +73,9 @@ class BrowserEventIndexTests(unittest.TestCase):
     def test_archive_loader_retries_deduplicates_and_preserves_order(self):
         subprocess.run(['node', str(ROOT / 'tests' / 'event_index_ui.cjs')], cwd=ROOT, check=True)
 
+    def test_shared_json_loader_checks_status_timeout_and_offers_retry(self):
+        subprocess.run(['node', str(ROOT / 'tests' / 'fetch_json_ui.cjs')], cwd=ROOT, check=True)
+
 
 if __name__ == '__main__':
     unittest.main()

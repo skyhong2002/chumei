@@ -28,7 +28,13 @@ body {
   background: var(--color-canvas);
   color: var(--color-text-primary);
   line-height: 1.75;
+  /* 中文避頭尾採嚴格規則：句讀、小寫假名與「々」不放行首 */
+  line-break: strict;
 }
+/* 標題各行長度平均、內文避免最後一行只剩一兩個字。用 text-wrap-style 長屬性：
+   只改斷行方式，不會像 text-wrap 簡寫那樣蓋掉既有的 white-space: nowrap（單行省略號）。 */
+:where(h1, h2, h3, h4) { text-wrap-style: balance; }
+:where(p, li, dd, blockquote, figcaption) { text-wrap-style: pretty; }
 a { color: var(--chumei-bamboo-text); text-decoration: none; }
 a:hover { text-decoration: underline; }
 /* Links inside reading text remain identifiable without relying on color. */
@@ -852,6 +858,14 @@ main { max-width: var(--layout-content, 1200px); margin: 0 auto; padding: 8px 20
   color: var(--color-text-primary); font-weight: 600; font-size: 0.95rem;
 }
 .btn:hover { background: var(--color-surface-soft); text-decoration: none; }
+/* 資料載入失敗（window.chumeiLoadError）：說明原因並提供重試 */
+.load-error {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin: 12px 0; padding: 10px 14px; border-radius: var(--radius-md, 10px);
+  background: var(--color-warning-surface); color: var(--color-warning-text);
+}
+.load-error p { margin: 0; font-size: 0.92rem; line-height: 1.6; }
+.load-error .load-retry { flex-shrink: 0; background: var(--color-surface); font-family: inherit; cursor: pointer; }
 .btn-primary { background: var(--color-action-primary); border-color: var(--color-action-primary); color: var(--color-action-on-primary); }
 .btn-primary:hover { background: var(--color-action-primary-hover); }
 .desc { max-width: var(--layout-reading, 720px); }
@@ -1324,7 +1338,7 @@ html:has(.feed-main) { overscroll-behavior-x: none; }
   padding: 4px 14px calc(24px + env(safe-area-inset-bottom));
   background: transparent; opacity: 0; visibility: hidden; pointer-events: none;
 }
-.search-ov.has-query .search-ov-body {
+.search-ov.has-query .search-ov-body, .search-ov.has-error .search-ov-body {
   background: var(--color-canvas); opacity: 1; visibility: visible; pointer-events: auto;
 }
 .sr-sec { margin: 0; padding: 14px 2px 6px; font-size: 0.78rem; font-weight: 700; color: var(--color-text-muted); }

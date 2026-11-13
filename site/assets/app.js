@@ -1,6 +1,103 @@
 /* 竹梅前端：主題切換、活動河道篩選、日曆檢視。無相依套件。 */
+
+/* 共用 JSON 讀取：檢查 HTTP 狀態、逾時中止；失敗畫面附「重試」。
+   window.chumeiFetchJSON(url[, {timeout}]) → Promise<data>，錯誤帶 .kind（http／timeout／network／parse）。
+   window.chumeiFetchJSON.shared(url) 同一網址共用一次請求，失敗後下次呼叫會重抓。
+   window.chumeiLoadError(host, message, retry[, {replace|before}]) 顯示錯誤與重試按鈕：預設附加在 host 內，
+   replace 取代 host 內容，before 插在 host 前面（保留預先產生的內容）。retry 收到錯誤框本身，成功後自行移除。 */
 (function () {
   "use strict";
+  var DEFAULT_TIMEOUT = 15000;
+  function loadError(kind, url, detail) {
+    var err = new Error(url + " " + kind + (detail ? " " + detail : ""));
+    err.kind = kind;
+    err.url = url;
+    return err;
+  }
+  function fetchJSON(url, opts) {
+    var timeout = (opts && opts.timeout) || DEFAULT_TIMEOUT;
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; if (ctrl) ctrl.abort(); }, timeout);
+    var init = ctrl ? { signal: ctrl.signal } : undefined;
+    function done() { clearTimeout(timer); }
+    return fetch(url, init).then(function (r) {
+      if (!r.ok) {
+        var e = loadError("http", url, r.status);
+        e.status = r.status;
+        throw e;
+      }
+      return r.json().catch(function (e) {
+        if (timedOut || (e && e.name === "AbortError")) throw e;
+        throw loadError("parse", url);
+      });
+    }).then(function (data) {
+      done();
+      if (timedOut) throw loadError("timeout", url);
+      return data;
+    }, function (e) {
+      done();
+      if (timedOut || (e && e.name === "AbortError")) throw loadError("timeout", url);
+      if (e && e.kind) throw e;
+      throw loadError("network", url, e && e.message);
+    });
+  }
+  var sharedRequests = {};
+  fetchJSON.shared = function (url) {
+    if (!sharedRequests[url]) {
+      sharedRequests[url] = fetchJSON(url).catch(function (e) {
+        delete sharedRequests[url];
+        throw e;
+      });
+    }
+    return sharedRequests[url];
+  };
+  function describe(err) {
+    if (!err) return "";
+    if (err.kind === "timeout") return "連線逾時。";
+    if (err.kind === "http") return "伺服器暫時無法回應（HTTP " + err.status + "）。";
+    if (err.kind === "parse") return "資料格式有誤。";
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return "目前沒有網路連線。";
+    return "網路連線不穩定。";
+  }
+  function showLoadError(host, message, retry, opts) {
+    if (!host) return null;
+    var box = document.createElement("div");
+    box.className = "load-error";
+    box.setAttribute("role", "alert");
+    var text = document.createElement("p");
+    text.textContent = message;
+    box.appendChild(text);
+    if (retry) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn load-retry";
+      button.textContent = "重試";
+      button.addEventListener("click", function () {
+        button.disabled = true;
+        text.textContent = "重新載入中…";
+        retry(box);
+      });
+      box.appendChild(button);
+    }
+    if (opts && opts.replace) {
+      host.innerHTML = "";
+      host.appendChild(box);
+    } else if (opts && opts.before) {
+      host.parentNode.insertBefore(box, host);
+    } else {
+      host.appendChild(box);
+    }
+    return box;
+  }
+  window.chumeiFetchJSON = fetchJSON;
+  showLoadError.describe = describe;
+  window.chumeiLoadError = showLoadError;
+})();
+
+(function () {
+  "use strict";
+  var fetchJSON = window.chumeiFetchJSON, loadErrorBox = window.chumeiLoadError;
 
   function keepDialogFocus(dialog, event) {
     if (event.key !== "Tab") return;
@@ -111,6 +208,15 @@
 
   // ---- 外觀（Appearance，Threads 式子面板）：主題＋字標順序 ----
   (function () {
+    // theme-color 依系統深淺色各有一個 <meta media>；但竹梅預設深色、也可手動選，
+    // 實際主題和系統不同時兩個都改成目前畫布色，瀏覽器外框才會跟頁面一致。
+    function syncThemeColor() {
+      var color = getComputedStyle(document.documentElement).getPropertyValue("--color-canvas").trim();
+      if (!color) return;
+      document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) { m.setAttribute("content", color); });
+    }
+    syncThemeColor();
+    window.addEventListener("chumei-theme", syncThemeColor);
     function applyTheme(v) {
       var root = document.documentElement;
       try {
@@ -410,10 +516,7 @@
   // Shared compact index; history is fetched only when a view needs it.
   var eventIndexPromise;
   function fetchEventJSON(url) {
-    return fetch(url).then(function (r) {
-      if (!r.ok) throw new Error("活動資料載入失敗");
-      return r.json();
-    });
+    return fetchJSON(url, { timeout: 30000 });
   }
   function loadEventIndex() {
     if (!eventIndexPromise) eventIndexPromise = fetchEventJSON("/data/events-index.json").catch(function (err) {
@@ -481,12 +584,12 @@
       else nav.appendChild(navSearch);
     }
 
-    var sdata = null, ov = null, sT, searchOpener = null;
+    var sdata = null, ov = null, sT, searchOpener = null, searchErr = null, searchRetry = null;
     function loadData() {
       if (sdata) return Promise.resolve(sdata);
       return Promise.all([
         loadEventIndex().then(loadEventArchive),
-        fetch("/data/sources.json").then(function (r) { return r.json(); }).catch(function () { return null; })
+        fetchJSON.shared("/data/sources.json").catch(function () { return null; })
       ]).then(function (rs) {
         sdata = { events: rs[0].events, orgs: ((rs[1] || {}).entries) || [] };
         return sdata;
@@ -499,6 +602,10 @@
       var body = ov.querySelector(".search-ov-body");
       q = q.trim().toLowerCase();
       ov.classList.toggle("has-query", !!q);
+      if (!sdata && searchErr) {
+        loadErrorBox(body, "搜尋資料載入失敗。" + loadErrorBox.describe(searchErr), searchRetry, { replace: true });
+        return;
+      }
       if (!q) { body.innerHTML = ""; return; }
       if (!sdata) { body.innerHTML = '<p class="empty">載入中…</p>'; return; }
       var orgs = sdata.orgs.filter(function (o) { return o.name.toLowerCase().indexOf(q) !== -1; }).slice(0, 6);
@@ -515,7 +622,7 @@
       if (orgs.length) {
         html += '<p class="sr-sec">社團與單位</p>' + orgs.map(function (o) {
           var av = o.avatar
-            ? '<img class="sr-avatar" src="' + esc(o.avatar) + '" alt="">'
+            ? '<img class="sr-avatar" src="' + esc(o.avatar) + '" alt="" width="38" height="38" decoding="async">'
             : '<span class="sr-avatar src-avatar-fallback av-' + esc(o.school) + '">' + esc(o.name.charAt(0)) + "</span>";
           return '<a class="sr-org" href="/org/' + o.id + '/">' + av +
             '<span class="sr-org-main"><strong>' + esc(o.name) + "</strong>" +
@@ -558,9 +665,18 @@
       document.body.style.overflow = "hidden";
       var input = ov.querySelector("input");
       input.focus();
-      loadData().then(function () { if (ov && input.value) results(input.value); }).catch(function () {
-        if (ov) ov.querySelector(".search-ov-body").innerHTML = '<p class="empty">搜尋資料載入失敗，請關閉後重試。</p>';
-      });
+      function loadSearchData() {
+        searchErr = null;
+        ov.classList.remove("has-error");
+        loadData().then(function () { if (ov && input.value) results(input.value); }).catch(function (err) {
+          searchErr = err;
+          if (!ov) return;
+          ov.classList.add("has-error");
+          results(input.value);
+        });
+      }
+      searchRetry = function () { if (ov) loadSearchData(); };
+      loadSearchData();
       input.addEventListener("input", function () {
         clearTimeout(sT);
         ov.classList.toggle("has-query", !!input.value.trim());
@@ -632,7 +748,16 @@
     // 拉丁字前留一個空格：「陽明游泳社的 Instagram 主頁」
     var PLAT_PAGE = { instagram: " Instagram 主頁", facebook: " Facebook 粉專", threads: " Threads 主頁", x: " X 主頁", bulletin: "公告頁", api: "官方網站" };
 
-    fetch("/data/posts.json").then(function (r) { return r.json(); }).then(function (data) {
+    function feedLoadFailed(err) {
+      console.error("chumei feed load failed:", err);
+      // SSR 已預先渲染第一頁：保留靜態內容，只在上方提示可重試
+      var ssr = feed.querySelector(".feed-cols, .feed-post");
+      loadErrorBox(feed, (ssr ? "貼文更新失敗，目前顯示預先產生的內容。" : "貼文載入失敗。") + loadErrorBox.describe(err),
+        loadFeed, ssr ? { before: true } : { replace: true });
+    }
+    function loadFeed(retryBox) {
+    fetchJSON("/data/posts.json").then(function (data) {
+      if (retryBox) retryBox.remove();
       var posts = data.posts;
       // 手機單欄的全域篩選＋檢視切換；桌機欄位各自帶篩選（見 cols）
       var state = { kind: "all", follow: "all", school: "all", platform: "all", cat: "all", org: "all", q: "" };
@@ -645,7 +770,10 @@
       var seededFromUrl = false;
       Object.keys(state).forEach(function (k) { if (params.get(k)) { state[k] = params.get(k); seededFromUrl = true; } });
       var activeCol = 0;
-      function pagerMode() { return window.innerWidth < 700; }
+      // 版型斷點與 CSS 一致；用 matchMedia 監聽，跨過斷點才重繪（旋轉、分割畫面、調整視窗）
+      var wideMQ = window.matchMedia("(min-width: 700px)");
+      function isWide() { return wideMQ.matches; }
+      function pagerMode() { return !isWide(); }
 
       var groups = {};
       function chips(id, options, key, cls) {
@@ -796,9 +924,12 @@
         return '<a class="feed-plat" href="' + esc(p.profile_url) + '" target="_blank" rel="noopener" title="' + label + '" aria-label="' + label + '">' + icon + "</a>";
       }
 
-      function row(p) {
+      // 每欄前幾則的頭貼直接載，其餘 lazy（與 build_site.py FEED_EAGER_ROWS 一致）
+      var FEED_EAGER_ROWS = 3;
+      function row(p, i) {
         var avatar = p.avatar
-          ? '<img class="feed-avatar" src="' + esc(p.avatar) + '" alt="">'
+          ? '<img class="feed-avatar" src="' + esc(p.avatar) + '" alt="" width="36" height="36"' +
+            (i >= FEED_EAGER_ROWS ? ' loading="lazy"' : "") + ' decoding="async">'
           : '<span class="feed-avatar src-avatar-fallback av-' + esc(p.school) + '">' +
             esc((p.source_name || "？").replace(/^(清大|交大|陽明|國立)/, "").charAt(0)) + "</span>";
         var orgHref = p.org_id ? '/org/' + p.org_id + '/' : null;
@@ -817,7 +948,7 @@
         var body = (p.text ? '<p class="feed-text' + (longText ? " is-long" : "") + '">' + esc(p.text) + "</p>" : "") +
           (longText ? '<button class="feed-text-toggle" type="button">顯示全文</button>' : "") +
           (p.image ? '<img class="feed-img" src="' + esc(p.image) + '" alt=""' +
-            (p.image_w && p.image_h ? ' width="' + p.image_w + '" height="' + p.image_h + '"' : "") + ' loading="lazy">' : "");
+            (p.image_w && p.image_h ? ' width="' + p.image_w + '" height="' + p.image_h + '"' : "") + ' loading="lazy" decoding="async">' : "");
         var evs = p.events.length ? '<div class="feed-evs">' + p.events.map(evChip).join("") + "</div>" : "";
         var ev0 = p.events[0];
         var shareUrl = ev0 ? location.origin + "/event/" + ev0.id + "/" : (p.url || location.origin);
@@ -836,7 +967,7 @@
       function columnSignature(c) {
         return JSON.stringify([c.t, c.kind, c.follow, c.school, c.platform, c.cat, c.org, c.q]);
       }
-      function columnBatch() { return window.innerWidth >= 700 ? 12 : 30; }
+      function columnBatch() { return isWide() ? 12 : 30; }
       function columnWindow(c) {
         var signature = columnSignature(c);
         var value = columnWindows.get(c);
@@ -1247,7 +1378,7 @@
           };
         });
         function sync() {
-          if (window.innerWidth >= 700) desktopDeckLeft = deck.scrollLeft;
+          if (isWide()) desktopDeckLeft = deck.scrollLeft;
           var max = deck.scrollWidth - deck.clientWidth;
           var overflow = max > 8;
           prev.hidden = !overflow; next.hidden = !overflow;
@@ -1336,7 +1467,7 @@
       }
       function render() {
         var oldDeck = feed.querySelector(".feed-cols");
-        if (oldDeck && feed.classList.contains("feed-wide") && window.innerWidth >= 700) desktopDeckLeft = oldDeck.scrollLeft;
+        if (oldDeck && feed.classList.contains("feed-wide") && isWide()) desktopDeckLeft = oldDeck.scrollLeft;
         viewCols.forEach(function (view, i) {
           var el = feed.querySelector('.feed-col[data-idx="' + i + '"]');
           var value = columnWindows.get(view.col);
@@ -1344,7 +1475,7 @@
         });
         if (deckNavCleanup) { deckNavCleanup(); deckNavCleanup = null; }
         var fc = document.getElementById("feed-count");
-        var wide = window.innerWidth >= 700;
+        var wide = isWide();
         viewCols = buildViewCols(wide);
         if (activeCol >= viewCols.length) activeCol = Math.max(0, viewCols.length - 1);
         // 網址帶篩選參數時，套用到第一個貼文欄（深連結）
@@ -1442,19 +1573,12 @@
           updateBodies();
         }, 200);
       });
-      var resizeT;
-      var wasWide = window.innerWidth >= 700;
-      window.addEventListener("resize", function () {
-        clearTimeout(resizeT);
-        resizeT = setTimeout(function () {
-          var wide = window.innerWidth >= 700;
-          if (wide !== wasWide) {
-            wasWide = wide;
-            activeCol = 0;
-            render(true);
-          }
-        }, 200);
-      });
+      function onLayoutChange() {
+        activeCol = 0;
+        render(true);
+      }
+      if (wideMQ.addEventListener) wideMQ.addEventListener("change", onLayoutChange);
+      else if (wideMQ.addListener) wideMQ.addListener(onLayoutChange);
       var feedEvById = {};
       posts.forEach(function (p) { p.events.forEach(function (e) { feedEvById[e.id] = e; }); });
       bindEventHover(feed, ".feed-ev", function (a) { return feedEvById[a.dataset.id]; }, data.labels || {});
@@ -1462,11 +1586,14 @@
       // 限動資料晚到時補繪限時動態欄
       if (!storyShare.data && !storyShare.failed) storyShare.hooks.push(function () { updateBodies(); });
       render();
+    }, function (err) {
+      if (retryBox) retryBox.remove();
+      feedLoadFailed(err);
     }).catch(function (err) {
       console.error("chumei feed init failed:", err);
-      // SSR 已預先渲染第一頁；抓不到 posts.json 就留著靜態內容
-      if (!feed.firstElementChild) feed.innerHTML = '<p class="empty">貼文載入失敗。</p>';
     });
+    }
+    loadFeed();
   }
 
   // ---- /source/ 機構名錄（表格＋篩選） ----
@@ -1476,7 +1603,9 @@
     var KIND = { club: "社團", gov: "自治組織", dept: "系所", unit: "校方單位", bulletin: "公告系統", ext: "校外" };
     var PLAT = { instagram: "IG", facebook: "FB", threads: "Threads", x: "X", bulletin: "公告", website: "官網" };
 
-    fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
+    function loadSources(retryBox) {
+    fetchJSON.shared("/data/sources.json").then(function (data) {
+      if (retryBox) retryBox.remove();
       var entries = data.entries;
       var state = { follow: "all", school: "all", status: "all", kind: "all", tag: "all", platform: "all", sort: "follow", dir: "desc", q: "" };
       var params = new URLSearchParams(location.search);
@@ -1589,7 +1718,7 @@
             esc(PLAT[l.platform] || l.platform) + (l.label && l.label !== "Facebook" && l.label !== "公告頁" ? " " + esc(l.label) : "") + "</a>";
         }).join("");
         var avatar = e.avatar
-          ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" loading="lazy">'
+          ? '<img class="src-avatar src-c-ava" src="' + esc(e.avatar) + '" alt="" width="34" height="34" loading="lazy" decoding="async">'
           : '<span class="src-avatar src-c-ava src-avatar-fallback av-' + esc(e.school) + '">' + esc(e.name.replace(/^(清大|交大|陽明|國立)/, "").charAt(0) || "？") + "</span>";
         // 手機版：chips 行整個收掉，only 一顆迷你校別章（有校區時校區優先）
         var mLabel = e.school === "nthu" ? "清大"
@@ -1682,12 +1811,19 @@
         render();
       });
       render();
-    }).catch(function () {
+    }, function (err) {
+      if (retryBox) retryBox.remove();
       // If enhancement fails, expose the full SSR directory kept for no-JS clients.
       var fallback = table.querySelector("noscript");
       if (fallback) { fallback.insertAdjacentHTML("beforebegin", fallback.textContent); fallback.remove(); }
-      if (!table.firstElementChild) table.innerHTML = '<p class="empty">名錄載入失敗。</p>';
+      var hasRows = !!table.firstElementChild;
+      loadErrorBox(table, (hasRows ? "名錄篩選功能載入失敗，以下為完整名錄。" : "名錄載入失敗。") + loadErrorBox.describe(err),
+        loadSources, hasRows ? { before: true } : { replace: true });
+    }).catch(function (err) {
+      console.error("chumei directory init failed:", err);
     });
+    }
+    loadSources();
   }
 
   // ---- IG 限時動態（首頁圓圈列＋動態牆＋燈箱） ----
@@ -1750,7 +1886,7 @@
         var followToggle = document.getElementById("story-follow-toggle");
         if (followToggle) {
           var orgByUser = {};
-          fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (sd) {
+          fetchJSON.shared("/data/sources.json").then(function (sd) {
             (sd.entries || []).forEach(function (en) {
               (en.sids || []).forEach(function (sid) { if (sid.indexOf("ig_") === 0) orgByUser[sid.slice(3)] = en.id; });
             });
@@ -3055,10 +3191,7 @@
 
     monthsAfter = 2;
     redraw();
-    fetch("/data/sources.json").then(function (response) {
-      if (!response.ok) throw new Error("Organizer directory unavailable");
-      return response.json();
-    }).then(function (data) {
+    fetchJSON.shared("/data/sources.json").then(function (data) {
       (data.entries || []).forEach(function (org) {
         calendarOrgs[String(org.id)] = org;
         if (!Object.prototype.hasOwnProperty.call(calendarOrgNames, org.name)) calendarOrgNames[org.name] = org;
@@ -3179,7 +3312,7 @@
   function refreshLocalFollowNames() {
     var p = readPrefs();
     if (!Array.isArray(p.orgs) || !p.orgs.length) return Promise.resolve();
-    return fetch("/data/sources.json").then(function (r) { return r.json(); }).then(function (data) {
+    return window.chumeiFetchJSON.shared("/data/sources.json").then(function (data) {
       var names = {};
       (data.entries || []).forEach(function (entry) { names[String(entry.id)] = entry.name; });
       var changed = false;

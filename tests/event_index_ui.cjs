@@ -2,16 +2,19 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('site/assets/app.js', 'utf8');
-const code = source.slice(source.indexOf('  var eventIndexPromise;'), source.indexOf('  function archiveStatus('));
+const helper = source.slice(source.indexOf('/* 共用 JSON 讀取'), source.indexOf('(function () {\n  "use strict";\n  var fetchJSON'));
+const code = 'var fetchJSON = window.chumeiFetchJSON;\n' +
+  source.slice(source.indexOf('  var eventIndexPromise;'), source.indexOf('  function archiveStatus('));
 let calls = [], fail = false;
 const bundle = {events: [{id: 'new', start_at: '2026-09-01'}], archive_url: '/data/events-archive.json'};
-const context = vm.createContext({Promise, Error, fetch: async url => {
+const context = vm.createContext({Promise, Error, setTimeout, clearTimeout, AbortController, window: {}, fetch: async url => {
   calls.push(url);
-  if (fail) return {ok: false};
+  if (fail) return {ok: false, status: 503};
   return {ok: true, json: async () => url.includes('archive')
     ? {events: [{id: 'new', start_at: '2026-09-01'}, {id: 'old', start_at: '2026-01-01'}]}
     : bundle};
 }});
+vm.runInContext(helper, context);
 vm.runInContext(code, context);
 (async () => {
   const [a, b] = await Promise.all([context.loadEventIndex(), context.loadEventIndex()]);

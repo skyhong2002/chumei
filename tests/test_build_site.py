@@ -174,6 +174,24 @@ class SourceTableTests(unittest.TestCase):
         self.assertNotIn('data-sort="events">收錄 ↓</button>', rendered)
 
 
+class PageShellTests(unittest.TestCase):
+    def test_theme_color_follows_light_and_dark_schemes(self):
+        html = build_site.page_shell("標題", "說明", "<main></main>")
+        self.assertIn('<meta name="theme-color" content="#F7F9FC" media="(prefers-color-scheme: light)">', html)
+        self.assertIn('<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">', html)
+        self.assertNotIn('<meta name="theme-color" content="#000000">', html)
+
+    def test_static_templates_use_the_same_theme_color_pair(self):
+        root = Path(build_site.__file__).resolve().parents[1] / "site"
+        for path in [root / "index.html", root / "404.html", *root.glob("*/index.html")]:
+            source = path.read_text()
+            if 'name="theme-color"' not in source:
+                continue
+            with self.subTest(path=path.relative_to(root)):
+                self.assertEqual(source.count('name="theme-color"'), 2)
+                self.assertIn('media="(prefers-color-scheme: light)"', source)
+
+
 class FeedActionTests(unittest.TestCase):
     def test_event_chip_has_a_separate_accessible_going_action(self):
         rendered = build_site._feed_ev_chip({
@@ -412,7 +430,9 @@ class FeedPlatformBadgeTests(unittest.TestCase):
         html = build_site._feed_row(post, build_site._iso_dt("2026-09-02T10:00:00+08:00"))
         self.assertIn('<a class="feed-plat" href="https://www.instagram.com/ymswim/" target="_blank"', html)
         self.assertIn('aria-label="陽明游泳社的 Instagram 主頁"', html)
-        self.assertIn(build_site.FEED_PLAT_ICON["instagram"], html)
+        # 首頁 SSR 用 sprite 參照，不在每則貼文重複整段 path
+        self.assertIn('<use href="#i-plat-instagram"/>', html)
+        self.assertNotIn(build_site.FEED_PLAT_ICON["instagram"], html)
         self.assertNotIn("post-menu", html)
 
     def test_bulletin_without_profile_shows_a_plain_badge(self):
@@ -446,7 +466,18 @@ class FeedPrerenderTests(unittest.TestCase):
     def test_row_reserves_image_box_when_size_known(self):
         p = self.post("a", "nthu"); p.update({"image": "/assets/posts/x.jpg", "image_w": 1200, "image_h": 800})
         html = build_site._feed_row(p, build_site._iso_dt("2026-09-02T10:00:00+08:00"))
-        self.assertIn('<img class="feed-img" src="/assets/posts/x.jpg" alt="" width="1200" height="800" loading="lazy">', html)
+        self.assertIn('<img class="feed-img" src="/assets/posts/x.jpg" alt="" width="1200" height="800" '
+                      'loading="lazy" decoding="async">', html)
+
+    def test_avatar_has_intrinsic_size_and_is_lazy_below_the_first_rows(self):
+        p = self.post("a", "nthu"); p["avatar"] = "/assets/avatars/ig_x.jpg"
+        now = build_site._iso_dt("2026-09-02T10:00:00+08:00")
+        eager = build_site._feed_row(p, now, eager=True)
+        lazy = build_site._feed_row(p, now, eager=False)
+        self.assertIn('<img class="feed-avatar" src="/assets/avatars/ig_x.jpg" alt="" width="36" height="36" '
+                      'decoding="async">', eager)
+        self.assertIn('<img class="feed-avatar" src="/assets/avatars/ig_x.jpg" alt="" width="36" height="36" '
+                      'loading="lazy" decoding="async">', lazy)
 
     def test_prerender_writes_deck_and_pager_variants(self):
         posts = [self.post("a", "nycu", "guangfu"), self.post("b", "nthu"), self.post("c", "nycu", "yangming")]
@@ -460,6 +491,31 @@ class FeedPrerenderTests(unittest.TestCase):
         self.assertEqual(out.count('<section class="feed-col"'), 4)
         self.assertIn('<h2>交大</h2>', out)
         self.assertIn('class="deck-add"', out)
+
+    def test_prerender_ships_one_icon_sprite_and_no_per_column_menus(self):
+        posts = [self.post(str(i), school, campus) for i, (school, campus) in
+                 enumerate([("nycu", "guangfu"), ("nthu", None), ("nycu", "yangming")] * 6)]
+        for p in posts:
+            p["avatar"] = "/assets/avatars/ig_x.jpg"
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "index.html"
+            index.write_text('<div id="post-feed"><!-- ssr-feed --><!-- /ssr-feed --></div>')
+            with mock.patch.object(build_site, "SITE", index.parent):
+                build_site.prerender_feed(posts)
+            out = index.read_text()
+        self.assertEqual(out.count('class="svg-sprite"'), 1)
+        self.assertEqual(out.count('<symbol id="i-plat-instagram"'), 1)
+        self.assertEqual(out.count(build_site.FEED_PLAT_ICON["instagram"]), 0)
+        # 篩選選單由 app.js colMenu() 生成；SSR 不再每欄各帶一份
+        self.assertNotIn("col-menu-filters", out)
+        self.assertNotIn('data-ck="', out)
+        self.assertEqual(out.count('<details class="col-picker">'), 4)
+        # 每欄前 FEED_EAGER_ROWS 則頭貼直接載，其餘 lazy
+        deck, pager = out.split('class="feed-cols ssr-pager"')
+        eager_rows = build_site.FEED_EAGER_ROWS
+        self.assertEqual(deck.count('class="feed-avatar"'), 18)
+        self.assertEqual(deck.count('loading="lazy" decoding="async"'), 18 - 3 * eager_rows)
+        self.assertEqual(pager.count('loading="lazy" decoding="async"'), 18 - eager_rows)
 
     def test_desktop_pagination_offers_remainder_below_mobile_batch(self):
         posts = [self.post(str(i), "nthu") for i in range(16)]
