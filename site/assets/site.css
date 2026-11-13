@@ -2357,3 +2357,23 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 .src-c-follow .heart-count { font-size: 0.8rem; min-width: 22px; height: 22px; }
 .data-status-more { font-size: 0.85em; opacity: 0.85; }
 .data-status-more summary { cursor: pointer; display: inline; text-decoration: underline; text-underline-offset: 0.2em; }
+
+/* ---------- 第 8 輪 ---------- */
+/* 手機上橫向捲動的篩選列：右緣淡出，看得出還有選項 */
+@media (max-width: 700px) {
+  main > .filters .fgroup {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+    padding-right: 28px;
+  }
+}
+/* 404 等 prose 主欄與其他頁同一個左緣 */
+main.prose { max-width: var(--layout-content, 1200px); }
+main.prose > * { max-width: var(--layout-reading, 720px); }
+/* 活動頁桌面：海報跟著捲動，不在下方留一大片空白 */
+@media (min-width: 801px) { .detail-media { position: sticky; top: 16px; } }
+/* 危險按鈕：實心紅底白字，兩種外觀都清楚 */
+.btn-danger, .account-card button.account-action.btn-danger {
+  background: var(--color-red-700, #A81F28); border-color: var(--color-red-700, #A81F28); color: #fff;
+}
+.btn-danger:hover, .account-card button.account-action.btn-danger:hover { background: #8A1820; color: #fff; }

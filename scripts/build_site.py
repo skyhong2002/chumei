@@ -2740,7 +2740,8 @@ def source_table_html(entries):
         if days < 30:
             return f"{round(days)} 天前"
         d = dt.astimezone(TZ_TAIPEI)
-        return f"{d.year}/{d.month}/{d.day}"
+        # 今年只寫月/日，往年寫年/月：手機的窄欄也放得下（完整時間在 title）
+        return f"{d.month}/{d.day}" if d.year == now.astimezone(TZ_TAIPEI).year else f"{d.year}/{d.month}"
 
     PLAT_FULL = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads", "x": "X",
                  "bulletin": "公告頁", "website": "官網"}
