@@ -2333,3 +2333,27 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
   .deck-add-label { font-size: 0.78rem; font-weight: 600; line-height: 1.3; text-align: center; }
 }
 .data-status-code { opacity: 0.8; font-size: 0.85em; white-space: nowrap; }
+
+/* ---------- 第 7 輪：頂欄帳號、左緣對齊、手機頁尾、名錄字級 ---------- */
+.topbar-account { display: none; }
+@media (max-width: 699px) {
+  .topbar-account {
+    display: flex; position: fixed; top: 5px; right: 54px; z-index: 41;
+    align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%;
+  }
+  .topbar-account .nav-account-avatar { width: 30px; height: 30px; font-size: 0.85rem; border-color: var(--color-action-primary); }
+  /* 頁尾不再重複底部分頁：只留一句說明與一行次要連結 */
+  .footer-nav { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .footer-nav h2, .footer-nav section:first-child { display: none; }
+  .footer-nav section { display: contents; }
+  .footer-nav a { min-height: 36px; display: inline-flex; align-items: center; }
+  .site-footer { gap: 12px; padding-top: 20px; }
+}
+/* 內容頁一律從主欄左緣開始，換頁時視線不跳 */
+@media (min-width: 700px) { .account-page { margin-left: 0; } }
+.src-id, .src-upd { font-size: 0.9rem; }
+.src-link { font-size: 0.9rem; }
+.src-c-chips .chip { font-size: 0.85rem; }
+.src-c-follow .heart-count { font-size: 0.8rem; min-width: 22px; height: 22px; }
+.data-status-more { font-size: 0.85em; opacity: 0.85; }
+.data-status-more summary { cursor: pointer; display: inline; text-decoration: underline; text-underline-offset: 0.2em; }

@@ -2078,7 +2078,7 @@ def _account_html(
 
         sections.append(f"""<section class="account-card account-section">
         <h2>刪除帳號</h2>
-        <p>刪除後無法復原。你的登入方式、追蹤的單位、「我會去」、私人行事曆與自訂訂閱、回報紀錄、投入的優先點數、貢獻的抓取額度，以及綁定這個帳號的推播通知都會一併刪除。竹梅已公開收錄的活動不受影響。</p>
+        <p>刪除後無法復原。你的登入方式、追蹤的單位、「我會去」、私人行事曆與自訂訂閱、回報紀錄、推播通知，以及你在「系統狀態」和「貢獻」頁做過的設定都會一併刪除。竹梅已公開收錄的活動不受影響。</p>
         <p>舊訂閱網址立即失效；再次登入會建立新帳號。本瀏覽器的網站儲存資料也會清除。<a href="/account/privacy">隱私與資料保留說明</a></p>
         <form method="post" action="/auth/account/delete" class="account-profile-form">
           <input type="hidden" name="deletion_token" value="{html.escape(deletion_token)}">
