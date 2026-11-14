@@ -1234,12 +1234,16 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
             f'<a href="{esc(p["url"])}" rel="noopener" target="_blank">{esc(p["label"])} ↗</a>'
             for p in alt_posts) or None),
     ]
+    location_note = ('<small class="meta-note">地圖標示為校區約略位置，實際會場請查看原始公告。</small>'
+                     if (e.get("geo") or {}).get("approximate") else "")
     meta_html = "".join(
-        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k in ('主辦', '原始貼文') else esc(v)}</dd></div>"
+        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k in ('主辦', '原始貼文') else esc(v)}{location_note if k == '地點' else ''}</dd></div>"
         for k, v in rows if v)
     review = ('<p class="review-note">⚠️ 此活動由 AI 從公開貼文擷取，欄位尚待確認，請以原始貼文為準。</p>'
               if e["extraction"].get("needs_review") else "")
-    quality_issues = event_quality_issues(e)
+    # Approximate campus coordinates are useful context, not an event warning.
+    # Keep the issue in the quality report, and explain it beside the location.
+    quality_issues = [issue for issue in event_quality_issues(e) if issue["code"] != "approximate_geo"]
     if quality_issues:
         review += ('<div class="review-note"><strong>資料待確認</strong><ul>'
                    + "".join(f'<li>{esc(i["message"])}</li>' for i in quality_issues)

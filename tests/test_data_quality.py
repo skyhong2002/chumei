@@ -22,6 +22,17 @@ def event(eid="evt_test", **overrides):
 
 
 class DataQualityTests(unittest.TestCase):
+    def test_approximate_location_is_context_not_an_event_warning(self):
+        e = event(geo={"lat": 25, "lng": 121, "approximate": True})
+        page = build_site.detail_page(e)
+        self.assertNotIn('class="review-note"', page)
+        self.assertIn('class="meta-note"', page)
+        self.assertIn('查看約略位置（非實際會場）', page)
+        self.assertIn('approximate_geo', {i['code'] for i in quality.event_quality_issues(e)})
+        # An actual missing field still gets its existing review notice.
+        self.assertIn('class="review-note"', build_site.detail_page({**e, 'venue': None}))
+        self.assertNotIn('class="meta-note"', build_site.detail_page(event()))
+
     def test_scope_rank_ongoing_and_undated_without_claiming_unverified_time(self):
         records = [event("later", start_at="2026-10-30", venue=None),
                    event("old", start_at="2026-01-01", venue=None),
