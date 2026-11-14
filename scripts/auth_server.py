@@ -1659,7 +1659,8 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
         form = f"""
         <form method="post" action="/auth/submissions" class="submit-form">
           <label class="submit-label" for="submit-url">連結</label>
-          <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="貼文或帳號主頁，例如 https://www.instagram.com/p/…" autocomplete="off">
+          <input id="submit-url" class="submit-input" type="url" name="url" required inputmode="url" placeholder="貼上貼文或帳號主頁網址" aria-describedby="submit-url-hint" autocomplete="off">
+          <p class="submit-hint" id="submit-url-hint">例如 https://www.instagram.com/p/… 或公告頁網址</p>
           <label class="submit-label" for="submit-note">備註（選填，只有你和站長看得到）</label>
           <input id="submit-note" class="submit-input" type="text" name="note" maxlength="{MAX_NOTE_LENGTH}" placeholder="例如：主辦是清大天文社、活動在 9/20">
           <button class="btn btn-primary account-action" type="submit">送出</button>
@@ -1667,15 +1668,16 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
     elif nycu_ok or google_ok or nthu_ok:
         btns = []
         if nycu_ok:
-            btns.append('<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to=/submit/">登入後回報連結</a>')
+            btns.append('<a class="btn account-action login-option" href="/auth/nycu/start?return_to=/submit/">用陽明交大帳號登入</a>')
         if nthu_ok:
-            btns.append('<a class="btn btn-primary account-action" href="/auth/nthu/start?return_to=/submit/">用清大帳號登入</a>')
+            btns.append('<a class="btn account-action login-option" href="/auth/nthu/start?return_to=/submit/">用清大帳號登入</a>')
         if google_ok:
-            btns.append('<a class="btn account-action" href="/auth/google/start?return_to=/submit/">用 Google 登入</a>')
-        form = "".join(btns)
+            btns.append('<a class="btn account-action login-option" href="/auth/google/start?return_to=/submit/">用 Google 帳號登入</a>')
+        form = '<p class="login-lead">登入後回報連結</p><div class="login-options">' + "".join(btns) + "</div>"
     else:
         form = ""
     return f"""
+        <div class="submit-main">
         <p class="eyebrow">回報連結</p>
         <h2>看到活動，貼連結給竹梅</h2>
         <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。</p>
@@ -1683,8 +1685,11 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
         <p>每個連結的處理狀態都公開在下面。</p>
         {alert}
         {form}
+        </div>
+        <div class="submit-side">
         <h3 class="submit-list-title">最近的回報</h3>
         {listing}
+        </div>
     """
 
 
@@ -1901,19 +1906,17 @@ def _profile_html(
 def _login_card_html(nycu_ok: bool, google_ok: bool, return_to: str = "/account/", *, nthu_ok: bool = False) -> str:
     if nycu_ok or google_ok or nthu_ok:
         encoded_return = quote(_safe_return_to(return_to), safe="/")
-        nycu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nycu/start?return_to={encoded_return}">使用陽明交大帳號登入</a>'
+        nycu_btn = (f'<a class="btn account-action login-option" href="/auth/nycu/start?return_to={encoded_return}">使用陽明交大帳號登入</a>'
                     if nycu_ok else "")
-        nthu_btn = (f'<a class="btn btn-primary account-action" href="/auth/nthu/start?return_to={encoded_return}">使用清大 NTHU 帳號登入</a>'
+        nthu_btn = (f'<a class="btn account-action login-option" href="/auth/nthu/start?return_to={encoded_return}">使用清大 NTHU 帳號登入</a>'
                     if nthu_ok else "")
-        google_btn = (f'<a class="btn account-action" href="/auth/google/start?return_to={encoded_return}">使用 Google 帳號登入</a>'
+        google_btn = (f'<a class="btn account-action login-option" href="/auth/google/start?return_to={encoded_return}">使用 Google 帳號登入</a>'
                       if google_ok else "")
         return f"""<section class="account-card">
         <p class="eyebrow">我的竹梅</p>
         <h2>登入竹梅</h2>
         <p>陽明交大成員請走學校單一入口；清大成員可透過 NTHUMods 用學校帳號登入；校友與其他人可用 Google 帳號。竹梅不會取得或儲存你的密碼。</p>
-        {nycu_btn}
-        {nthu_btn}
-        {google_btn}
+        <div class="login-options">{nycu_btn}{nthu_btn}{google_btn}</div>
         <p class="privacy-note"><a href="/account/privacy">隱私與資料保留說明</a>。登入取得帳號識別、Email 與登入服務提供的名稱或頭像，用來記住你的追蹤、參加標記與<a href="/submit/">回報的連結</a>。新帳號的個人頁預設不公開；只有你在帳號設定勾選公開並儲存後，其他人才可看到名稱、頭像、追蹤單位與即將參加的活動。追蹤與參加總人數仍會匿名計入。</p>
         </section>"""
     return """<section class="account-card">
@@ -2075,12 +2078,12 @@ def _account_html(
 
         sections.append(f"""<section class="account-card account-section">
         <h2>刪除帳號</h2>
-        <p>此操作無法復原。所有登入方式、工作階段、追蹤、參加標記、私人行事曆與自訂訂閱、回報紀錄、優先權重分配、Apify 貢獻憑證，以及綁定帳號的推播訂閱都會刪除。已公開收錄的活動仍保留。</p>
+        <p>刪除後無法復原。你的登入方式、追蹤的單位、「我會去」、私人行事曆與自訂訂閱、回報紀錄、推播通知，以及你在「系統狀態」和「貢獻」頁做過的設定都會一併刪除。竹梅已公開收錄的活動不受影響。</p>
         <p>舊訂閱網址立即失效；再次登入會建立新帳號。本瀏覽器的網站儲存資料也會清除。<a href="/account/privacy">隱私與資料保留說明</a></p>
         <form method="post" action="/auth/account/delete" class="account-profile-form">
           <input type="hidden" name="deletion_token" value="{html.escape(deletion_token)}">
           <label><span>確認刪除：請輸入「刪除我的帳號」</span><input name="confirmation" required autocomplete="off" pattern="刪除我的帳號"></label>
-          <button class="btn account-action" type="submit">永久刪除我的帳號</button>
+          <button class="btn btn-danger account-action" type="submit">永久刪除我的帳號</button>
         </form>
         </section>""")
     else:
@@ -2108,7 +2111,7 @@ def _account_html(
     {logout_form}
   </div>
   {alert}
-  {"".join(sections)}
+  <div class="account-sections{' is-signed-in' if user else ''}">{"".join(sections)}</div>
 </section>
 <script>
 document.addEventListener("click",function(event){{

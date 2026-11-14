@@ -18,15 +18,16 @@
     </details>
   </nav>
 </header><main class="prose">
-<p>404</p>
+<p class="not-found-code">404</p>
 <h1>找不到這個頁面</h1>
 <p>這個網址可能已移動、已移除，或輸入有誤。你可以搜尋活動，或回到首頁繼續瀏覽。</p>
-<form action="/events/" method="get" role="search">
-<label for="missing-page-search">搜尋活動</label>
-<input id="missing-page-search" name="q" type="search" placeholder="活動名稱、社團或關鍵字" required>
-<button type="submit">搜尋</button>
+<form class="inline-search" action="/events/" method="get" role="search">
+<label class="sr-only" for="missing-page-search">搜尋活動</label>
+<input id="missing-page-search" name="q" type="search" placeholder="搜尋活動名稱、社團或關鍵字" required>
+<button class="btn btn-primary" type="submit">搜尋</button>
 </form>
-<p><a href="/">回到首頁</a> · <a href="/events/">瀏覽所有活動</a> · <a href="/submit/">回報連結問題</a></p>
+<div class="actions"><a class="btn" href="/">回到首頁</a><a class="btn" href="/events/">瀏覽所有活動</a></div>
+<p class="src-desc">連結是從竹梅點過來的？<a href="/submit/">回報連結問題</a>，我們會修正。</p>
 </main><footer class="site-footer">
   <div class="footer-intro">
     <a class="footer-brand" href="/" aria-label="竹梅活動觀測站首頁"><span class="brand-chu">竹</span><span class="brand-mei">梅</span><span>活動觀測站</span></a>
