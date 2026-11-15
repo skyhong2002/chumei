@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Save one reviewer's raw output and its scores.
 
-  python3 save_review.py ROUND REVIEWER TRANSCRIPT.jsonl [--note TEXT]
+  python3 save_review.py ROUND REVIEWER TRANSCRIPT.jsonl|REPLY.md [--note TEXT]
 
-Takes the reviewer's last assistant message verbatim from its transcript,
+Takes the reviewer's last assistant message verbatim from its Claude
+transcript (.jsonl), or a reviewer's final reply saved as plain text (any other
+suffix; used for Codex reviewers in council rounds),
 reads the private A/B/C mapping for the round, and writes
 results/<label>-<REVIEWER>.md (raw text unedited, mapping revealed after the
 review; label as in make_round.py) plus a row in results/scores.json (mean of
@@ -52,7 +54,7 @@ def main():
     parser.add_argument('transcript', type=Path)
     parser.add_argument('--note', default='')
     a = parser.parse_args()
-    raw = last_text(a.transcript)
+    raw = last_text(a.transcript) if a.transcript.suffix == '.jsonl' else a.transcript.read_text(encoding='utf-8')
     mapping = json.loads((PRIVATE / f'{round_label(a.round)}.json').read_text())
     blob = re.findall(r'```json\s*(\{.*?\})\s*```', raw, re.S)[-1]
     scores = json.loads(blob)

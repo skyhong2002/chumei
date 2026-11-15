@@ -2307,11 +2307,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
   body.feed-locked .feed-cols.has-deck-add { grid-template-columns: repeat(var(--ncols, 2), minmax(340px, var(--feed-col-w))) 84px; }
 }
 
-/* 活動卡：動作列變矮，追蹤主辦只留圖示（螢幕閱讀器仍讀得到 aria-label） */
+/* 活動卡：動作列較矮；「追蹤主辦」保留文字，和活動頁的按鈕一致 */
 .card-actions { min-height: 0; padding: 6px 10px; }
 .card-going, .card-heart { height: 40px; }
-.card-heart.heart-btn-label .hb-follow, .card-heart.heart-btn-label .hb-following { display: none; }
-.card-heart { width: 40px; min-width: 40px; padding: 0; }
+.card-heart { gap: 5px; }
+.card-going, .card-heart { font-size: 0.85rem; font-weight: 600; }
+.card-heart svg { width: 17px; height: 17px; margin-right: 0; }
 
 /* 名錄表格：ID、標籤、更新時間不再是 11px 灰字 */
 .src-id, .src-upd { font-size: 0.85rem; color: var(--color-text-secondary); }
@@ -2323,8 +2324,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 .src-link-n { margin-left: 1px; font-size: 0.72em; vertical-align: super; line-height: 0; }
 .story-wall > .empty-state { grid-column: 1 / -1; }
 @media (min-width: 1100px) {
-  /* 危險區塊單獨橫跨兩欄放在最後，左右兩欄的其他卡片自然平衡 */
-  .account-sections.is-signed-in > .account-card:last-child { column-span: all; margin-top: 4px; }
+  /* 左欄：個人檔案、登入方式；右欄：訂閱、行事曆、回報；刪除帳號橫跨兩欄放在最後。
+     各卡跨越數列，兩欄的卡片一起拉伸到同一條底線，右欄不再留一塊空白。 */
+  .account-sections.is-signed-in { columns: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+  .account-sections.is-signed-in > .account-card { margin: 0; }
+  .account-sections.is-signed-in > .account-card:nth-child(1) { grid-column: 1; grid-row: 1 / span 3; }
+  .account-sections.is-signed-in > .account-card:nth-child(2) { grid-column: 1; grid-row: 4 / span 3; }
+  .account-sections.is-signed-in > .account-card:nth-child(3):nth-last-child(4) { grid-column: 2; grid-row: 1 / span 2; }
+  .account-sections.is-signed-in > .account-card:nth-child(4):nth-last-child(3) { grid-column: 2; grid-row: 3 / span 2; }
+  .account-sections.is-signed-in > .account-card:nth-child(5):nth-last-child(2) { grid-column: 2; grid-row: 5 / span 2; }
+  .account-sections.is-signed-in > .account-card:nth-child(3):nth-last-child(3) { grid-column: 2; grid-row: 1 / span 3; }
+  .account-sections.is-signed-in > .account-card:nth-child(4):nth-last-child(2) { grid-column: 2; grid-row: 4 / span 3; }
+  .account-sections.is-signed-in > .account-card:last-child { grid-column: 1 / -1; grid-row: 7; margin-top: 4px; }
 }
 
 /* 貼文裡的活動：一張小卡，日期（含星期）、名稱、地點各一行 */
@@ -2407,3 +2418,25 @@ main.prose > * { max-width: var(--layout-reading, 720px); }
   .src-upd { max-width: none; white-space: nowrap; }
 }
 .sort-ico { display: inline-block; flex-shrink: 0; width: 0.75rem; height: 0.75rem; margin-left: 3px; vertical-align: -0.05em; }
+
+/* ---------- m10 ---------- */
+/* 卡片模式下空狀態橫跨整列，不被擠進單一卡片寬度；句尾不留單字 */
+.grid > .empty-state { grid-column: 1 / -1; width: 100%; }
+.empty-state-title, .empty-state-body { text-wrap: pretty; }
+/* 活動列的兩個圖示按鈕下方加上文字，不只靠鈴鐺與票券圖示表意 */
+.ev-row-going, .ev-row-heart { height: 56px; padding-bottom: 16px; border-radius: 12px; }
+.ev-row-heart { width: 46px; }
+.ev-row-going { right: 48px; min-width: 46px; justify-content: center; }
+.ev-row-going::after, .ev-row-heart::after {
+  position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%);
+  font-size: 0.75rem; font-weight: 600; line-height: 1; white-space: nowrap;
+}
+.ev-row-going::after { content: "我會去"; }
+.ev-row-going[aria-pressed="true"]::after { content: "已加入"; }
+.ev-row-heart::after { content: "追蹤"; }
+.ev-row-heart[aria-pressed="true"]::after { content: "追蹤中"; }
+.ev-row-wrap .ev-row { padding-right: 100px; }
+/* 篩選 chip 的計數與卡片次要文字：13px、次要色 */
+.fchip-count { font-size: 0.8125rem; color: var(--color-text-secondary); min-width: 22px; height: 22px; }
+.card-meta { font-size: 0.875rem; color: var(--color-text-secondary); }
+.fchip-count:empty { display: none; }

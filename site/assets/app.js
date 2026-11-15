@@ -85,15 +85,17 @@
         rows.push([key, value, key === "q" ? "搜尋「" + shown + "」" : KEY_LABEL[key] + "：" + shown]);
       });
       rows.sort(function (a, b) { return a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]); });
-      return rows.map(function (row) { return row[2]; });
+      return rows;
     }
     function refresh(resultSummary) {
-      var parts = contextParts();
-      var context = parts.join("、");
+      var rows = contextParts();
+      var context = rows.map(function (row) { return row[2]; }).join("、");
+      // 標題下方的小字只列搜尋與篩選；排序已經顯示在篩選列，不佔標題層級
+      var shown = rows.filter(function (row) { return row[0] !== "sort" && row[0] !== "dir"; })
+        .map(function (row) { return row[2]; }).join("、");
       var nextTitle = context ? context + "｜" + base.title : base.title;
-      // 篩選條件放在標題下方的小字，文字內容仍是「標題｜條件」
-      var nextH1Html = context
-        ? baseH1Html + '<span class="h1-sub"><span class="sr-only">｜</span>' + esc(context) + "</span>"
+      var nextH1Html = shown
+        ? baseH1Html + '<span class="h1-sub"><span class="sr-only">｜</span>' + esc(shown) + "</span>"
         : baseH1Html;
       var nextDescription = context
         ? base.description + "目前條件：" + context + "。" + (resultSummary || "")
