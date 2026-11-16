@@ -12,6 +12,13 @@ import run_pipeline
 
 
 class RunPipelineTests(unittest.TestCase):
+    def test_steps_run_with_the_orchestrators_interpreter(self):
+        with mock.patch.object(run_pipeline.subprocess, "run") as run, mock.patch("builtins.print"):
+            run.return_value.returncode = 0
+            self.assertTrue(run_pipeline.run_step("extract", ["extract_events.py", "--flag"]))
+        self.assertEqual(run.call_args.args[0],
+                         [sys.executable, str(run_pipeline.ROOT / "scripts" / "extract_events.py"), "--flag"])
+
     def test_skip_fetch_uses_atomic_publisher_after_extraction(self):
         with tempfile.TemporaryDirectory() as td, \
              mock.patch.object(run_pipeline, "STATE", Path(td) / "pipeline.json"), \

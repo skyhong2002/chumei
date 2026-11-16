@@ -74,7 +74,7 @@ def main():
             if source.is_file():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
-        (root / '.venv').symlink_to(Path(sys.prefix), target_is_directory=True)
+        # Deliberately no .venv in the isolated tree: every child step must reuse sys.executable.
         fixture(root)
         env = {key: value for key, value in os.environ.items()
                if not (key.startswith(('CHUMEI_', 'APIFY_', 'TELEGRAM_', 'LINE_', 'GOOGLE_', 'GITHUB_', 'GH_'))

@@ -485,9 +485,7 @@ def write_inbox_item(sub, url, info, content, verdict):
 
 
 def run_extract():
-    py = ROOT / ".venv" / "bin" / "python"
-    py = py if py.exists() else Path(sys.executable)
-    r = subprocess.run([str(py), str(ROOT / "scripts" / "extract_events.py"), "--source", SOURCE_ID],
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "extract_events.py"), "--source", SOURCE_ID],
                        timeout=1800, capture_output=True, text=True)
     if r.returncode != 0:
         print(f"  extract failed: {r.stderr[-300:]}", file=sys.stderr)

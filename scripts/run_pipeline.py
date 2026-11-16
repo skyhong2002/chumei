@@ -20,7 +20,9 @@ from publish_site import exclusive_lock
 from pipeline_state import atomic_json
 
 ROOT = Path(__file__).resolve().parent.parent
-PY = ROOT / ".venv" / "bin" / "python"
+# 子步驟沿用啟動本程式的直譯器：容器內是映像的 /opt/venv，主機上是呼叫者選的 venv。
+# 不可假設 checkout 裡的 .venv 可用——它被 bind-mount 進容器後可能指向容器內不存在的路徑。
+PY = sys.executable
 STATE = ROOT / "state" / "pipeline.json"
 IG_MIN_INTERVAL_H = 20  # Threads / X 單帳號重抓間隔；Instagram 已改為帳號級分批排程。
 PIPELINE_INTERVAL_H = 3  # launchd 呼叫節奏，用來換算「每輪該抓幾個」的滾動批量。
@@ -45,7 +47,7 @@ def run_step(name, args):
     print(f"=== {name} ===", flush=True)
     t0 = time.time()
     try:
-        r = subprocess.run([str(PY), str(ROOT / "scripts" / args[0]), *args[1:]], timeout=7200)
+        r = subprocess.run([PY, str(ROOT / "scripts" / args[0]), *args[1:]], timeout=7200)
         ok = r.returncode == 0
     except subprocess.TimeoutExpired:
         ok = False
