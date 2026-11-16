@@ -2780,7 +2780,7 @@ def prerender_stories():
     if not flat:
         body = ('<div class="empty-state"><p class="empty-state-title">現在沒有限時動態</p>'
                 '<p class="empty-state-body">限動發布 48 小時後就會下架，晚點再來看看；也可以先逛逛接下來的活動。</p>'
-                '<a class="btn" href="/events/">看即將舉行的活動</a></div>')
+                '<a class="btn" href="/events/">瀏覽活動</a></div>')
     else:
         body = "".join(
             f'<button class="story-card" data-i="{i}">'

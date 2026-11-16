@@ -1208,7 +1208,7 @@
               : emptyState("還沒有追蹤任何單位", "在貼文或名錄按鈴鐺追蹤單位，它們的新貼文就會集中在這一欄。", "/source/", "到名錄挑選單位"))
           : posts.length
             ? emptyState("沒有符合條件的貼文", "換個關鍵字或減少篩選條件再試一次。", "/", "清除篩選")
-            : emptyState("目前還沒有貼文", "竹梅會定期整理兩校單位的公開貼文，新的貼文會出現在這裡。先看看接下來的活動吧。", "/events/", "看即將舉行的活動");
+            : emptyState("目前還沒有貼文", "竹梅會定期整理兩校單位的公開貼文，新的貼文會出現在這裡。先看看接下來的活動吧。", "/events/", "瀏覽活動");
         return (list.slice(0, shown).map(row).join("") || emptyMsg) + moreBtn(list, shown);
       }
       function colHtml(i, c, list, sourceIdx) {
@@ -1886,7 +1886,7 @@
         if (!Array.isArray(stories)) throw new Error("Stories response is invalid");
         if (!stories.length) {
           storyShare.data = { flat: [] };
-          if (wall) wall.innerHTML = emptyState("現在沒有限時動態", "限動發布 48 小時後就會下架，晚點再來看看；也可以先逛逛接下來的活動。", "/events/", "看即將舉行的活動");
+          if (wall) wall.innerHTML = emptyState("現在沒有限時動態", "限動發布 48 小時後就會下架，晚點再來看看；也可以先逛逛接下來的活動。", "/events/", "瀏覽活動");
           notifyStoryColumns();
           return;
         }
