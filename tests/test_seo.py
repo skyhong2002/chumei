@@ -229,7 +229,10 @@ class SEOOutputTests(unittest.TestCase):
     def test_query_variants_update_content_but_not_canonical(self):
         source = (SITE / "assets" / "app.js").read_text()
         self.assertIn('new URLSearchParams(location.search)', source)
-        self.assertIn('base.h1 + "｜" + context', source)
+        # The H1's text stays "title｜conditions"; the conditions render as a smaller second line.
+        # Sort order is shown in the filter row, so it stays in the title but not in the H1.
+        self.assertIn('<span class="h1-sub"><span class="sr-only">｜</span>\' + esc(shown)', source)
+        self.assertIn('row[0] !== "sort" && row[0] !== "dir"', source)
         self.assertIn('base.description + "目前條件：" + context', source)
         self.assertIn('canonicalHref = canonicalHref.split("?", 1)[0].split("#", 1)[0]', source)
         self.assertGreaterEqual(len(re.findall(r"pageSEO\.refresh\(", source)), 5)
