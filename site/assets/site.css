@@ -2420,6 +2420,11 @@ main.prose > * { max-width: var(--layout-reading, 720px); }
 .ev-row-heart::after { content: "追蹤"; }
 .ev-row-heart[aria-pressed="true"]::after { content: "追蹤中"; }
 .ev-row-wrap .ev-row { padding-right: 100px; }
+@media (max-width: 700px) {
+  .ev-row-going, .ev-row-heart { width: 44px; min-width: 44px; height: 44px; padding-bottom: 0; }
+  .ev-row-going::after, .ev-row-heart::after { display: none; }
+  .ev-row-wrap .ev-row { padding-right: 92px; }
+}
 /* 篩選 chip 的計數與卡片次要文字：13px、次要色 */
 .fchip-count { font-size: 0.8125rem; color: var(--color-text-secondary); min-width: 22px; height: 22px; }
 .card-meta { font-size: 0.875rem; color: var(--color-text-secondary); }
@@ -2486,9 +2491,8 @@ main:has(> #map-view) > .site-footer { order: 11; }
 .agd-ev-going::after { content: "我會去"; font-size: 0.75rem; font-weight: 600; line-height: 1; }
 .agd-ev-going[aria-pressed="true"]::after { content: "已加入"; }
 @media (max-width: 700px) {
-  .src-c-follow.heart-btn-label { width: 52px; min-width: 52px; height: 56px; border-radius: 12px; flex-direction: column; gap: 3px; }
-  .src-c-follow.heart-btn-label::after { content: "追蹤"; font-size: 0.75rem; font-weight: 600; line-height: 1; }
-  .src-c-follow.heart-btn-label[aria-pressed="true"]::after { content: "追蹤中"; }
+  .src-c-follow.heart-btn-label { width: 44px; min-width: 44px; height: 44px; padding: 0; border-radius: 50%; }
+  .src-c-follow.heart-btn-label::after { display: none; }
 }
 .agd-ev-going { position: relative; }
 .agd-ev-going .going-count {
@@ -2496,5 +2500,6 @@ main:has(> #map-view) > .site-footer { order: 11; }
   display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;
   border: 1px solid var(--color-border-subtle); background: var(--color-surface-raised); color: var(--color-text-primary);
 }
+.going-count[hidden] { display: none !important; }
 /* 活動頁手機：頁首只留標題、快捷入口與場數，第一筆活動更早出現（說明在桌面與 SEO 文字仍在） */
 @media (max-width: 700px) { main > .hero .hero-blurb { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }

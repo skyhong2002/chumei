@@ -823,5 +823,63 @@
    }
   },
   "note": "Council round 2 (sky-mini). New = 4dfc155 (c1 fixes). Reply taken verbatim from the Codex session rollout."
+ },
+ {
+  "round": "c3",
+  "host": "sky-mini",
+  "reviewer": "opus-5-5",
+  "means": {
+   "new": 7.83
+  },
+  "scores": {
+   "new": {
+    "資訊層級": 8,
+    "字體排印": 8,
+    "色彩": 8.5,
+    "間距與版面": 8,
+    "一致性": 8,
+    "資訊密度": 8,
+    "導覽": 8,
+    "狀態與回饋": 8.5,
+    "響應式": 8,
+    "文案": 7.5,
+    "無障礙": 7.5,
+    "動畫與轉場": 6
+   }
+  },
+  "note": "Council round 3 (sky-mini). New = 1875a09; baseline/reference reused from c2. Fable 5.2 review did not produce a completed response."
+ },
+ {
+  "round": "c3",
+  "host": "sky-mini",
+  "reviewer": "gpt-6-1-sol",
+  "means": {
+   "new": 8.17
+  },
+  "scores": {
+   "new": {
+    "資訊層級": 8.5,
+    "字體排印": 8.5,
+    "色彩": 8.5,
+    "間距與版面": 8,
+    "一致性": 8.5,
+    "資訊密度": 8.5,
+    "導覽": 8.5,
+    "狀態與回饋": 8.5,
+    "響應式": 8,
+    "文案": 8,
+    "無障礙": 7,
+    "動畫與轉場": 7.5
+   }
+  },
+  "note": "Council round 3 (sky-mini). New = 1875a09; baseline/reference reused from c2. Fable 5.2 review did not produce a completed response."
+ },
+ {
+  "round": "c3",
+  "host": "sky-mini",
+  "reviewer": "fable-5-2",
+  "means": {},
+  "scores": {},
+  "note": "Council round 3 review did not produce a completed response; no score inferred."
  }
 ]
