@@ -26,6 +26,9 @@ chumei.observe.tw {
 	handle {
 		root * /Users/skyhong/Projects/chumei/published/current
 		header Cache-Control "no-cache, must-revalidate"
+		# 單位最新貼文是公開唯讀資料，開放各單位自己的網站跨網域讀取
+		@org_api path /api/org/*
+		header @org_api Access-Control-Allow-Origin "*"
 		file_server
 	}
 

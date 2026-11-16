@@ -13,6 +13,11 @@ indexes keep canonical slash redirects; generated merged-event redirect HTML
 continues to work. Backend responses remain the responsibility of each proxy
 service. The 404 HTML and response header both request `noindex`.
 
+`/api/org/<id>.json` (each organisation's latest public posts, written by
+`scripts/build_site.py`) is the only path that sends
+`Access-Control-Allow-Origin: *`, so an organisation's own website can read it
+from the browser. Mirror that header in any other front-end proxy.
+
 ## Activation
 
 1. Publish a validated release using `scripts/publish_site.py` (see

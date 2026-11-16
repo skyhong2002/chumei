@@ -42,6 +42,8 @@ class CaddyRoutesTests(unittest.TestCase):
             "event/merged/index.html": '<meta http-equiv="refresh" content="0;url=/event/known/">',
             "assets/app.js": "/* known javascript */",
             "feeds/all.ics": "BEGIN:VCALENDAR",
+            "api/org/1.json": '{"items": []}',
+            "data/posts.json": '{"posts": []}',
             "404.html": (ROOT / "site/404.html").read_text(),
         }.items():
             target = site / path
@@ -103,6 +105,14 @@ class CaddyRoutesTests(unittest.TestCase):
         status, headers, _ = self.request("/events")
         self.assertEqual(status, 308)
         self.assertEqual(headers["Location"], "/events/")
+
+    def test_only_org_posts_api_allows_cross_origin_reads(self):
+        status, headers, body = self.request("/api/org/1.json")
+        self.assertEqual((status, body), (200, '{"items": []}'))
+        self.assertEqual(headers["Access-Control-Allow-Origin"], "*")
+        for path in ("/data/posts.json", "/"):
+            with self.subTest(path=path):
+                self.assertNotIn("Access-Control-Allow-Origin", self.request(path)[1])
 
     def test_missing_pages_have_real_404_and_recovery_links(self):
         for path in ("/not-a-page", "/event/not-an-event/", "/missing.html"):
