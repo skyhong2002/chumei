@@ -1641,6 +1641,15 @@ def _submission_item_html(it: dict, mine: bool) -> str:
     )
 
 
+def _account_columns(sections: list[str]) -> str:
+    """Signed-in account page: profile and sign-in on the left, the rest on the right, delete last."""
+    if len(sections) < 4:
+        return "".join(sections)
+    left, right, last = sections[:2], sections[2:-1], sections[-1]
+    return (f'<div class="account-col">{"".join(left)}</div>'
+            f'<div class="account-col">{"".join(right)}</div>{last}')
+
+
 def _submissions_html(items: list[dict], notice: str | None, user_id: str | None, nycu_ok: bool, google_ok: bool, *, nthu_ok: bool = False) -> str:
     alert = ""
     if notice in SUBMIT_NOTICES:
@@ -2115,7 +2124,7 @@ def _account_html(
     {logout_form}
   </div>
   {alert}
-  <div class="account-sections{' is-signed-in' if user else ''}">{"".join(sections)}</div>
+  <div class="account-sections{' is-signed-in' if user else ''}">{_account_columns(sections) if user else "".join(sections)}</div>
 </section>
 <script>
 document.addEventListener("click",function(event){{

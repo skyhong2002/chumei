@@ -2080,9 +2080,8 @@ def org_pages(entries, events):
 def source_page(events, entries):
     """/source/：首批表格預渲染（SSR），無 JS 時仍顯示完整名錄；app.js 讀 sources.json 後原地重繪加上篩選排序。"""
     content = f"""<section class="hero"><h1>資料來源與機構名錄</h1>
-<p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告系統與社群帳號。
-還沒找到公開帳號的單位也列出——如果你知道它們的 IG／FB，歡迎到<a href="/about/">回報管道</a>告訴我們。
-<span id="src-count" aria-live="polite">共收錄 {len(entries)} 個單位。</span></p></section>
+<p class="src-count-line"><span id="src-count" aria-live="polite">共收錄 {len(entries)} 個單位。</span></p>
+<p>以兩校 114 學年度官方社團名冊為底，加上竹梅監測中的公告與社群帳號。還沒有公開帳號的單位也列出；知道它們的 IG／FB，歡迎<a href="/submit/">回報給我們</a>。</p></section>
 <section class="filters" aria-label="名錄篩選">
   <div class="filter-row"><span class="label">學校</span><span id="sf-school" class="fgroup"></span>
     <span class="search-hit"><input id="search" type="search" placeholder="搜尋社團、單位…" aria-label="搜尋名錄"></span></div>
@@ -2876,7 +2875,7 @@ def source_table_html(entries):
     head = ('<div class="src-head">' + th("id", "ID") + th("name", "名稱", "src-th-left") +
             '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
             th("updated", "更新") + th("events", "收錄") +
-            th("follow", "追蹤", "src-th-follow", on=True, arrow="down") + "</div>")
+            th("follow", "追蹤人數", "src-th-follow", on=True, arrow="down") + "</div>")
     # 公開追蹤數由 /auth/follows 動態載入；載入前沿用穩定的收錄數排序，JS 隨即重排。
     ordered = sorted(entries, key=lambda e: (-e["events"], -len(e["links"]), e["name"]))
     return head + "".join(row(e) for e in ordered[:60]) + (

@@ -1802,7 +1802,7 @@
           th("id", "ID") + th("name", "名稱", "src-th-left") +
           '<span class="src-th-plain">標籤</span><span class="src-th-plain src-th-links">連結</span>' +
           th("updated", "更新") + th("events", "收錄") +
-          th("follow", "追蹤", "src-th-follow") + "</div>";
+          th("follow", "追蹤人數", "src-th-follow") + "</div>";
       }
 
       var filterToggle = collapsibleFilters(document.querySelector("main .filters"), function () {
@@ -2397,6 +2397,8 @@
 
     var cats = {};
     (bundle.categories || bundle.events.map(function (e) { return e.category || "其他"; })).forEach(function (cat) { cats[cat] = 1; });
+    // 網址帶入的類型不在目前資料裡（例如舊連結）：仍列成選項並標成已選，看得出是它讓結果變少，也能移除
+    if (state.cat && state.cat !== "all") cats[state.cat] = 1;
 
     var rangeStart = new Date();
 
@@ -2897,6 +2899,8 @@
 
     var cats = {};
     (bundle.categories || bundle.events.map(function (e) { return e.category || "其他"; })).forEach(function (cat) { cats[cat] = 1; });
+    // 網址帶入的類型不在目前資料裡（例如舊連結）：仍列成選項並標成已選，看得出是它讓結果變少，也能移除
+    if (state.cat && state.cat !== "all") cats[state.cat] = 1;
 
     var chipGroups = {};
     function buildChips(id, options, key) {
@@ -3225,11 +3229,15 @@
       Object.keys(quickToggles).forEach(function (key) { quickToggles[key].setAttribute("aria-pressed", String(state[key] === "on")); });
       clearFilters.hidden = !moreActive() && !state.q;
       if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
-      var html = "";
-      for (var i = -monthsBefore; i <= monthsAfter; i++) html += monthHtml(monthAt(i));
+      var total = bundle.events.filter(function (e) { return fromThisMonth(e) && matches(e); }).length;
+      // 篩選後本月起一場都沒有：先說明並給清除入口，不再連排好幾個空月份
+      var filtered = moreActive() || !!state.q;
+      var html = total || !filtered ? "" : emptyState("目前的條件下，本月起沒有活動",
+        "試著放寬條件，或清除篩選看全部活動。", location.pathname, "清除篩選");
+      var lastOffset = total || !filtered ? monthsAfter : 0;
+      for (var i = -monthsBefore; i <= lastOffset; i++) html += monthHtml(monthAt(i));
       calEl.innerHTML = html;
       renderDay();
-      var total = bundle.events.filter(function (e) { return fromThisMonth(e) && matches(e); }).length;
       var count = document.getElementById("cal-count");
       if (count) count.textContent = "目前篩選自本月起共 " + total + " 場活動。";
       var qs = new URLSearchParams();

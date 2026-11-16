@@ -2325,17 +2325,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 .story-wall > .empty-state { grid-column: 1 / -1; }
 @media (min-width: 1100px) {
   /* 左欄：個人檔案、登入方式；右欄：訂閱、行事曆、回報；刪除帳號橫跨兩欄放在最後。
-     各卡跨越數列，兩欄的卡片一起拉伸到同一條底線，右欄不再留一塊空白。 */
-  .account-sections.is-signed-in { columns: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
-  .account-sections.is-signed-in > .account-card { margin: 0; }
-  .account-sections.is-signed-in > .account-card:nth-child(1) { grid-column: 1; grid-row: 1 / span 3; }
-  .account-sections.is-signed-in > .account-card:nth-child(2) { grid-column: 1; grid-row: 4 / span 3; }
-  .account-sections.is-signed-in > .account-card:nth-child(3):nth-last-child(4) { grid-column: 2; grid-row: 1 / span 2; }
-  .account-sections.is-signed-in > .account-card:nth-child(4):nth-last-child(3) { grid-column: 2; grid-row: 3 / span 2; }
-  .account-sections.is-signed-in > .account-card:nth-child(5):nth-last-child(2) { grid-column: 2; grid-row: 5 / span 2; }
-  .account-sections.is-signed-in > .account-card:nth-child(3):nth-last-child(3) { grid-column: 2; grid-row: 1 / span 3; }
-  .account-sections.is-signed-in > .account-card:nth-child(4):nth-last-child(2) { grid-column: 2; grid-row: 4 / span 3; }
-  .account-sections.is-signed-in > .account-card:last-child { grid-column: 1 / -1; grid-row: 7; margin-top: 4px; }
+     兩欄各自是一疊卡片，卡片依內容高度排列，不拉長出卡內空白。 */
+  .account-sections.is-signed-in { columns: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto; gap: 20px; align-items: start; }
+  .account-sections.is-signed-in > .account-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .account-sections.is-signed-in > .account-col > .account-card { margin: 0; }
+  .account-sections.is-signed-in > .account-card:last-child { grid-column: 1 / -1; margin-top: 4px; }
 }
 
 /* 貼文裡的活動：一張小卡，日期（含星期）、名稱、地點各一行 */
@@ -2487,3 +2481,30 @@ main:has(> #map-view) > .site-footer { order: 11; }
 .actions-secondary .btn:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
 .actions-secondary .btn.heart-btn[aria-pressed="true"] { border-color: var(--color-bell-on); }
 .actions-secondary .btn:first-child { margin-left: -12px; }
+
+/* ---------- c2 ---------- */
+/* 單位頁活動列：手機直排時地點行也限制在列寬內，超出以省略號結尾 */
+.org-ev-main { max-width: 100%; align-self: stretch; }
+.org-ev-where { max-width: 100%; }
+/* 名錄手機版：學校只有五個選項，直接換行，不用橫向捲動（原本第四顆被淡出蓋住，看不出還有選項） */
+@media (max-width: 700px) {
+  main > .filters #sf-school { flex-wrap: wrap; overflow: visible; -webkit-mask-image: none; mask-image: none; padding-right: 0; row-gap: 8px; }
+}
+.hero .src-count-line { margin: 2px 0 6px; font-size: 1.05rem; font-weight: 700; color: var(--color-text-primary); }
+/* 月曆議程的票券按鈕、名錄手機的鈴鐺：和活動列一樣在圖示下方寫出動作 */
+.agd-ev-going { flex-direction: column; justify-content: center; gap: 3px; min-width: 56px; }
+.agd-ev-going::after { content: "我會去"; font-size: 0.75rem; font-weight: 600; line-height: 1; }
+.agd-ev-going[aria-pressed="true"]::after { content: "已加入"; }
+@media (max-width: 700px) {
+  .src-c-follow.heart-btn-label { width: 52px; min-width: 52px; height: 56px; border-radius: 12px; flex-direction: column; gap: 3px; }
+  .src-c-follow.heart-btn-label::after { content: "追蹤"; font-size: 0.75rem; font-weight: 600; line-height: 1; }
+  .src-c-follow.heart-btn-label[aria-pressed="true"]::after { content: "追蹤中"; }
+}
+.agd-ev-going { position: relative; }
+.agd-ev-going .going-count {
+  position: absolute; top: -7px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;
+  border: 1px solid var(--color-border-subtle); background: var(--color-surface-raised); color: var(--color-text-primary);
+}
+/* 活動頁手機：頁首只留標題、快捷入口與場數，第一筆活動更早出現（說明在桌面與 SEO 文字仍在） */
+@media (max-width: 700px) { main > .hero .hero-blurb { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }

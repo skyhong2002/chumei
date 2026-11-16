@@ -171,7 +171,7 @@ class SourceTableTests(unittest.TestCase):
 
         rendered = build_site.source_table_html([entry])
 
-        follow = re.search(r'<button class="src-th src-th-follow src-th-on" data-sort="follow">追蹤(.*?)</button>', rendered)
+        follow = re.search(r'<button class="src-th src-th-follow src-th-on" data-sort="follow">追蹤人數(.*?)</button>', rendered)
         self.assertIsNotNone(follow)
         self.assertIn('d="M6 2v7.5M3 6.5l3 3 3-3"', follow.group(1))  # 向下的線條排序圖示
         self.assertIn('<button class="src-th" data-sort="events">收錄<svg', rendered)

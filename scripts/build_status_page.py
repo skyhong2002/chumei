@@ -201,7 +201,7 @@ def build() -> dict:
     </details>
   </section>
   <section class="filters" aria-label="來源狀態篩選">
-    <div class="filter-row"><span class="label">狀態</span><span class="fgroup" id="status-filters"></span><label class="search-hit status-search"><span class="sr-only">搜尋來源</span><input id="source-search" type="search" placeholder="搜尋名稱、帳號或後端"></label></div>
+    <div class="filter-row"><span class="label">狀態</span><span class="fgroup" id="status-filters"></span><label class="search-hit status-search"><span class="sr-only">搜尋來源</span><input id="source-search" type="search" placeholder="搜尋社團、單位或帳號"></label></div>
     <div class="filter-row"><span class="label">平台</span><span class="fgroup" id="platform-filters"></span></div>
   </section>
   <details class="status-help status-note"><summary>更新頻率是怎麼決定的？</summary><p>同一個 Instagram 帳號會分成「貼文」與「限時動態」兩列。貼文依近期發文頻率，每 12 小時到 14 天檢查一次；限時動態依最近一次發限動的時間，每 12 小時到 7 天檢查一次。竹梅不使用自己的 Instagram 帳號登入。Facebook 粉專、限時動態與部分貼文會用到付費的抓取服務，預算每天平均分給這三項；預算不夠時，這些來源的檢查間隔會拉長，「目標」欄顯示的就是目前預算負擔得起的間隔。「實際」間隔要累積兩次以上成功紀錄才會出現。沒有新內容也算檢查成功；找不到帳號、帳號設為私人或受限時，會標成「帳號無法取得」。</p></details>
