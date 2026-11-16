@@ -235,6 +235,8 @@ assert all(path == stage or stage in path.parents for path in paths), paths
     def test_subprocess_receives_isolated_output_and_offline_flag(self):
         with mock.patch.object(publish_site.subprocess, "run") as run:
             publish_site.run_build_step("build_site.py", self.root / "stage", self.root, offline=True)
+        # The fixture root has no .venv: the build must not depend on one existing in the checkout.
+        self.assertEqual(run.call_args.args[0], [sys.executable, str(self.root / "scripts" / "build_site.py")])
         self.assertEqual(run.call_args.kwargs["env"]["CHUMEI_BUILD_DIR"], str(self.root / "stage"))
         self.assertEqual(run.call_args.kwargs["env"]["CHUMEI_BUILD_OFFLINE"], "1")
         self.assertTrue(run.call_args.kwargs["check"])

@@ -7,6 +7,7 @@ import argparse
 import json
 import sqlite3
 import subprocess
+import sys
 import time
 from contextlib import closing
 from datetime import datetime
@@ -17,7 +18,6 @@ from chumei_lib import ROOT, load_env
 from source_status import apify_quota, source_registry
 
 
-PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_DB = ROOT / "state" / "auth.sqlite3"
 PRIORITY_MIN_INTERVAL_SECONDS = 3 * 3600
 
@@ -150,7 +150,7 @@ def process_one(path: Path, request: dict, registry: dict[str, dict], *, dry_run
         return "dry-run"
     try:
         result = subprocess.run(
-            [str(PYTHON), str(ROOT / "scripts" / command[0]), *command[1:]],
+            [sys.executable, str(ROOT / "scripts" / command[0]), *command[1:]],
             cwd=ROOT, timeout=900, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired:

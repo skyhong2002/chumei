@@ -77,6 +77,17 @@ class PriorityFetchProcessorTests(unittest.TestCase):
         self.assertIn("Facebook", reason)
         self.assertEqual(next_attempt, 1000 + 3 * 3600)
 
+    def test_fetcher_runs_with_the_current_interpreter(self):
+        source = {"id": "instagram:test", "kind": "instagram_profile", "username": "test", "sourceId": "ig_test"}
+        request = {"source_id": "instagram:test", "last_run_at": 0, "weight": 3}
+        with patch.object(processor, "cooldown_until", return_value=0), \
+             patch.object(processor, "command_for", return_value=["fetch_fixture.py", "--only", "test"]), \
+             patch.object(processor.subprocess, "run") as run:
+            run.return_value.returncode, run.return_value.stdout = 0, "ok"
+            self.assertEqual(processor.process_one(self.db, request, {source["id"]: source}), "completed")
+        self.assertEqual(run.call_args.args[0],
+                         [sys.executable, str(processor.ROOT / "scripts" / "fetch_fixture.py"), "--only", "test"])
+
     def test_claim_uses_persistent_weighted_fair_order(self):
         with sqlite3.connect(self.db) as conn:
             conn.execute(

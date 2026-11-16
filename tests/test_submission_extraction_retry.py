@@ -32,6 +32,12 @@ class SubmissionRetryTests(unittest.TestCase):
         self.store.update(sub["id"], "accepted", "", verdict='{"accepted_at":"2026-01-01T00:00:00+08:00"}')
         return sub
 
+    def test_extraction_runs_with_the_current_interpreter(self):
+        with mock.patch.object(s.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            self.assertTrue(s.run_extract())
+        self.assertEqual(run.call_args.args[0][:2], [sys.executable, str(s.ROOT / "scripts" / "extract_events.py")])
+
     def test_accepted_report_is_retried_without_new_pending_reports(self):
         sub = self.accepted()
         atomic_json(s.EXTRACT_CACHE, {sub["id"]: {"error": "timeout", "attempts": 1,

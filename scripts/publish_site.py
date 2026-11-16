@@ -104,8 +104,8 @@ def run_build_step(script, stage, root=ROOT, *, offline=False, timeout=STEP_TIME
     env = dict(os.environ, CHUMEI_BUILD_DIR=str(stage))
     if offline:
         env["CHUMEI_BUILD_OFFLINE"] = "1"
-    python = root / ".venv" / "bin" / "python"
-    subprocess.run([str(python), str(root / "scripts" / script)], env=env,
+    # Same interpreter as the publisher itself; a checkout-local .venv may not exist in this runtime.
+    subprocess.run([sys.executable, str(root / "scripts" / script)], env=env,
                    check=True, timeout=timeout)
 
 
