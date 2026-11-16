@@ -2465,3 +2465,25 @@ main:has(> #map-view) > .site-footer { order: 11; }
 /* 活動卡底部的「我會去／追蹤主辦」：44px 高、14px 字 */
 .card-going, .card-heart { height: 44px; font-size: 0.875rem; }
 .card-actions { padding: 8px 10px; }
+/* 訂閱頁桌面：通知與 Bot 在左，行事曆、RSS、開發者在右，善用 1440 寬 */
+@media (min-width: 1100px) {
+  main.prose:has(> .sub-cols) > .sub-cols { max-width: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; align-items: start; }
+  main.prose:has(> .sub-cols) { max-width: 1160px; }
+  .sub-col > h2:first-child { margin-top: 8px; }
+}
+/* 沒有活動的單位頁：空狀態卡撐滿內容欄，不只佔左半邊 */
+.org-page .org-cols:not(:has(.org-col-posts)) .empty-state { max-width: none; }
+.org-ev-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.org-ev-where { font-size: 0.85rem; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-ev-date.is-ongoing { color: var(--color-success-text); font-weight: 600; }
+/* 活動頁動作：主要一列（報名、加入日曆、我會去），次要一列較輕（地圖、分享、追蹤） */
+.actions:has(> .actions-primary) { flex-direction: column; gap: 10px; }
+.actions-primary, .actions-secondary { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions-secondary { gap: 4px 6px; }
+.actions-secondary .btn {
+  min-height: 40px; padding: 0 12px; border-color: transparent; background: transparent;
+  color: var(--color-text-secondary); font-size: 0.875rem;
+}
+.actions-secondary .btn:hover { background: var(--color-surface-soft); color: var(--color-text-primary); }
+.actions-secondary .btn.heart-btn[aria-pressed="true"] { border-color: var(--color-bell-on); }
+.actions-secondary .btn:first-child { margin-left: -12px; }

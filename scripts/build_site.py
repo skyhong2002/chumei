@@ -1334,11 +1334,9 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
                   '<div class="event-cover-content"><span class="event-cover-kicker">竹梅活動</span>'
                   f'<strong>{category}</strong><span class="event-cover-note">示意封面</span></div></div>')
     map_action_label = "查看約略位置（非實際會場）" if (e.get("geo") or {}).get("approximate") else "在地圖上看"
-    actions = "".join(filter(None, [
+    primary_actions = "".join(filter(None, [
         f'<a class="btn btn-primary" href="{esc(e["registration_url"])}" rel="noopener">報名／活動頁</a>' if e.get("registration_url") else None,
         f'<a class="btn" href="{gcal}" rel="noopener">加入 Google 日曆</a>' if gcal else None,
-        (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">{map_action_label}</a>'
-         if e.get("geo") else None),
         # 原始貼文統一列在資訊列（含帳號／平台／日期），不另設按鈕
         (f'<button class="btn going-btn going-btn-label" data-event-id="{e["id"]}" '
          f'data-event-title="{esc(e["title"])}" aria-pressed="false" '
@@ -1348,11 +1346,18 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
          '<path d="M15 5l0 2"/><path d="M15 11l0 2"/><path d="M15 17l0 2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2"/></svg>'
          '<span class="gb-go">我會去</span><span class="gb-going">已加入</span>'
          '<span class="going-count" hidden></span></button>'),
+    ]))
+    secondary_actions = "".join(filter(None, [
+        (f'<a class="btn" href="https://www.google.com/maps?q={e["geo"]["lat"]},{e["geo"]["lng"]}" rel="noopener">{map_action_label}</a>'
+         if e.get("geo") else None),
         f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
         (f'<button class="btn heart-btn heart-btn-label" data-org-id="{org[0]}" data-org-name="{esc(org[1])}" '
          f'aria-pressed="false" aria-label="追蹤{follow_noun}：{esc(org[1])}" title="追蹤{follow_noun}：{esc(org[1])}">{FEED_ICON["heart"]}'
          f'<span class="hb-follow">追蹤{follow_noun}</span><span class="hb-following">追蹤中</span></button>') if org else None,
     ]))
+    # 主要動作（報名、加入日曆、我會去）一列；地圖、分享、追蹤降為較輕的次要列
+    actions = (f'<div class="actions-primary">{primary_actions}</div>'
+               f'<div class="actions-secondary">{secondary_actions}</div>')
     jsonld = json.dumps({
         "@context": "https://schema.org", "@type": "Event",
         "name": e["title"], "startDate": st, "endDate": en,
@@ -1941,9 +1946,20 @@ def org_pages(entries, events):
         past = [e for i, e in enumerate(past) if i < 20 or (event_end(e) and event_end(e) >= recent_cutoff)]
 
         def ev_row(e):
+            # 已開始、尚未結束的長期活動標「進行中・至…」，不讓一個月前的開始日看起來像排錯；地點放第二行
+            start = _iso_dt(e["start_at"])
+            ongoing = start is not None and start < now and event_has_not_ended(e, now) and e.get("end_at")
+            if ongoing:
+                end = _iso_dt(e["end_at"]).astimezone(TZ_TAIPEI)
+                when = f"進行中・至 {end.month}/{end.day}"
+            else:
+                when = fmt_dt(e["start_at"], e.get("all_day"))
+            where = " ".join(x for x in (CAMPUS_LABEL.get(e.get("campus") or ""), e.get("venue")) if x)
             return (f'<li class="org-ev"><a href="/event/{e["id"]}/">'
-                    f'<span class="org-ev-date">{fmt_dt(e["start_at"], e.get("all_day"))}</span>'
-                    f'{esc(e["title"])}</a></li>')
+                    f'<span class="org-ev-date{" is-ongoing" if ongoing else ""}">{esc(when)}</span>'
+                    f'<span class="org-ev-main"><span class="org-ev-title">{esc(e["title"])}</span>'
+                    + (f'<span class="org-ev-where">{esc(where)}</span>' if where else '')
+                    + '</span></a></li>')
 
         avatar = (f'<img class="org-avatar" src="{esc(ent["avatar"])}" alt="">' if ent.get("avatar")
                   else '<span class="org-avatar src-avatar-fallback av-' + esc(ent["school"]) + '">'
