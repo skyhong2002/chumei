@@ -2,6 +2,20 @@
 
 本頁維護目前設計與操作入口；`PLAN.md` 是歷史紀錄。功能與設定以 repository 的程式及下列專題指南為準，正式機是否已啟用某項服務需查 launchd、Caddy 與已發布產物，不能只看檔案存在。
 
+2026-11-14 起正式服務統一在 **sky-server**。程式位於
+`/home/sky/Projects/chumei`，部署設定位於 `/home/sky/Projects/chumei-deployment`，
+持久資料位於 `/srv/chumei/{state,data,site,published,backups}`。
+網站及 API 由 Docker Compose 的容器提供，對外流量經反向代理進入；
+網站讀取 `/srv/chumei/published/current`。
+排程由 `chumei-{pipeline,submissions,push-drip,telegram,backup}.timer` 管理。
+sky-mini 的竹梅 launchd 服務及預覽服務已停用，不應重新 bootstrap。
+詳見 [遷移紀錄](migration-2026-11-14.md)。以下 launchd／Caddy 指南保留作為
+原始部署的參考；正式環境應先查 systemd、Docker 與 `/srv/chumei`。
+
+正式機的程式目錄會被掛進容器執行，只用 `git pull --ff-only` 更新；無法快轉時
+先停下來查原因，不要 reset。排程與發布一律透過容器執行（Python 來自映像），
+不要在該目錄建立或改動 `.venv`，也不要直接在主機上對它執行發布腳本。
+
 ## 開發、部署與日常操作
 
 1. **開發／驗證**：照 [CI 指南](ci.md) 安裝 Python、Node、鎖定依賴、Chromium 與 Caddy，執行隔離檢查。這是唯一維護的環境與完整測試流程；不用提供正式憑證或搬入使用者資料。
