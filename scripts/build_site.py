@@ -1303,15 +1303,21 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
             f'<a href="{esc(p["url"])}" rel="noopener" target="_blank">{esc(p["label"])} ↗</a>'
             for p in alt_posts) or None),
     ]
+    location_note = ('<small class="meta-note">地圖標示為校區約略位置，實際會場請查看原始公告。</small>'
+                     if (e.get("geo") or {}).get("approximate") else "")
     meta_html = "".join(
-        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k in ('主辦', '收錄自', '原始貼文') else esc(v)}</dd></div>"
+        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k in ('主辦', '收錄自', '原始貼文') else esc(v)}{location_note if k == '地點' else ''}</dd></div>"
         for k, v in rows if v)
     review = ('<p class="review-note">⚠️ 此活動由 AI 從公開貼文擷取，欄位尚待確認，請以原始貼文為準。</p>'
               if e["extraction"].get("needs_review") else "")
     quality_issues = event_quality_issues(e)
-    if quality_issues:
+    # Approximate coordinates are explained beside the location; they are not a
+    # missing-field warning and should not turn an otherwise complete event into
+    # a review card.
+    display_issues = [i for i in quality_issues if i["code"] != "approximate_geo"]
+    if display_issues:
         review += ('<div class="review-note"><strong>資料待確認</strong><ul>'
-                   + "".join(f'<li>{esc(READER_QUALITY_TEXT.get(i["code"], i["message"]))}</li>' for i in quality_issues)
+                   + "".join(f'<li>{esc(READER_QUALITY_TEXT.get(i["code"], i["message"]))}</li>' for i in display_issues)
                    + f'</ul><a href="/quality/">查看資料缺漏與更正方式</a></div>')
     if e.get("poster_image"):
         poster = f'<img class="detail-poster" src="{esc(e["poster_image"])}" alt="{esc(e["title"])} 活動海報">'
@@ -1946,17 +1952,11 @@ def org_pages(entries, events):
         past = [e for i, e in enumerate(past) if i < 20 or (event_end(e) and event_end(e) >= recent_cutoff)]
 
         def ev_row(e):
-            # 已開始、尚未結束的長期活動標「進行中・至…」，不讓一個月前的開始日看起來像排錯；地點放第二行
-            start = _iso_dt(e["start_at"])
-            ongoing = start is not None and start < now and event_has_not_ended(e, now) and e.get("end_at")
-            if ongoing:
-                end = _iso_dt(e["end_at"]).astimezone(TZ_TAIPEI)
-                when = f"進行中・至 {end.month}/{end.day}"
-            else:
-                when = fmt_dt(e["start_at"], e.get("all_day"))
+            # Keep the rendered date stable across builds; location remains on a second line.
+            when = fmt_dt(e["start_at"], e.get("all_day"))
             where = " ".join(x for x in (CAMPUS_LABEL.get(e.get("campus") or ""), e.get("venue")) if x)
             return (f'<li class="org-ev"><a href="/event/{e["id"]}/">'
-                    f'<span class="org-ev-date{" is-ongoing" if ongoing else ""}">{esc(when)}</span>'
+                    f'<span class="org-ev-date">{esc(when)}</span>'
                     f'<span class="org-ev-main"><span class="org-ev-title">{esc(e["title"])}</span>'
                     + (f'<span class="org-ev-where">{esc(where)}</span>' if where else '')
                     + '</span></a></li>')
