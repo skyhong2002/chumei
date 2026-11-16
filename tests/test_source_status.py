@@ -14,6 +14,14 @@ import source_status
 
 
 class SourceStatusTests(unittest.TestCase):
+    def test_public_errors_hide_upstream_credentials_and_authentication_payloads(self):
+        for error in ('Apify HTTP 401: user-or-token-not-found',
+                      'request failed https://api.example/?token=secret',
+                      'Authorization: Bearer secret', 'api_key=secret', 'password=secret'):
+            self.assertEqual(source_status.public_error(error),
+                             "上游服務認證失敗，請檢查伺服器憑證設定。")
+        self.assertEqual(source_status.public_error('503 upstream failure'), '503 upstream failure')
+
     def test_quota_missing_account_and_real_fetch_errors_are_distinct(self):
         self.assertEqual(source_status.error_category("no unauthenticated provider available within free-credit reserve"), "quota_wait")
         self.assertEqual(source_status.error_category("user_daily_exhausted"), "quota_wait")

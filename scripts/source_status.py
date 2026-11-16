@@ -304,6 +304,13 @@ def error_category(error: str) -> str | None:
     return "fetch_error"
 
 
+def public_error(error: str) -> str:
+    """Keep credential-related upstream responses out of public snapshots."""
+    if any(word in error.lower() for word in ("token", "authorization", "api_key", "api-key", "password")):
+        return "上游服務認證失敗，請檢查伺服器憑證設定。"
+    return error
+
+
 def coverage_summary(rows: list[dict], *, now: float) -> dict:
     """Freshness is based on successful fetches, never on the retry schedule."""
     def recent(row, hours):
@@ -560,7 +567,7 @@ def build_status_payload(*, refresh_apify: bool = True, now: float | None = None
         rows.append({
             **source, "lastAttempt": last_attempt, "lastSuccess": last_success,
             "nextDue": next_due, "averageIntervalHours": _average_interval(entry.get("successHistory", [])),
-            "lastItems": int(entry.get("lastItems") or 0), "lastError": error,
+            "lastItems": int(entry.get("lastItems") or 0), "lastError": public_error(error),
             "consecutiveFailures": int(entry.get("consecutiveFailures") or 0),
             "status": state, "requestable": True, "blockedReason": blocked,
             "errorCategory": category, "successAgeHours": age_hours,
