@@ -881,5 +881,30 @@
   "means": {},
   "scores": {},
   "note": "Council round 3 review did not produce a completed response; no score inferred."
+ },
+ {
+  "round": "c4",
+  "host": "sky-mini",
+  "reviewer": "gpt-6-1-sol",
+  "means": {
+   "new": 8.5
+  },
+  "scores": {
+   "new": {
+    "資訊層級": 9,
+    "字體排印": 8.5,
+    "色彩": 9,
+    "間距與版面": 8,
+    "一致性": 9,
+    "資訊密度": 8.5,
+    "導覽": 8.5,
+    "狀態與回饋": 9.5,
+    "響應式": 8,
+    "文案": 9,
+    "無障礙": 8,
+    "動畫與轉場": 7.5
+   }
+  },
+  "note": "Council round 4 (sky-mini). New = 2bf604c. GPT-6.1 Sol completed; target 8.5 reached. No further Fable/Astra review requested."
  }
 ]
