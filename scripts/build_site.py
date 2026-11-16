@@ -1918,6 +1918,94 @@ KIND_LABEL = {"club": "社團", "gov": "自治組織", "dept": "系所", "unit":
               "bulletin": "公告系統", "ext": "校外"}
 
 
+ORG_API_SCHEMA_VERSION = 1
+ORG_API_ITEM_LIMIT = 12       # 每個單位公開幾則最新貼文
+ORG_API_SCAN_LIMIT = 60       # 合併跨平台重複貼文前最多看幾則
+ORG_API_TITLE_LIMIT = 120
+ORG_API_EXCERPT_LIMIT = 280
+ORG_API_IMAGE_FETCH_DAYS = 7  # 只替近期收錄的貼文抓圖：更舊的社群 CDN 網址多半已過期
+ORG_API_PLATFORM = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads", "x": "X"}
+# 同一篇貼在多個平台時，連到哪一個
+ORG_API_PLATFORM_RANK = {"instagram": 0, "threads": 1, "facebook": 2, "x": 3}
+
+
+def _org_api_clip(text, limit):
+    text = re.sub(r"\s+", " ", text).strip()
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def _org_api_text(post):
+    text = display_text(post.get("text")).replace("\u200b", "").strip()
+    return "" if text in FEED_PLACEHOLDER_TEXTS else text
+
+
+def _org_api_image(members, now_dt):
+    """貼文自己的本地快取圖（含尺寸）；同一篇的任一平台副本有圖就用。"""
+    for post in members:
+        sid, pid = post["source_id"], post["post_id"]
+        stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{sid}__{pid}")[:150]
+        local = f"/assets/posts/{stem}.jpg" if (POST_IMG_DIR / f"{stem}.jpg").exists() else None
+        if not local:
+            fetched = _iso_dt(post.get("fetched_at"))
+            if fetched and (now_dt - fetched).days < ORG_API_IMAGE_FETCH_DAYS:
+                local = cache_post_image(sid, pid, (post.get("images") or [None])[0] or post.get("image_url"))
+        size = local_image_size(local)
+        if local and size:
+            return {"url": BASE_URL + local, "width": size[0], "height": size[1]}
+    return None
+
+
+def org_api_items(ordered, post_time, now_dt):
+    """單位最新貼文（新到舊）；同一篇在 IG／FB／Threads 各貼一次只算一則。"""
+    groups = []
+    for post in ordered[:ORG_API_SCAN_LIMIT]:
+        url = str(post.get("url") or "")
+        text = _org_api_text(post)
+        published = _iso_dt(post_time(post))
+        if post.get("platform") not in ORG_API_PLATFORM or not url.startswith("https://") or not text or not published:
+            continue
+        norm = _feed_norm_text(text)
+        group = next((g for g in groups if norm and _feed_same_post(norm, g["norm"])), None)
+        if group:
+            group["members"].append(post)
+        elif len(groups) < ORG_API_ITEM_LIMIT:
+            groups.append({"norm": norm, "members": [post]})
+    items = []
+    for group in groups:
+        members = sorted(group["members"], key=lambda p: ORG_API_PLATFORM_RANK.get(p["platform"], 9))
+        lead = members[0]
+        text = _org_api_text(lead)
+        title = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        item = {
+            "id": f'{lead["source_id"]}:{lead["post_id"]}',
+            "title": _org_api_clip(title, ORG_API_TITLE_LIMIT),
+            "excerpt": _org_api_clip(text, ORG_API_EXCERPT_LIMIT),
+            "url": lead["url"],
+            "platform": ORG_API_PLATFORM[lead["platform"]],
+            "publishedAt": _iso_dt(post_time(lead)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        image = _org_api_image(members, now_dt)
+        if image:
+            item["image"] = image
+        alternates = [{"platform": ORG_API_PLATFORM[p["platform"]], "url": p["url"]} for p in members[1:]]
+        if alternates:
+            item["alternates"] = alternates
+        items.append(item)
+    return sorted(items, key=lambda item: item["publishedAt"], reverse=True)
+
+
+def write_org_api(ent, items, generated_at):
+    """/api/org/<id>.json：給單位自己的網站嵌入最新貼文（跨網域讀取由前端 proxy 開放）。"""
+    path = SITE / "api" / "org" / f'{ent["id"]}.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "schemaVersion": ORG_API_SCHEMA_VERSION,
+        "generatedAt": generated_at,
+        "org": {"id": ent["id"], "name": ent["name"], "pageUrl": f'{BASE_URL}/org/{ent["id"]}/'},
+        "items": items,
+    }, ensure_ascii=False, indent=1) + "\n")
+
+
 def org_pages(entries, events):
     """每個名錄條目一頁 /org/<id>/：頭貼、連結、該單位的活動與收錄貼文。"""
     by_sid = {}
@@ -2016,10 +2104,12 @@ def org_pages(entries, events):
         # 收錄貼文：各來源合流、含沒抽出活動的，最新在前
         posts = {(p["source_id"], p["post_id"]): p
                  for sid in ent.get("sids", []) for p in posts_by_sid.get(sid, [])}
+
+        def post_key(p):
+            return post_publication_time(p, now_text, records.get((p["source_id"], p["post_id"])))
+        ordered = sorted(posts.values(), key=post_key, reverse=True)
+        write_org_api(ent, org_api_items(ordered, post_key, now), now_text)
         if posts:
-            def post_key(p):
-                return post_publication_time(p, now_text, records.get((p["source_id"], p["post_id"])))
-            ordered = sorted(posts.values(), key=post_key, reverse=True)
             shown = ordered[:30]
 
             PLAT_S = {"instagram": "IG", "facebook": "FB", "threads": "Threads", "x": "X",
@@ -2073,6 +2163,11 @@ def org_pages(entries, events):
         for d in org_root.iterdir():
             if d.is_dir() and d.name not in valid:
                 shutil.rmtree(d)
+    api_root = SITE / "api" / "org"
+    if api_root.exists():
+        for f in api_root.glob("*.json"):
+            if f.stem not in valid:
+                f.unlink()
     print(f"org pages: {len(entries)}")
     return [ent["id"] for ent in entries]
 
