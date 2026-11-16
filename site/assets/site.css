@@ -2260,16 +2260,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-action-p
 .inline-search input::placeholder { color: var(--color-text-muted); }
 .inline-search .btn { cursor: pointer; font: inherit; font-weight: 600; }
 
-/* ---------- 首頁：一句話說明、欄板右緣提示 ---------- */
-.home-intro {
-  max-width: 1160px; margin: 0 auto 6px; padding: 0 2px;
-  color: var(--color-text-secondary); font-size: 0.92rem; line-height: 1.6;
-}
-.home-intro a { margin-left: 6px; font-weight: 600; white-space: nowrap; }
-@media (min-width: 700px) { body.feed-locked .home-intro { flex: 0 0 auto; width: 100%; padding: 4px 4px 0; } }
-@media (max-width: 699px) { .home-intro { padding: 4px 14px 6px; font-size: 0.85rem; } }
-/* 手機首屏：導言只給第一次來的人看，回訪時貼文更早出現 */
-@media (max-width: 699px) { .intro-seen .home-intro { display: none; } }
 @media (min-width: 700px) {
   body.feed-locked .feed-cols.more-right {
     -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 72px), transparent);
