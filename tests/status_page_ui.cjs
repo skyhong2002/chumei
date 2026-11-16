@@ -75,13 +75,13 @@ async function page(quota, responses = [], blockedReason = '', sources = null, s
   assert.equal(ui.calls[0].method, 'POST');
   assert.doesNotMatch(ui.html(), /data-weight-action="add"/, 'quota exhaustion hides plus on every row');
   assert.match(ui.html(), /總權重 1/);
-  assert.match(ui.snapshot(), /尚餘 0 點/);
+  assert.match(ui.snapshot(), /還能替來源加權 0 點/);
   ui.click('remove'); await settle();
   assert.equal(ui.calls[1].method, 'DELETE');
   assert.match(ui.html(), /總權重 0/);
   assert.doesNotMatch(ui.html(), /data-weight-action="remove"/);
   assert.match(ui.html(), /data-weight-action="add"/);
-  assert.match(ui.snapshot(), /尚餘 1 點/);
+  assert.match(ui.snapshot(), /還能替來源加權 1 點/);
   const blocked = await page({...added, remainingToday: 1}, [], '冷卻中');
   assert.match(blocked.html(), /data-weight-action="remove"[^>]* >−/);
   assert.match(blocked.html(), /data-weight-action="add"[^>]* disabled/);

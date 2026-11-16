@@ -2367,8 +2367,33 @@
       return state.going === "on" || state.follow === "on" || state.school !== "all" || state.campus !== "all" || state.cat !== "all" ||
         state.org !== "all" || state.reg !== "all" || state.fee !== "all";
     }
-    // 手機帶著篩選條件進來時直接展開；桌機 popover 用亮點提示
-    if (moreFilters && window.innerWidth <= 700 && moreActive()) moreFilters.open = true;
+    // 帶著篩選條件進來時不展開整片篩選；改在篩選列下方列出已選條件，可逐一移除
+    var activeBar = document.createElement("div");
+    activeBar.className = "active-filters";
+    activeBar.setAttribute("aria-label", "已選條件");
+    var filtersEl = document.querySelector("main .filters");
+    if (filtersEl) filtersEl.appendChild(activeBar);
+    var MORE_KEYS = ["going", "follow", "school", "campus", "cat", "org", "reg", "fee"];
+    function renderActive() {
+      var on = MORE_KEYS.filter(function (k) { return state[k] && state[k] !== "all"; });
+      activeBar.hidden = !on.length;
+      activeBar.innerHTML = on.length ? '<span class="active-filters-label">已選條件</span>' + on.map(function (k) {
+        var group = chipGroups[k], opt = group && group.options.filter(function (o) { return o[0] === state[k]; })[0];
+        var text = opt ? opt[1] : state[k];
+        return '<button type="button" class="fchip active-filter" data-key="' + esc(k) + '" aria-label="移除條件：' + esc(text) + '">' +
+          esc(text) + '<span aria-hidden="true" class="active-filter-x">×</span></button>';
+      }).join("") + (on.length > 1 ? '<button type="button" class="filter-expand active-filters-clear">全部清除</button>' : "") : "";
+    }
+    activeBar.addEventListener("click", function (event) {
+      var chip = event.target.closest(".active-filter"), clear = event.target.closest(".active-filters-clear");
+      if (!chip && !clear) return;
+      (clear ? MORE_KEYS : [chip.dataset.key]).forEach(function (k) {
+        state[k] = "all";
+        var group = chipGroups[k];
+        if (group) group.host.querySelectorAll(".fchip").forEach(function (x) { x.setAttribute("aria-pressed", String(x.dataset.value === "all")); });
+      });
+      render();
+    });
 
     var cats = {};
     (bundle.categories || bundle.events.map(function (e) { return e.category || "其他"; })).forEach(function (cat) { cats[cat] = 1; });
@@ -2571,6 +2596,11 @@
     var mapState = { map: null, markers: [], ready: false, pending: [] };
     var mapButton = document.getElementById("load-map");
     var mapRequested = false;
+    // 「活動」標題列的「地圖」：捲到列表後方的地圖區並直接載入
+    var jumpMap = document.getElementById("jump-map");
+    if (jumpMap) jumpMap.addEventListener("click", function () {
+      if (mapButton && !mapButton.hidden && !mapButton.disabled) mapButton.click();
+    });
     if (mapButton) mapButton.addEventListener("click", function () {
       mapButton.disabled = true;
       mapButton.textContent = "地圖載入中…";
@@ -2826,6 +2856,7 @@
         : noResults();
       updateChipCounts();
       if (moreFilters) moreFilters.classList.toggle("fon", moreActive());
+      renderActive();
       renderMap(list);
       syncUrl(list.length);
     }

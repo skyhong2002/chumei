@@ -2440,3 +2440,28 @@ main.prose > * { max-width: var(--layout-reading, 720px); }
 .fchip-count { font-size: 0.8125rem; color: var(--color-text-secondary); min-width: 22px; height: 22px; }
 .card-meta { font-size: 0.875rem; color: var(--color-text-secondary); }
 .fchip-count:empty { display: none; }
+
+/* ---------- c1 ---------- */
+/* 活動列：日期與狀態標籤放不下時換行，不壓到右側的「我會去／追蹤」 */
+.evr-when { flex-wrap: wrap; row-gap: 3px; }
+.active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 0; }
+.active-filters[hidden] { display: none; }
+.active-filters-label { font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); margin-right: 2px; }
+.active-filter { gap: 6px; background: var(--color-surface-raised); border-color: var(--color-action-primary); }
+.active-filter-x { font-size: 1rem; line-height: 1; color: var(--color-text-secondary); }
+/* 活動頁：地圖區在桌面也排到活動列表之後，由標題列的「地圖」跳過去；列表不再被一個只有按鈕的區塊往下推 */
+main:has(> #map-view) { display: flex; flex-direction: column; }
+main:has(> #map-view) > #map-view { order: 10; }
+main:has(> #map-view) > .site-footer { order: 11; }
+#map-view { scroll-margin-top: 16px; }
+/* 錯誤卡：標題保留紅色語意，說明改用主要文字色；「詳細資訊」放大成可點的區塊 */
+.data-status.is-error .data-status-text { color: var(--color-text-primary); }
+.data-status.is-error .data-status-text strong { color: var(--color-danger-text); }
+.data-status-more { font-size: 0.875rem; opacity: 1; }
+.data-status-more summary { display: inline-flex; align-items: center; min-height: 32px; font-weight: 600; }
+.submit-steps { margin: 4px 0 20px; padding-left: 1.3em; color: var(--color-text-secondary); font-size: 0.9rem; line-height: 1.65; }
+.submit-steps li + li { margin-top: 6px; }
+.submit-steps strong { color: var(--color-text-primary); }
+/* 活動卡底部的「我會去／追蹤主辦」：44px 高、14px 字 */
+.card-going, .card-heart { height: 44px; font-size: 0.875rem; }
+.card-actions { padding: 8px 10px; }

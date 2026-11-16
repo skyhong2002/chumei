@@ -1680,13 +1680,17 @@ def _submissions_html(items: list[dict], notice: str | None, user_id: str | None
         <div class="submit-main">
         <p class="eyebrow">回報連結</p>
         <h2>看到活動，貼連結給竹梅</h2>
-        <p>IG／FB／Threads 貼文、公告頁或報名表都可以。系統會自動判讀是不是清交相關的活動：是新活動就收錄，已經有的就幫你對上，不確定的會留給人工看。</p>
-        <p>也可以直接貼<strong>帳號主頁</strong>。確認是清交的單位、社團或校園媒體之後就會加進追蹤清單，之後的新貼文都自動收錄，不用等人工放行。</p>
-        <p>每個連結的處理狀態都公開在下面。</p>
+        <p>IG／FB／Threads 貼文、公告頁或報名表都可以；也可以直接貼社團或單位的<strong>帳號主頁</strong>。</p>
         {alert}
         {form}
         </div>
         <div class="submit-side">
+        <h3 class="submit-list-title">送出之後</h3>
+        <ol class="submit-steps">
+          <li><strong>活動貼文</strong>：系統判讀是不是清交相關的活動。新活動直接收錄，已經有的會幫你對上。</li>
+          <li><strong>帳號主頁</strong>：確認是清交的單位、社團或校園媒體後加進追蹤清單，之後的新貼文都會自動收錄。</li>
+          <li><strong>不確定的</strong>：留給站長人工確認。每個連結的處理狀態都公開在下方。</li>
+        </ol>
         <h3 class="submit-list-title">最近的回報</h3>
         {listing}
         </div>
@@ -2049,7 +2053,7 @@ def _account_html(
         </div>
         <div class="account-private-link">
           <div class="account-private-link-text">
-            <span>私密訂閱連結</span>
+            <span>你的專屬連結（別分享給別人）</span>
             <code title="{cal_url}">{cal_url}</code>
           </div>
           <button class="btn saved-feed-copy" type="button" data-copy="{cal_url}">複製連結</button>

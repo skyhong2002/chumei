@@ -732,6 +732,25 @@ def fmt_dt(iso, all_day=False):
     return f"{base} {d:%H:%M}"
 
 
+# 活動頁給讀者看的「資料待確認」說法；/quality/ 清單仍用維護者的原始訊息
+READER_QUALITY_TEXT = {
+    "missing_geo": "還沒有地圖位置，請以原公告的地點為準",
+    "approximate_geo": "地圖只標出大概位置，實際會場請看原公告",
+    "extraction_review": "這則活動的資訊還在核對中，請以原公告為準",
+    "unverified_time": "日期或時間還在確認中，暫時不提供加入行事曆",
+}
+
+
+def fmt_range(start, end, all_day=False):
+    """活動頁的時間：同一天只寫一次日期（2026/11/19（四） 18:00–21:00）。"""
+    first, last = fmt_dt(start, all_day), fmt_dt(end, all_day)
+    if not last or last == first:
+        return first
+    if first[:-6] == last[:-6] and len(first) > 6 and first[-6] == " " and last[-6] == " ":
+        return f"{first}–{last[-5:]}"
+    return f"{first} – {last}"
+
+
 def ics_escape(s):
     return str(s or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
@@ -1264,11 +1283,18 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
     ]
     preview_desc = _one_line("。".join(part.strip("。") for part in preview_parts if part), 180)
 
+    organizer = (e.get("organizer") or "").strip()
+    organizer_differs = bool(org and organizer and organizer != org[1] and organizer not in org[1]
+                             and (e.get("source") or {}).get("platform") in ("api", "bulletin"))
+    follow_noun = "來源" if organizer_differs else "主辦"
     rows = [
-        ("時間", fmt_dt(st, e.get("all_day")) + (f" – {fmt_dt(en, e.get('all_day'))}" if en else "")),
+        ("時間", fmt_range(st, en, e.get("all_day"))),
         ("地點", loc or "詳見原始貼文"),
-        ("主辦", (f'<a href="/org/{org[0]}/">{esc(org[1])}</a>（{ORG_LABEL.get(e.get("organizer_type"), "")}）'
+        # 收錄單位是公告平台（如 NYCU LIFE 活動系統）時，主辦寫實際的辦理單位，平台另列「收錄自」
+        ("主辦", (f"{esc(organizer)}（{ORG_LABEL.get(e.get('organizer_type'), '')}）" if organizer_differs else
+                 f'<a href="/org/{org[0]}/">{esc(org[1])}</a>（{ORG_LABEL.get(e.get("organizer_type"), "")}）'
                  if org else f"{esc(e.get('organizer'))}（{ORG_LABEL.get(e.get('organizer_type'), '')}）")),
+        ("收錄自", f'<a href="/org/{org[0]}/">{esc(org[1])}</a>' if organizer_differs else None),
         ("類型", e.get("category")),
         ("報名", {"required": "需事先報名", "free": "自由入場，免報名"}.get(e.get("reg"))),
         ("費用", e.get("price") or {"free": "免費", "paid": "需付費（金額見原文）"}.get(e.get("fee"))),
@@ -1277,19 +1303,15 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
             f'<a href="{esc(p["url"])}" rel="noopener" target="_blank">{esc(p["label"])} ↗</a>'
             for p in alt_posts) or None),
     ]
-    location_note = ('<small class="meta-note">地圖標示為校區約略位置，實際會場請查看原始公告。</small>'
-                     if (e.get("geo") or {}).get("approximate") else "")
     meta_html = "".join(
-        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k in ('主辦', '原始貼文') else esc(v)}{location_note if k == '地點' else ''}</dd></div>"
+        f"<div class='meta-row'><dt>{esc(k)}</dt><dd>{v if k in ('主辦', '收錄自', '原始貼文') else esc(v)}</dd></div>"
         for k, v in rows if v)
     review = ('<p class="review-note">⚠️ 此活動由 AI 從公開貼文擷取，欄位尚待確認，請以原始貼文為準。</p>'
               if e["extraction"].get("needs_review") else "")
-    # Approximate campus coordinates are useful context, not an event warning.
-    # Keep the issue in the quality report, and explain it beside the location.
-    quality_issues = [issue for issue in event_quality_issues(e) if issue["code"] != "approximate_geo"]
+    quality_issues = event_quality_issues(e)
     if quality_issues:
         review += ('<div class="review-note"><strong>資料待確認</strong><ul>'
-                   + "".join(f'<li>{esc(i["message"])}</li>' for i in quality_issues)
+                   + "".join(f'<li>{esc(READER_QUALITY_TEXT.get(i["code"], i["message"]))}</li>' for i in quality_issues)
                    + f'</ul><a href="/quality/">查看資料缺漏與更正方式</a></div>')
     if e.get("poster_image"):
         poster = f'<img class="detail-poster" src="{esc(e["poster_image"])}" alt="{esc(e["title"])} 活動海報">'
@@ -1328,8 +1350,8 @@ def detail_page(e, org=None, org_sections=(), alt_posts=(), related=(), with_tim
          '<span class="going-count" hidden></span></button>'),
         f'<button class="btn btn-share" data-url="{BASE_URL}/event/{e["id"]}/" data-title="{esc(e["title"])}">分享</button>',
         (f'<button class="btn heart-btn heart-btn-label" data-org-id="{org[0]}" data-org-name="{esc(org[1])}" '
-         f'aria-pressed="false" aria-label="追蹤主辦：{esc(org[1])}" title="追蹤主辦：{esc(org[1])}">{FEED_ICON["heart"]}'
-         f'<span class="hb-follow">追蹤主辦</span><span class="hb-following">追蹤中</span></button>') if org else None,
+         f'aria-pressed="false" aria-label="追蹤{follow_noun}：{esc(org[1])}" title="追蹤{follow_noun}：{esc(org[1])}">{FEED_ICON["heart"]}'
+         f'<span class="hb-follow">追蹤{follow_noun}</span><span class="hb-following">追蹤中</span></button>') if org else None,
     ]))
     jsonld = json.dumps({
         "@context": "https://schema.org", "@type": "Event",
