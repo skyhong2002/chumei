@@ -18,6 +18,8 @@ import tempfile
 import time
 import uuid
 
+from site_sources import sync_site_sources
+
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_STEPS = ("build_map_data.py", "build_site.py", "build_status_page.py", "validate_outputs.py")
 # A publication normally takes ~4 minutes; the slowest seen took ~14, almost all
@@ -134,6 +136,7 @@ def publish(root=ROOT, *, runner=None, offline=False):
         previous = publication / "previous"
         old = _managed_target(current, releases)
         _managed_target(previous, releases)
+        sync_site_sources(root)
         stage = Path(tempfile.mkdtemp(prefix=".staging-", dir=releases))
         candidate = None
         try:
