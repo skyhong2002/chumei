@@ -131,14 +131,20 @@ class InstaStoriesViewer(Viewer):
         try:
             data = json.loads(body)[1]["data"]
             if data.get("status") == "success":
-                return [{
+                reels = (data.get("user") or {}).get("reels") or []
+                stories = [{
                     "id": str(reel["id"]),
                     "taken_at": float(reel["taken_at"]),
                     "image_url": self.image_base + quote(str(reel.get("display_url") or reel["thumbnail_src"]), safe=""),
                     "is_video": str(reel.get("is_video")).lower() == "true",
-                } for reel in (data.get("user") or {}).get("reels") or []
+                } for reel in reels
                     if reel.get("id") and reel.get("taken_at")
                     and (reel.get("display_url") or reel.get("thumbnail_src"))]
+                if reels and not stories:
+                    # Stories exist but none is readable: the format changed. Reporting
+                    # "no Stories" here would mark the account covered and skip Apify.
+                    raise ViewerUnavailable(f"{self.name}: {len(reels)} Stories without usable id/taken_at/image")
+                return stories
             code = data.get("code")
         except (TypeError, ValueError, KeyError, IndexError, AttributeError) as exc:
             raise ViewerUnavailable(f"{self.name}: unreadable result ({exc!r})") from exc

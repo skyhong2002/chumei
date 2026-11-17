@@ -27,6 +27,15 @@ class ParsingTests(unittest.TestCase):
         self.assertTrue(story["is_video"])
         self.assertEqual(story["image_url"], "https://cdn.iqsaved.com/img2.php?url=11a%2Bb%2Fc%3D")
 
+    def test_insta_stories_viewer_unreadable_stories_are_not_an_empty_account(self):
+        # Since late 2026-10 the site omits taken_at and sends short opaque ids.
+        reel = {"id": "1vQ85ng", "is_video": False, "display_url": "kwWM", "thumbnail_src": "kwWM"}
+        body = json.dumps(["searchResult", {"data": {"status": "success", "user": {"reels": [reel, reel]}}}])
+        with self.assertRaisesRegex(ViewerUnavailable, "2 Stories without usable"):
+            InstaStoriesViewer()._parse(body)
+        empty = json.dumps(["searchResult", {"data": {"status": "success", "user": {"reels": []}}}])
+        self.assertEqual(InstaStoriesViewer()._parse(empty), [])
+
     def test_insta_stories_viewer_error_is_about_the_account(self):
         body = json.dumps(["searchResult", {"data": {"status": "error", "code": 430}}])
         with self.assertRaises(AccountUnavailable):
