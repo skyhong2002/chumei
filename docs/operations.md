@@ -16,6 +16,12 @@ sky-mini 的竹梅 launchd 服務及預覽服務已停用，不應重新 bootstr
 先停下來查原因，不要 reset。排程與發布一律透過容器執行（Python 來自映像），
 不要在該目錄建立或改動 `.venv`，也不要直接在主機上對它執行發布腳本。
 
+容器把 `/srv/chumei/site` 掛在程式目錄的 `site/` 上，所以 `git pull` 不會直接更新
+線上使用的樣板與靜態資源。每次發布前，`scripts/site_sources.py` 會把上次同步之後
+repository 在 `site/` 內變更過的檔案套用到掛載目錄，並把已同步的 commit 記在
+`state/site_source_revision`；repository 沒有變更的檔案（執行期更新的頭像、產生的
+頁面）維持原狀。前端變更合併並快轉後，下一次排程發布就會帶上線。
+
 ## 開發、部署與日常操作
 
 1. **開發／驗證**：照 [CI 指南](ci.md) 安裝 Python、Node、鎖定依賴、Chromium 與 Caddy，執行隔離檢查。這是唯一維護的環境與完整測試流程；不用提供正式憑證或搬入使用者資料。
